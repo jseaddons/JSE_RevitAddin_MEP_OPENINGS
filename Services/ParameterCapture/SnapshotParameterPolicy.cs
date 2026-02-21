@@ -38,19 +38,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
             "Insulation Thickness",
             
             // Host essentials  
-            "Family", "Family Name",
-            "Width", "Thickness", "Height",
-            "Structural", "Function",
-            "Level", "Base Offset", "Top Offset",
+            "Thickness",
+            "Structural",
+            "Wall Width", "Floor Thickness", // ✅ Added per BIP Map
             
             // Common
-            "Mark", "Comments", "Phase Created",
+            // "Mark", "Comments", "Phase Created", // Removed
             
             // Legacy compatibility
             "Nominal Diameter", "Outside Diameter",
-            "Reference Level", "Schedule Level", "Schedule of Level", "Reference Level Elevation",
+            "Schedule Level", "Schedule of Level", // Removed Reference Level
             "System Classification", "Service Type",
-            "Fire Rating"
+            "Fire Rating",
+            "b", "B", "Breadth" // Sync framing params
         };
 
         // FEATURE 23: MUST-CAPTURE - Always capture these critical parameters (no limits applied)
@@ -60,9 +60,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
             "System Type",
             "System Name",
             "System Abbreviation",
-            "Reference Level",
+            // "Reference Level", // Removed per user request
             "Schedule of Level",
-            "Schedule Level"
+            "Schedule Level",
+            "Size",           // ✅ CRITICAL
+            "Service Type",   // ✅ CRITICAL
+            "b"               // ✅ CRITICAL: Structural Framing Width
         };
 
         public SnapshotParameterPolicy(IParameterKeyStore keyStore, ClashZoneStorage storage = null)

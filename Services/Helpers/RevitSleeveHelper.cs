@@ -17,11 +17,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
         public List<FamilyInstance> GetAllSleevesForCategory(Document doc, string category, SleeveDbContext context, object settings)
         {
             // 1. COLLECT ALL SLEEVE FAMILY INSTANCES (Fast)
+            /* WARNFIX_R23: CS0162 - commented out always-false branch
             FilteredElementCollector collector;
             if (false) // settings is deprecated
                 collector = new FilteredElementCollector(doc, doc.ActiveView.Id);
             else
                 collector = new FilteredElementCollector(doc);
+            */
+            var collector = new FilteredElementCollector(doc);
 
             var instances = collector
                 .OfClass(typeof(FamilyInstance))

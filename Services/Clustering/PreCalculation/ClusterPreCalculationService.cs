@@ -105,7 +105,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             {
                 // ✅ FAST PATH: Use pre-loaded ClashZones (already in memory from database batch load)
                 // This is MUCH faster than individual database queries
-                preloadedCount = _rotationService.PreloadClashZonesFromDictionary(preloadedClashZones);
+                // Convert Dictionary<int, ClashZone> to Dictionary<long, ClashZone> for compatibility
+                var preloadedClashZonesLong = preloadedClashZones.ToDictionary(kvp => (long)kvp.Key, kvp => kvp.Value);
+                preloadedCount = _rotationService.PreloadClashZonesFromDictionary(preloadedClashZonesLong);
                 preloadSw.Stop();
                 
                 SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -114,14 +116,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             else
             {
                 // ✅ FALLBACK: Collect sleeve IDs and do individual lookups (slower but works)
-                var allSleeveIds = new HashSet<int>();
+                var allSleeveIds = new HashSet<long>();
                 foreach (var clusterInfo in allClusters)
                 {
                     foreach (var sleeveData in clusterInfo.cluster)
                     {
                         try
                         {
-                            int sleeveId = sleeveData.SleeveInstanceId;
+                            long sleeveId = sleeveData.SleeveInstanceId;
                             if (sleeveId > 0)
                                 allSleeveIds.Add(sleeveId);
                         }

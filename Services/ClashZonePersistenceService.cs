@@ -27,6 +27,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private SleeveDbContext? _sqliteContext;
         private IClashZoneRepository? _sqliteRepository;
         private readonly PerformanceMonitor? _performanceMonitor;
+        // ✅ PERF: Cache GetLinkInstanceName results — avoids repeated FilteredElementCollector per zone (saves ~75ms)
+        private readonly Dictionary<string, string?> _linkInstanceNameCache = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
         public ClashZonePersistenceService(Document document, GuidManager guidManager, string? refreshLogName = null, PerformanceMonitor? performanceMonitor = null)
         {
@@ -41,16 +43,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] 🔄 Initializing SQLite context...");
-                
-                _sqliteContext = new SleeveDbContext(_document, msg => 
+
+                // ✅ PERF: Reuse shared DB context per session to avoid second connection open + schema verify (saves 37ms)
+                Action<string> sqliteLogger = msg =>
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[SQLite] {msg}");
                     SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
-                });
-                
+                };
+                _sqliteContext = SharedDbContextProvider.GetOrCreate(_document, sqliteLogger);
+
                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ SQLite context created: {_sqliteContext.DatabasePath}");
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ SQLite context {(OptimizationFlags.ReuseDbContextDuringRefresh ? "reused (shared)" : "created")}: {_sqliteContext.DatabasePath}");
                 
                 _sqliteRepository = new ClashZoneRepository(_sqliteContext, msg =>
                 {
@@ -159,55 +163,98 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // This populates MepOrientationX/Y/Z and MepElementRotationAngle for database storage
                         using (var enrichOp = _performanceMonitor?.TrackOperation("9a7. Enrich Orientation"))
                         {
-                            // ClashZoneService constructor ambiguity resolution:
-                            // We call the one with most parameters (6 args) using nulls to avoid ambiguity
-                            // (ClashZoneStorage?, Action<string>?, IFlagManager?, GuidManager?, ISectionBoxService?, DbConnection?)
                             var clashZoneService = new ClashZoneService(null, null, null, null, null, null);
                             int enriched = 0;
-                            
-                            foreach (var zone in validZones)
+
+                            // ✅ TARGETED MEP GROUPING: Only for Vertical (Floor) Ducts and Cable Trays.
+                            // Pipes and Accessories are processed individually per user request.
+                            var groupableZones = validZones
+                                .Where(z => string.Equals(z.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase) &&
+                                           (string.Equals(z.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                                            string.Equals(z.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase)))
+                                .GroupBy(z => z.MepElementIdValue)
+                                .ToList();
+
+                            var individualZones = validZones
+                                .Where(z => !string.Equals(z.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase) ||
+                                           (!string.Equals(z.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) &&
+                                            !string.Equals(z.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase)))
+                                .ToList();
+
+                            // 1. Process Groupable Zones (O(Unique MEPs))
+                            foreach (var mepGroup in groupableZones)
                             {
                                 try
                                 {
-                                    // Get MEP element from document
+                                    var firstZone = mepGroup.First();
+                                    var mepElement = _document.GetElement(firstZone.MepElementId);
+                                    if (mepElement == null) continue;
+
+                                    var orientation = clashZoneService.GetMepElementOrientation(mepElement);
+                                    var rotation = clashZoneService.CalculateMepElementRotationAngle(
+                                        firstZone.StructuralElementType, orientation, mepElement);
+                                    
+                                    // Optimization: Compute direction once (expensive string logic)
+                                    var direction = clashZoneService.GetMepOrientationDirection(
+                                        firstZone.StructuralElementType, orientation, firstZone.HostOrientation ?? string.Empty);
+
+                                    // Apply to all zones in the group
+                                    foreach (var zone in mepGroup)
+                                    {
+                                        zone.MepOrientationX = orientation.X;
+                                        zone.MepOrientationY = orientation.Y;
+                                        zone.MepOrientationZ = orientation.Z;
+                                        zone.MepElementRotationAngle = rotation;
+                                        zone.MepElementOrientationDirection = direction;
+                                        enriched++;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[CLASH-ZONE-PERSISTENCE] Failed to enrich group {mepGroup.Key}: {ex.Message}");
+                                }
+                            }
+
+                            // 2. Process Individual Zones (Pipes, Accessories, Wall/Framing hosts)
+                            foreach (var zone in individualZones)
+                            {
+                                try
+                                {
                                     var mepElement = _document.GetElement(zone.MepElementId);
                                     if (mepElement == null) continue;
-                                    
-                                    // Calculate MEP orientation vector
+
                                     var orientation = clashZoneService.GetMepElementOrientation(mepElement);
-                                    zone.MepOrientationX = orientation.X;
-                                    zone.MepOrientationY = orientation.Y;
-                                    zone.MepOrientationZ = orientation.Z;
-                                    
-                                    // Calculate rotation angle (for floors only, 0.0 for walls/framing)
+
+                                    // ✅ MepOrientationX/Y/Z and MepOrientationDirection: Floor + Duct/CableTray only
+                                    // Pipes are circular — orientation is irrelevant. Wall/Framing use HostOrientation.
+                                    bool isFloor = string.Equals(zone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
+                                    bool isPipe = string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                                    if (isFloor && !isPipe)
+                                    {
+                                        zone.MepOrientationX = orientation.X;
+                                        zone.MepOrientationY = orientation.Y;
+                                        zone.MepOrientationZ = orientation.Z;
+                                        zone.MepElementOrientationDirection = clashZoneService.GetMepOrientationDirection(
+                                            zone.StructuralElementType, orientation, zone.HostOrientation ?? string.Empty);
+                                    }
+
                                     zone.MepElementRotationAngle = clashZoneService.CalculateMepElementRotationAngle(
-                                        zone.StructuralElementType,
-                                        orientation,
-                                        mepElement
-                                    );
-                                    
-                                    // ✅ POPULATE STRING DIRECTION: Required for legacy compatibility and DB completeness
-                                    // User reported this column was empty, causing rotation issues in some strategies
-                                    zone.MepElementOrientationDirection = clashZoneService.GetMepOrientationDirection(
-                                        zone.StructuralElementType,
-                                        orientation,
-                                        zone.HostOrientation ?? string.Empty
-                                    );
-                                    
+                                        zone.StructuralElementType, orientation, mepElement);
+
                                     enriched++;
                                 }
                                 catch (Exception ex)
                                 {
-                                    // Non-fatal: Log and continue with default values (0.0)
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[CLASH-ZONE-PERSISTENCE] Failed to enrich zone {zone.Id}: {ex.Message}");
+                                        DebugLogger.Warning($"[CLASH-ZONE-PERSISTENCE] Failed to enrich individual zone {zone.Id}: {ex.Message}");
                                 }
                             }
-                            
+
                             if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones with MEP orientation and rotation angle");
+                                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones (Grouping: {groupableZones.Count} MEPs, Individual: {individualZones.Count})");
                             SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
-                                $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones with MEP orientation\\n");
+                                $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones (Targeted Grouping applied)\n");
                         }
                         
                         _sqliteRepository.InsertOrUpdateClashZonesBulk(validZones, baseFilterName);
@@ -283,14 +330,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return stats;
                 }
 
-                // ✅ DEBUG: Log file combo keys before grouping to diagnose missing combos
-                LogRefresh($"[PERSIST-DEBUG] Analyzing {validZones.Count} valid zones for file combo grouping");
-                var comboKeysSample = validZones.Take(10).Select(cz => GetFileComboKey(cz)).ToList();
-                foreach (var key in comboKeysSample)
-                {
-                    LogRefresh($"[PERSIST-DEBUG]   Sample combo key: Linked='{key.LinkedFile}', Host='{key.HostFile}'");
-                }
-
                 List<IGrouping<(string LinkedFile, string HostFile), ClashZone>> combos;
                 using (_performanceMonitor?.TrackOperation("9a7. Group File Combos"))
                 {
@@ -301,16 +340,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 stats.FileComboCount = combos.Count;
-                LogRefresh($"[PERSIST-DEBUG] Valid combos to persist for '{category}': {combos.Count}");
-                // Process each combo (batched by LinkedFile+HostFile)
-                using (_performanceMonitor?.TrackOperation("9a7b. Loop Overhead"))
-                {
-                    foreach (var combo in combos)
-                    {
-                        LogRefresh($"[PERSIST-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', Zones={combo.Count()}");
-                    }
-                }
-
 
                 var filterName = BuildFilterFileName(baseFilterName, category);
                 // ✅ PHASE SQLITE-2: XML writes disabled (Database Only Mode)
@@ -703,6 +732,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (string.IsNullOrWhiteSpace(documentTitleOrPath) || _document == null)
                 return null;
 
+            // ✅ PERF: Return cached result — FilteredElementCollector is expensive, only run once per unique key
+            if (_linkInstanceNameCache.TryGetValue(documentTitleOrPath, out var cachedResult))
+                return cachedResult;
+
+            string result = null;
             try
             {
                 // Extract file name from path if it's a full path (e.g., "C:\...\PH-00001.rvt" -> "PH-00001")
@@ -736,7 +770,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (linkInstance != null && !string.IsNullOrWhiteSpace(linkInstance.Name))
                 {
                     // ✅ Return raw name (matches UI format) - normalization happens in GetNormalizedKey() for matching
-                    return linkInstance.Name;
+                    result = linkInstance.Name;
                 }
             }
             catch (Exception ex)
@@ -746,7 +780,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Warning($"[PERSIST] Error looking up link instance name for '{documentTitleOrPath}': {ex.Message}");
             }
 
-            return null; // Fall back to document title
+            // ✅ PERF: Cache result (including null) so subsequent calls for same key are O(1)
+            _linkInstanceNameCache[documentTitleOrPath] = result;
+            return result;
         }
 
         private string FirstNonEmptyNormalized(params string[] candidates)
@@ -1199,7 +1235,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void Dispose()
         {
-            _sqliteContext?.Dispose();
+            // ✅ PERF: When using shared context, do NOT dispose — SharedDbContextProvider manages lifecycle
+            if (!OptimizationFlags.ReuseDbContextDuringRefresh)
+            {
+                _sqliteContext?.Dispose();
+            }
             _sqliteContext = null;
             _sqliteRepository = null;
         }

@@ -1174,10 +1174,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public string GetDefaultFilterDirectory()
         {
+            // PROPOSED CHANGE: Try to get project-specific path via reflection first
+            try
+            {
+                Type? contextType = Type.GetType("Nice3point.Revit.Toolkit.Context, Nice3point.Revit.Toolkit");
+                if (contextType == null)
+                {
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        if (asm.GetName().Name == "Nice3point.Revit.Toolkit")
+                        {
+                            contextType = asm.GetType("Nice3point.Revit.Toolkit.Context");
+                            if (contextType != null) break;
+                        }
+                    }
+                }
+
+                if (contextType != null)
+                {
+                    var activeDocProp = contextType.GetProperty("ActiveDocument", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (activeDocProp != null)
+                    {
+                        var doc = activeDocProp.GetValue(null) as Document;
+                        if (doc != null && !doc.IsFamilyDocument)
+                        {
+                             // ✅ STANDARDIZATION: Use ProjectPathService even here
+                             // This ensures we always use AppData\Roaming\JSE_MEP_Openings\Projects\[Name]
+                             // instead of splitting into local folders.
+                             return ProjectPathService.GetFiltersDirectory(doc);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FilterManagementService: Error resolving project path: {ex.Message}");
+            }
+
             var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             var projectName = GetCurrentProjectNameSafe();
-            var filterDir = Path.Combine(appDataPath, "JSE_MEP_Openings", "Projects", projectName, "Filters");
-            return filterDir;
+            var fallbackDir = Path.Combine(appDataPath, "JSE_MEP_Openings", "Projects", projectName, "Filters");
+            return fallbackDir;
         }
 
         private string GetCurrentProjectNameSafe()

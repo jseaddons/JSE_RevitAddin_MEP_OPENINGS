@@ -32,17 +32,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly Document _doc;
         private readonly Action<string> _logger;
-        private readonly IPerformanceMonitor? _performanceMonitor;
+        private readonly IPerformanceMonitor _performanceMonitor;
         private readonly SleeveParameterService _parameterService;
         private readonly SleeveRotationService _rotationService;
         private readonly Func<SleeveDbContext> _contextFactory;
+        private readonly IParameterSnapshotTransferService _snapshotTransferService;
 
         public BulkPlacementService(
             Document doc,
             Func<SleeveDbContext> contextFactory = null,
-            Action<string>? logger = null,
-            IPerformanceMonitor? performanceMonitor = null,
-            SleeveParameterService? parameterService = null)
+            Action<string> logger = null,
+            IPerformanceMonitor performanceMonitor = null,
+            SleeveParameterService parameterService = null,
+            IParameterSnapshotTransferService snapshotTransferService = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _contextFactory = contextFactory;
@@ -52,6 +54,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var placementMonitor = performanceMonitor as PlacementPerformanceMonitor;
             _parameterService = parameterService ?? new SleeveParameterService(doc, isReplayPath: false, placementMonitor);
             _rotationService = new SleeveRotationService();
+            _snapshotTransferService = snapshotTransferService;
         }
 
         /// <summary>
@@ -67,6 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 _logger($"[CONTEXT-PLACEMENT] 🚀 Starting autonomous context placement for filter: {filter?.Name ?? "Unknown"}...");
+                var ctxSw = System.Diagnostics.Stopwatch.StartNew();
 
                 List<ClashZone> zones;
                 using (parentTracker?.TrackSubOperation("1. Loading Zones from DB"))
@@ -77,6 +81,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zones = repo.GetReadyZonesInContext();
                     }
                 }
+                _logger($"[CONTEXT-PLACEMENT] ⏱️ STEP 1 (DB Load): {ctxSw.ElapsedMilliseconds}ms — {zones.Count} zones");
 
                 if (zones.Count == 0)
                 {
@@ -86,12 +91,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 _logger($"[CONTEXT-PLACEMENT] 📂 Loaded {zones.Count} zones from database.");
+                
+                // ✅ CRASH SAFETY: Limit zones to prevent Revit hangs
+                const int MAX_ZONES_PER_BATCH = 1000;
+                if (zones.Count > MAX_ZONES_PER_BATCH)
+                {
+                    _logger($"[CONTEXT-PLACEMENT] ⚠️ Too many zones ({zones.Count}). Limiting to {MAX_ZONES_PER_BATCH} to prevent Revit hang.");
+                    zones = zones.Take(MAX_ZONES_PER_BATCH).ToList();
+                }
 
                 // 1. Planning Phase
                 var allBulkTaskItems = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
+                var planningTimer = System.Diagnostics.Stopwatch.StartNew();
                 
                 using (parentTracker?.TrackSubOperation("2. Planning & Dimensioning"))
                 {
+                    // ✅ PERF: Resolve levels once for the entire batch
+                    var levelMap = new Dictionary<string, ElementId>(StringComparer.OrdinalIgnoreCase);
+                    var levelNames = zones.Select(z => z.MepElementLevelName).Where(ln => !string.IsNullOrEmpty(ln)).Distinct();
+                    if (levelNames.Any())
+                    {
+                        var levels = new FilteredElementCollector(_doc)
+                            .OfClass(typeof(Level))
+                            .Cast<Level>();
+                        
+                        foreach (var name in levelNames)
+                        {
+                            var level = levels.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+                            if (level != null) levelMap[name] = level.Id;
+                        }
+                        _logger($"[CONTEXT-PLACEMENT] 🔋 Pre-cached {levelMap.Count} levels for placement optimization.");
+                    }
+
                     var categoryGroups = zones.GroupBy(z => z.MepElementCategory);
                     var conditionsService = new ConditionsService(_doc);
 
@@ -102,8 +133,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Load conditions using category name as filter key
                         var categoryConditions = conditionsService.LoadConditions(category);
                         
-                        var planner = new ParallelSleevePlacementPlanner(categoryConditions);
+                        // ✅ PERF: Pass levelMap to planner
+                        var planner = new ParallelSleevePlacementPlanner(categoryConditions, levelMap: levelMap);
                         var planningResult = planner.Plan(categoryZones);
+
+                        _logger($"[CONTEXT-PLACEMENT] [PLANNING] Category '{category}': {planningResult.Items.Count} items planned in {planningResult.PlanningDurationMs}ms");
 
                         var plannedMap = planningResult.Items.ToDictionary(i => i.ClashZoneId);
                         foreach (var zone in categoryZones)
@@ -150,6 +184,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
+                planningTimer.Stop();
+
+                _logger($"[CONTEXT-PLACEMENT] ⏱️ STEP 2 (Planning Total): {planningTimer.ElapsedMilliseconds}ms — {allBulkTaskItems.Count} items total");
 
                 if (allBulkTaskItems.Count == 0)
                 {
@@ -165,9 +202,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext, _logger);
                         repo.BatchUpdateCalculatedData(allBulkTaskItems.Select(x => x.Zone).ToList());
-                        _logger($"[CONTEXT-PLACEMENT] ✅ Pre-saved {allBulkTaskItems.Count} zones to DB.");
                     }
                 }
+                _logger($"[CONTEXT-PLACEMENT] ⏱️ STEP 3 (Pre-Save DB): {ctxSw.ElapsedMilliseconds}ms");
 
                 // 3. Deduplication (Same location)
                 List<(ClashZone Zone, SleevePlacementPlanningDto Plan)> itemsToPlace;
@@ -189,17 +226,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // 4. Revit Placement Phase
+                _logger($"[CONTEXT-PLACEMENT] ⏱️ STEP 4 START (Revit Placement): {ctxSw.ElapsedMilliseconds}ms");
                 using (var t = new Transaction(doc, "Bulk Placement (Autonomous)"))
                 {
+                    var individualWarningHandler = new SwallowWarningsPreprocessor();
+                    var failOpts = t.GetFailureHandlingOptions();
+                    failOpts.SetFailuresPreprocessor(individualWarningHandler);
+                    t.SetFailureHandlingOptions(failOpts);
                     t.Start();
                     
                     using (var tracker = parentTracker?.TrackSubOperation("4. Revit AI Placement"))
                     {
-                        var placementResult = ExecuteBulkPlacement(doc, itemsToPlace);
+                        var placementResult = ExecuteBulkPlacement(doc, itemsToPlace, skipSpatialFiltering: false);
                         tracker?.SetItemCount(placementResult.PlacedCount);
                         
                         if (placementResult.OverallSuccess && placementResult.PlacedCount > 0)
                         {
+                            // ✅ SNAPSHOT PARAMETER TRANSFER: Transfer MEP parameters from snapshots to placed sleeves
+                            if (OptimizationFlags.EnableSnapshotParameterTransfer && _snapshotTransferService != null && _contextFactory != null)
+                            {
+                                try
+                                {
+                                    using (var dbContext = _contextFactory())
+                                    {
+                                        var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext, _logger);
+                                        var sleeveElementIds = placementResult.PlacedItems.Select(p => p.ElementId).ToList();
+                                        
+                                        _logger($"[BULK-PLACEMENT] [SNAPSHOT-PARAMS] 🚀 Starting snapshot transfer for {sleeveElementIds.Count} placed sleeves");
+                                        int deferredCount = _snapshotTransferService.TransferSnapshotParameters(doc, sleeveElementIds, repo, _parameterService);
+                                        _logger($"[BULK-PLACEMENT] [SNAPSHOT-PARAMS] 📥 Deferred {deferredCount} parameters from snapshots");
+                                    }
+                                }
+                                catch (Exception snapEx)
+                                {
+                                    _logger($"[BULK-PLACEMENT] [SNAPSHOT-PARAMS] ⚠️ Snapshot transfer failed: {snapEx.Message}");
+                                }
+                            }
+                            
                             _parameterService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
                         }
                         
@@ -210,8 +273,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         result.OverallSuccess = placementResult.OverallSuccess;
                     }
                     
-                    t.Commit();
+                    using (_performanceMonitor?.TrackOperation("Transaction Commit (Individual)"))
+                    {
+                        t.Commit();
+                    }
+                    _performanceMonitor?.LogMetric("INDIVIDUAL TX WARNINGS",
+                        $"Deleted={individualWarningHandler.WarningsDeleted}, Errors={individualWarningHandler.ErrorsFound}");
                 }
+                _logger($"[CONTEXT-PLACEMENT] ⏱️ STEP 4 END (Revit Placement): {ctxSw.ElapsedMilliseconds}ms — placed {result.PlacedCount}");
 
                 // 5. Post-Placement Update & DB Persist
                 if (result.PlacedCount > 0)
@@ -234,49 +303,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             // Log before update
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                $"[{DateTime.Now:HH:mm:ss}] STEP 2: UPDATING DATABASE FLAGS\n");
+                                $"[{DateTime.Now:HH:mm:ss}] STEP 2: UPDATING DATABASE FLAGS (BULK)\n");
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   Setting IsResolvedFlag=1 for {result.PlacedCount} zones\n");
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   RESETTING MarkedForClusterProcess=FALSE (proximity check will re-evaluate)\n");
 
-                            // Sample GUIDs being updated
-                            var sampleGuids = string.Join(", ", result.PlacedItems.Take(3).Select(p => p.Zone.Id.ToString().Substring(0, 8)));
-                            SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Sample GUIDs: {sampleGuids}...\n");
+                            // ✅ PERFORMANCE OPTIMIZATION: Use high-performance bulk update for post-placement data
+                            var zonesToUpdate = result.PlacedItems.Select(p => p.Zone).ToList();
+                            foreach (var zone in zonesToUpdate)
+                            {
+                                zone.IsResolved = true;
+                                zone.PlacementStatus = "Placed";
+                                zone.IsClusteredFlag = false; // Individual placement resets this
+                            }
 
-                            var updates = result.PlacedItems.Select(p =>
-                            (
-                                p.Zone.Id,
-                                true, // IsResolved
-                                (bool?)false, // IsClusterResolved - Reset for individual placement
-                                (bool?)null, // IsCombinedResolved (Preserve)
-                                p.ElementId.GetIntegerValue(),
-                                -1, // ClusterID
-                                (bool?)false, // IsClusteredFlag - Reset for individual placement
-                                (bool?)false, // MarkedForCluster - RESET to false (will be re-evaluated by proximity check)
-                                -1, // AfterClusterID
-                                false, // IsClustered (deprecated field logic)
-                                p.Zone.SleeveWidth,
-                                p.Zone.SleeveHeight,
-                                p.Zone.SleeveDiameter,
-                                p.Zone.SleeveDepth,
-                                p.Zone.SleeveFamilyName,
-                                (double?)p.Zone.SleevePlacementActiveX, // ActivePlacementX
-                                (double?)p.Zone.SleevePlacementActiveY, // ActivePlacementY
-                                (double?)p.Zone.SleevePlacementActiveZ, // ActivePlacementZ
-                                (double?)p.Zone.SleeveBoundingBoxMinX,
-                                (double?)p.Zone.SleeveBoundingBoxMinY,
-                                (double?)p.Zone.SleeveBoundingBoxMinZ,
-                                (double?)p.Zone.SleeveBoundingBoxMaxX,
-                                (double?)p.Zone.SleeveBoundingBoxMaxY,
-                                (double?)p.Zone.SleeveBoundingBoxMaxZ
-                            )).ToList();
-
-                            repo.BatchUpdateFlags(new List<(Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)>(updates));
+                            var bulkUpdateTimer = System.Diagnostics.Stopwatch.StartNew();
+                            repo.BatchUpdatePostPlacement(zonesToUpdate);
+                            bulkUpdateTimer.Stop();
 
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   ✅ BatchUpdateFlags completed successfully\n");
+                                $"[{DateTime.Now:HH:mm:ss}]   ✅ BatchUpdatePostPlacement (TEMP TABLE) completed in {bulkUpdateTimer.ElapsedMilliseconds}ms\n");
 
                             // DIAGNOSTIC: Verify that IsResolvedFlag is actually set in database
                             var verifyZones = repo.GetZonesReadyForProximityCheck();
@@ -312,7 +359,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                _logger($"[CONTEXT-PLACEMENT] ✅ Execution complete. Placed: {result.PlacedCount}, Failed: {result.FailedCount}");
+
+                _logger($"[CONTEXT-PLACEMENT] ⏱️ STEP 5 END (Post-DB): {ctxSw.ElapsedMilliseconds}ms");
+                _logger($"[CONTEXT-PLACEMENT] ✅ Execution complete in {ctxSw.ElapsedMilliseconds}ms. Placed: {result.PlacedCount}, Failed: {result.FailedCount}");
             }
 
             catch (Exception ex)
@@ -336,7 +385,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public BulkPlacementResult ExecuteBulkPlacement(
             Document doc,
-            List<(ClashZone Zone, SleevePlacementPlanningDto Plan)> items)
+            List<(ClashZone Zone, SleevePlacementPlanningDto Plan)> items,
+            bool skipSpatialFiltering = false)
         {
             var result = new BulkPlacementResult();
             var start = DateTime.Now;
@@ -388,7 +438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // Check 2: 3D Section Box (Spatial)
-                if (sectionBox != null)
+                if (sectionBox != null && !skipSpatialFiltering)
                 {
                     // Strict containment check
                     if (pt.X < sectionBox.Min.X || pt.X > sectionBox.Max.X ||
@@ -405,7 +455,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (skippedByBox > 0 || skippedByContext > 0)
             {
-                 _logger($"[SESSION-CONTEXT] 🛑 Skipped {items.Count - filteredItems.Count} items: {skippedByContext} by Context Flag, {skippedByBox} by Section Box");
+                 _logger($"[SESSION-CONTEXT] 🛑 Skipped {items.Count - filteredItems.Count} items out of {items.Count}: {skippedByContext} by Context Flag, {skippedByBox} by Section Box (skipSpatialFiltering={skipSpatialFiltering})");
+                 
+                 if (sectionBox != null && items.Count > 0 && filteredItems.Count == 0 && !skipSpatialFiltering)
+                 {
+                     _logger($"[SESSION-CONTEXT] ⚠️ ALL items were filtered out by Section Box. Current Box: Min({sectionBox.Min}), Max({sectionBox.Max}). First item pt: {items[0].Plan.PlacementPoint}");
+                 }
             }
             else
             {
@@ -427,6 +482,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // Step 1: Pre-activate symbols
                 var symbolCache = PreActivateSymbols(doc, items.Select(x => x.Plan).ToList());
+                
+                // ✅ CRASH SAFETY: Limit batch size to prevent Revit hangs
+                const int MAX_BATCH_SIZE = 500;
+                if (items.Count > MAX_BATCH_SIZE)
+                {
+                    _logger($"[BULK-PLACEMENT] ⚠️ Large placement detected: {items.Count} items. Limiting to {MAX_BATCH_SIZE} per batch.");
+                    items = items.Take(MAX_BATCH_SIZE).ToList();
+                }
+                
+                // ✅ CRASH SAFETY: Initialize timeout tracking
+                var placementStartTime = DateTime.Now;
+                var maxPlacementDuration = TimeSpan.FromMinutes(5); // 5 minute limit for placement
 
                 // Step 2: Create instances using BATCH API (NewFamilyInstances2)
                 var idList = new List<ElementId>();
@@ -454,11 +521,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ location = plan.PlacementPoint ??
                                        new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
 
-                        // ⚡ LOG BEFORE PLACEMENT
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PREP] [{placementIndex}/{items.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                            $"Location=({location.X:F6}, {location.Y:F6}, {location.Z:F6}), Family={famName}\n");
-
                         // ✅ SANITY CHECK: Detect wild outliers
                         if (Math.Abs(location.X) > 3000 || Math.Abs(location.Y) > 3000)
                         {
@@ -471,11 +533,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             symbol,
                             StructuralType.NonStructural);
 
-                        // ⚡ LOG: What location did we pass to FamilyInstanceCreationData?
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [CREATION-DATA] [{placementIndex}/{items.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                            $"Passed Location=({location.X:F6}, {location.Y:F6}, {location.Z:F6}) to FamilyInstanceCreationData\n");
-
                         creationDataList.Add(creationData);
                         placementDataMap.Add((zone, plan, location, famName));
                     }
@@ -486,23 +543,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
+                // ✅ CRASH SAFETY: Check timeout before batch placement
+                if (DateTime.Now - placementStartTime > maxPlacementDuration)
+                {
+                    _logger($"[BULK-PLACEMENT] ⏱️ TIMEOUT: Placement exceeded 5 minutes. Stopping after preparation.");
+                    result.OverallSuccess = false;
+                    result.Error = "Placement timeout - exceeded 5 minute limit";
+                    return result;
+                }
+                
+                // ✅ CRASH SAFETY: Yield to Revit before heavy operation
+                System.Windows.Forms.Application.DoEvents();
+
                 // ✅ BATCH PLACEMENT using NewFamilyInstances2
                 ICollection<ElementId> placedIds;
                 using (var op = _performanceMonitor?.TrackOperation("Revit NewFamilyInstances2 (BATCH)"))
                 {
-                    SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PLACE] Calling NewFamilyInstances2 with {creationDataList.Count} items\n");
-
+                    var swBatch = System.Diagnostics.Stopwatch.StartNew();
                     placedIds = doc.Create.NewFamilyInstances2(creationDataList);
+                    swBatch.Stop();
                     op?.SetItemCount(placedIds.Count);
-                    
-                    // ✅ CRITICAL: Force Revit to calculate the location of newly batched instances
-                    // Without this, the Location property may return (0,0,0) immediately after batch creation,
-                    // which causes our "Origin Safety Check" in ApplyRotation to double-move the element.
-                    doc.Regenerate();
+                    _logger($"[BULK-PLACEMENT] ⏱️ STEP 2 (Revit API: NewFamilyInstances2): {swBatch.ElapsedMilliseconds}ms for {creationDataList.Count} items");
+                }
 
-                    SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PLACE] NewFamilyInstances2 returned {placedIds.Count} IDs and Regenerated\n");
+                // ✅ PERF: Separate Regeneration from Placement call to isolate timings
+                // Regeneration is needed so placement points refresh (avoiding 0.0 coordinates)
+                using (var parentTracker = _performanceMonitor?.TrackOperation("Revit API: Global Refresh")) // Assuming _performanceMonitor is available and parentTracker is a suitable name
+                {
+                    var swRegen = System.Diagnostics.Stopwatch.StartNew();
+                    doc.Regenerate();
+                    swRegen.Stop();
+                    _logger($"[BULK-PLACEMENT] ⏱️ STEP 2.5 (Revit API: Global Refresh): {swRegen.ElapsedMilliseconds}ms");
                 }
 
                 // ✅ CRITICAL: Verify 1-to-1 mapping
@@ -518,6 +589,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FORCE locations and populate caches
                 for (int i = 0; i < placedIdList.Count; i++)
                 {
+                    // ✅ CRASH SAFETY: Check timeout during post-processing
+                    if (DateTime.Now - placementStartTime > maxPlacementDuration)
+                    {
+                        _logger($"[BULK-PLACEMENT] ⏱️ TIMEOUT: Post-processing exceeded 5 minutes. Stopping at {i}/{placedIdList.Count}.");
+                        break;
+                    }
+                    
+                    // ✅ CRASH SAFETY: Yield every 200 items to prevent UI freeze (was 50 — too frequent)
+                    if (i % 200 == 0 && i > 0)
+                    {
+                        System.Windows.Forms.Application.DoEvents();
+                    }
+                    
                     var elementId = placedIdList[i];
                     var (zone, plan, expectedLocation, famName) = placementDataMap[i];
 
@@ -529,25 +613,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         continue;
                     }
 
-                    // ⚡ LOG ACTUAL LOCATION AFTER BATCH PLACEMENT (don't force yet - Revit doubles it!)
-                    var actualLoc = (inst.Location as LocationPoint)?.Point;
-                    SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-VERIFY] [{i+1}/{placedIdList.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                        $"Expected=({expectedLocation.X:F6}, {expectedLocation.Y:F6}, {expectedLocation.Z:F6}), " +
-                        $"Actual=({actualLoc?.X:F6}, {actualLoc?.Y:F6}, {actualLoc?.Z:F6})\n");
-
-                    // ⚠️ DON'T FORCE LOCATION HERE! Revit doubles coordinates when setting from origin.
-                    // Instead, we'll fix it in ApplyRotation when we detect origin.
-
                     idList.Add(elementId);
                     itemMap.Add((zone, plan));
                     elementCache[elementId] = inst;
                 }
 
                 // Step 3: Apply rotation & parameters (deferred via SleeveParameterService batching)
-                const int batchLogInterval = 20;
-                using (_performanceMonitor?.TrackOperation("Apply Rotation & Parameters"))
+                using (var tracker = _performanceMonitor?.TrackOperation("Apply Rotation & Parameters"))
                 {
+                    // PERF DIAGNOSTIC: Sub-operation timing (tick-precision to catch sub-ms operations)
+                    long rotationTotalTicks = 0, paramsTotalTicks = 0;
+                    int rotationCount = 0, preRotatedCount = 0;
+                    var subSw = new System.Diagnostics.Stopwatch();
+                    var loopSw = System.Diagnostics.Stopwatch.StartNew();
+                    double ticksPerMs = System.Diagnostics.Stopwatch.Frequency / 1000.0;
+
                     for (int i = 0; i < idList.Count; i++)
                     {
                         var elementId = idList[i];
@@ -560,37 +640,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             continue;
                         }
 
-                        // ⚡ DEBUG: What location does the cached instance have RIGHT NOW before rotation?
-                        var cachedLoc = (instance.Location as LocationPoint)?.Point;
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [CACHE-RETRIEVE] [{i+1}/{idList.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                            $"InstId={elementId.GetIntegerValue()}, CachedLocation=({cachedLoc?.X:F6}, {cachedLoc?.Y:F6}, {cachedLoc?.Z:F6})\n");
+                        // ✅ PERF: Check if family is pre-rotated (_X variant) — skip rotation entirely
+                        string plannedFamilyName = plan.SleeveFamilyName ?? zone.SleeveFamilyName ?? "";
+                        bool isPreRotatedFamily = plannedFamilyName.EndsWith("_X", StringComparison.OrdinalIgnoreCase);
 
-                        bool isWallOrFraming = IsWallOrFraming(zone);
-
-                        // Geometric rotation: X wall or floor with rotated MEP
-                        double rotationRad = isWallOrFraming
-                            ? _rotationService.DetermineRotation(zone)
-                            : plan.RotationRadians;
-
-                        bool isXWall = string.Equals(zone.HostOrientation, "X", StringComparison.OrdinalIgnoreCase);
-                        bool isFloor = string.Equals(zone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase);
-
-                        // ⚡ DEBUG: Log rotation decision
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ROTATION-CHECK] [{i+1}/{idList.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                            $"RotationRad={rotationRad:F6}, isXWall={isXWall}, isFloor={isFloor}, WillRotate={Math.Abs(rotationRad) > 0.001 && (isXWall || isFloor)}\n");
-
-                        if (Math.Abs(rotationRad) > 0.001 && (isXWall || isFloor))
+                        subSw.Restart();
+                        if (!isPreRotatedFamily)
                         {
-                            // Get expected placement point
-                            XYZ expectedLocation = plan.PlacementPoint ??
-                                new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+                            bool isWallOrFraming = IsWallOrFraming(zone);
 
-                            ApplyRotation(doc, instance, rotationRad, expectedLocation);
+                            double rotationRad = isWallOrFraming
+                                ? _rotationService.DetermineRotation(zone)
+                                : plan.RotationRadians;
+
+                            bool isXWall = string.Equals(zone.HostOrientation, "X", StringComparison.OrdinalIgnoreCase);
+                            bool isFloor = string.Equals(zone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase);
+
+                            if (Math.Abs(rotationRad) > 0.001 && (isXWall || isFloor))
+                            {
+                                XYZ expectedLocation = plan.PlacementPoint ??
+                                    new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+
+                                ApplyRotation(doc, instance, rotationRad, expectedLocation);
+                                rotationCount++;
+                            }
                         }
+                        rotationTotalTicks += subSw.ElapsedTicks;
+                        if (isPreRotatedFamily) preRotatedCount++;
 
-                        // Sizes and metadata (batched by SleeveParameterService)
+                        subSw.Restart();
                         _parameterService.SetSleeveParameters(
                             instance,
                             plan.TargetWidthFt,
@@ -598,19 +676,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             plan.TargetDiameterFt,
                             plan.IsCircular,
                             zone,
-                            plan.RequiredDepthFt);
+                            plan.RequiredDepthFt,
+                            skipValidation: true);
+                        paramsTotalTicks += subSw.ElapsedTicks;
 
-                        _parameterService.SetSleeveInstanceId(instance, elementId.GetIntegerValue());
                         zone.SleeveInstanceId = elementId.GetIntegerValue();
 
                         result.PlacedItems.Add((zone, elementId));
                         result.PlacedCount++;
-
-                        if (result.PlacedCount % batchLogInterval == 0)
-                        {
-                            _logger($"[BulkPlacement] Apply Rotation & Parameters: processed {result.PlacedCount}/{idList.Count} elements");
-                        }
                     }
+
+                    loopSw.Stop();
+                    double totalLoopMs = loopSw.Elapsed.TotalMilliseconds;
+                    double rotMs = rotationTotalTicks / ticksPerMs;
+                    double paramMs = paramsTotalTicks / ticksPerMs;
+                    double unaccountedMs = Math.Max(0, totalLoopMs - rotMs - paramMs);
+
+                    // ✅ RECORD SUB-OPERATIONS: This makes them appear in the performance report table
+                    if (tracker != null)
+                    {
+                        tracker.RecordSubOperation("Sub: Rotation", (long)rotMs, 0, rotationCount);
+                        tracker.RecordSubOperation("Sub: SetParams", (long)paramMs, 0, idList.Count);
+                        tracker.RecordSubOperation("Sub: Loop Overhead", (long)unaccountedMs, 0, 0);
+                        tracker.SetItemCount(idList.Count);
+                    }
+
+                    _logger($"[BulkPlacement] SUB-TIMING: Total={totalLoopMs:F1}ms, Rotation={rotMs:F1}ms ({rotationCount} rotated), SetParams={paramMs:F1}ms, Unaccounted~{unaccountedMs:F0}ms");
+                    
+                    // ✅ ALWAYS WRITE to performance log (DeploymentMode should not suppress this specific breakdown)
+                    SafeFileLogger.SafeAppendTextAlways("placement_performance.log",
+                        $"\n[{DateTime.Now:HH:mm:ss}] SUB-TIMING BREAKDOWN ({idList.Count} sleeves):\n" +
+                        $"  Total Loop:     {totalLoopMs:F1}ms\n" +
+                        $"  Rotation:       {rotMs:F1}ms ({rotationCount} actually rotated, {preRotatedCount} _X pre-rotated, {idList.Count - rotationCount - preRotatedCount} Y-wall/no-rotation)\n" +
+                        $"  SetParams:      {paramMs:F1}ms ({paramMs / idList.Count:F2}ms per sleeve)\n" +
+                        $"  Unaccounted:    ~{unaccountedMs:F0}ms (loop overhead, cache lookups)\n");
                 }
 
                 _logger($"[BulkPlacement] ✅ Set parameters for all {result.PlacedCount} instances");
@@ -673,95 +772,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var locPt = instance.Location as LocationPoint;
                 XYZ axisPoint1 = locPt?.Point;
 
-                // ⚡ LOG THE AXIS POINT BEING USED FOR ROTATION
-                SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] InstId={instance.Id.GetIntegerValue()}, " +
-                    $"RevitAxisPoint=({axisPoint1?.X:F6}, {axisPoint1?.Y:F6}, {axisPoint1?.Z:F6}), " +
-                    $"ExpectedPoint=({expectedPlacementPoint.X:F6}, {expectedPlacementPoint.Y:F6}, {expectedPlacementPoint.Z:F6}), " +
-                    $"RotationRad={rotationRad:F6}\n");
-
-                if (axisPoint1 == null)
-                {
-                    SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] ❌ AxisPoint is NULL! Skipping rotation\n");
-                    return;
-                }
+                if (axisPoint1 == null) return;
 
                 // ✅ CRITICAL FIX: If axis point is (0,0,0), MOVE the instance to expected location!
                 bool isAtOrigin = Math.Abs(axisPoint1.X) < 0.0001 && Math.Abs(axisPoint1.Y) < 0.0001 && Math.Abs(axisPoint1.Z) < 0.0001;
                 if (isAtOrigin)
                 {
-                    SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] ⚠️ AXIS AT ORIGIN! Moving to expected point\n");
-
-                    // MOVE the instance instead of setting location (avoids Revit doubling bug)
-                    XYZ moveVector = expectedPlacementPoint - axisPoint1; // offset from (0,0,0) to expected
+                    XYZ moveVector = expectedPlacementPoint - axisPoint1;
                     Autodesk.Revit.DB.ElementTransformUtils.MoveElement(doc, instance.Id, moveVector);
 
-                    SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] 🔧 Moved instance by ({moveVector.X:F6}, {moveVector.Y:F6}, {moveVector.Z:F6})\n");
-
-                    // ✅ VERIFY: Is it STILL at origin after move?
-                    if (axisPoint1 != null && Math.Abs(axisPoint1.X) < 0.0001 && Math.Abs(axisPoint1.Y) < 0.0001)
+                    // Re-read after move
+                    axisPoint1 = (instance.Location as LocationPoint)?.Point;
+                    if (axisPoint1 == null || (Math.Abs(axisPoint1.X) < 0.0001 && Math.Abs(axisPoint1.Y) < 0.0001))
                     {
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] 📍 Still at origin after move! Forcing absolute location.\n");
                         locPt.Point = expectedPlacementPoint;
-                    }
-                    else
-                    {
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] 📍 Re-read location after move: ({axisPoint1?.X:F6}, {axisPoint1?.Y:F6}, {axisPoint1?.Z:F6})\n");
+                        axisPoint1 = expectedPlacementPoint;
                     }
                 }
 
-                XYZ axisDirection = XYZ.BasisZ;
-                XYZ axisPoint2 = axisPoint1 + axisDirection;
+                XYZ axisPoint2 = axisPoint1 + XYZ.BasisZ;
                 Line axis = Line.CreateBound(axisPoint1, axisPoint2);
-
-                // ⚡ LOG FINAL AXIS
-                SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] FinalAxis: ({axisPoint1.X:F6}, {axisPoint1.Y:F6}, {axisPoint1.Z:F6}) to ({axisPoint2.X:F6}, {axisPoint2.Y:F6}, {axisPoint2.Z:F6})\n");
-
                 instance.Location.Rotate(axis, rotationRad);
-
-                SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] ✅ Rotation completed\n");
             }
             catch (Exception ex)
             {
                 _logger($"[BulkPlacement] Rotation failed: {ex.Message}");
-                SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] ❌ EXCEPTION: {ex.Message}\n{ex.StackTrace}\n");
             }
         }
 
         /// <summary>
-        /// Updates ClashZone objects with actual geometry from placed elements.
-        /// Critical for ensuring clustering uses \"as-placed\" dimensions.
+        /// Updates ClashZone objects with actual placement point from placed elements.
+        /// ✅ PERF: Only reads Location from Revit (1 API call per sleeve).
+        /// BoundingBox and dimensions are already set during planning (Step 2) — no need to re-read.
+        /// Previously did ~12 Revit API calls per sleeve (GetElement + get_BoundingBox + 6x LookupParameter + FamilyName).
         /// </summary>
         public void UpdateZonesFromElements(Document doc, List<(ClashZone Zone, ElementId ElementId)> items)
         {
             if (items == null || items.Count == 0) return;
 
-            int updateIndex = 0;
             foreach (var (zone, ElementId) in items)
             {
                 try
                 {
-                    updateIndex++;
                     var element = doc.GetElement(ElementId) as FamilyInstance;
                     if (element == null) continue;
 
-                    // ✅ Update actual placement point from Revit element
+                    // ✅ Only read-back actual placement point (Revit may have adjusted during commit)
                     var locPt = element.Location as LocationPoint;
                     if (locPt != null)
                     {
-                        // ⚡ LOG WHAT WE'RE READING FROM REVIT
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [UPDATE-ZONES] [{updateIndex}/{items.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                            $"Reading from Revit: ({locPt.Point.X:F6}, {locPt.Point.Y:F6}, {locPt.Point.Z:F6})\n");
-
                         zone.SleevePlacementPointX = locPt.Point.X;
                         zone.SleevePlacementPointY = locPt.Point.Y;
                         zone.SleevePlacementPointZ = locPt.Point.Z;
@@ -770,42 +829,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone.SleevePlacementActiveY = locPt.Point.Y;
                         zone.SleevePlacementActiveZ = locPt.Point.Z;
 
-                        // ⚡ LOG WHAT WE'RE WRITING TO ZONE
-                        SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [UPDATE-ZONES] [{updateIndex}/{items.Count}] Writing to Zone: " +
-                            $"ActiveX={zone.SleevePlacementActiveX:F6}, ActiveY={zone.SleevePlacementActiveY:F6}, ActiveZ={zone.SleevePlacementActiveZ:F6}\n");
+                        zone.SleeveInstanceId = element.Id.Value;
+                        zone.PlacementStatus = "Placed";
+                        zone.IsResolvedFlag = true;
+                        zone.IsClusteredFlag = false;
+                        zone.SleeveState = Models.SleeveStateType.IndividualPlaced;
                     }
 
-                    // ✅ Extraction of actual Bounding Box corners from Revit (As-Built)
-                    var bbox = element.get_BoundingBox(null);
-                    if (bbox != null)
-                    {
-                        zone.SleeveBoundingBoxMinX = bbox.Min.X;
-                        zone.SleeveBoundingBoxMinY = bbox.Min.Y;
-                        zone.SleeveBoundingBoxMinZ = bbox.Min.Z;
-                        zone.SleeveBoundingBoxMaxX = bbox.Max.X;
-                        zone.SleeveBoundingBoxMaxY = bbox.Max.Y;
-                        zone.SleeveBoundingBoxMaxZ = bbox.Max.Z;
-                    }
-
-                    // Minimal implementation: update basic as-placed dimensions if needed
-                    var widthParam = element.LookupParameter("Width") ?? element.LookupParameter("Sleeve Width");
-                    var heightParam = element.LookupParameter("Height") ?? element.LookupParameter("Sleeve Height");
-
-                    if (widthParam != null && widthParam.StorageType == StorageType.Double)
-                        zone.SleeveWidth = widthParam.AsDouble();
-                    if (heightParam != null && heightParam.StorageType == StorageType.Double)
-                        zone.SleeveHeight = heightParam.AsDouble();
-
-                    var diameterParam = element.LookupParameter("Diameter") ?? element.LookupParameter("Sleeve Diameter");
-                    var depthParam = element.LookupParameter("Structural Depth") ?? element.LookupParameter("Sleeve Length") ?? element.LookupParameter("Opening Depth");
-
-                    if (diameterParam != null && diameterParam.StorageType == StorageType.Double)
-                        zone.SleeveDiameter = diameterParam.AsDouble();
-                    if (depthParam != null && depthParam.StorageType == StorageType.Double)
-                        zone.SleeveDepth = depthParam.AsDouble();
-
-                    zone.SleeveFamilyName = element.Symbol.FamilyName;
+                    // ✅ PERF: BoundingBox, Width, Height, Diameter, Depth, FamilyName
+                    // are already set on the zone from planning (Step 2, lines 127-146).
+                    // No need to re-read from Revit — saves ~10 API calls per sleeve.
                 }
                 catch (Exception ex)
                 {

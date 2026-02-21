@@ -4,7 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
-using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
 {
@@ -66,6 +66,117 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
         }
 
         /// <summary>
+        /// ✅ PERF: Computes corners mathematically from placement data (no Revit geometry API calls).
+        /// Uses CalculatedSleeveWidth/Height, SleevePlacementPoint, and HostOrientation
+        /// that are already set on each ClashZone after placement.
+        /// Eliminates per-sleeve doc.GetElement() + get_BoundingBox()/get_Geometry() calls.
+        /// </summary>
+        public int ComputeAndSaveCornersFromPlacementData(List<ClashZone> zones)
+        {
+            if (zones == null || zones.Count == 0) return 0;
+
+            var updates = new List<(Guid Guid, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)>();
+
+            foreach (var zone in zones)
+            {
+                try
+                {
+                    double cx = zone.SleevePlacementPointX;
+                    double cy = zone.SleevePlacementPointY;
+                    double cz = zone.SleevePlacementPointZ;
+
+                    // Use calculated dimensions (set during placement from planning DTO)
+                    double halfW = zone.CalculatedSleeveWidth / 2.0;
+                    double halfH = zone.CalculatedSleeveHeight / 2.0;
+
+                    // For circular sleeves, use diameter for both dimensions
+                    if (zone.CalculatedSleeveDiameter > 0 && halfW <= 0)
+                    {
+                        halfW = zone.CalculatedSleeveDiameter / 2.0;
+                        halfH = zone.CalculatedSleeveDiameter / 2.0;
+                    }
+
+                    // Skip if no valid dimensions
+                    if (halfW <= 0 && halfH <= 0) continue;
+
+                    string hostOrientation = zone.HostOrientation;
+
+                    double c1x, c1y, c1z, c2x, c2y, c2z, c3x, c3y, c3z, c4x, c4y, c4z;
+
+                    if (!string.IsNullOrEmpty(hostOrientation) &&
+                        hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // X-wall: opening in XZ plane, Y constant
+                        c1x = cx - halfW; c1y = cy; c1z = cz - halfH;
+                        c2x = cx + halfW; c2y = cy; c2z = cz - halfH;
+                        c3x = cx + halfW; c3y = cy; c3z = cz + halfH;
+                        c4x = cx - halfW; c4y = cy; c4z = cz + halfH;
+                    }
+                    else if (!string.IsNullOrEmpty(hostOrientation) &&
+                             hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Y-wall: opening in YZ plane, X constant
+                        c1x = cx; c1y = cy - halfW; c1z = cz - halfH;
+                        c2x = cx; c2y = cy + halfW; c2z = cz - halfH;
+                        c3x = cx; c3y = cy + halfW; c3z = cz + halfH;
+                        c4x = cx; c4y = cy - halfW; c4z = cz + halfH;
+                    }
+                    else
+                    {
+                        // Floor/slab: opening in XY plane, Z constant
+                        // Apply rotation if present
+                        double angle = zone.MepElementRotationAngle;
+                        if (Math.Abs(angle) > 1e-6)
+                        {
+                            double cos = Math.Cos(angle);
+                            double sin = Math.Sin(angle);
+                            // Rotated rectangle corners
+                            c1x = cx + (-halfW * cos - (-halfH) * sin);
+                            c1y = cy + (-halfW * sin + (-halfH) * cos);
+                            c1z = cz;
+                            c2x = cx + (halfW * cos - (-halfH) * sin);
+                            c2y = cy + (halfW * sin + (-halfH) * cos);
+                            c2z = cz;
+                            c3x = cx + (halfW * cos - halfH * sin);
+                            c3y = cy + (halfW * sin + halfH * cos);
+                            c3z = cz;
+                            c4x = cx + (-halfW * cos - halfH * sin);
+                            c4y = cy + (-halfW * sin + halfH * cos);
+                            c4z = cz;
+                        }
+                        else
+                        {
+                            c1x = cx - halfW; c1y = cy - halfH; c1z = cz;
+                            c2x = cx + halfW; c2y = cy - halfH; c2z = cz;
+                            c3x = cx + halfW; c3y = cy + halfH; c3z = cz;
+                            c4x = cx - halfW; c4y = cy + halfH; c4z = cz;
+                        }
+                    }
+
+                    updates.Add((zone.Id, c1x, c1y, c1z, c2x, c2y, c2z, c3x, c3y, c3z, c4x, c4y, c4z));
+
+                    // Also set on the in-memory object for immediate use by proximity checker
+                    zone.SleeveCorner1X = c1x; zone.SleeveCorner1Y = c1y; zone.SleeveCorner1Z = c1z;
+                    zone.SleeveCorner2X = c2x; zone.SleeveCorner2Y = c2y; zone.SleeveCorner2Z = c2z;
+                    zone.SleeveCorner3X = c3x; zone.SleeveCorner3Y = c3y; zone.SleeveCorner3Z = c3z;
+                    zone.SleeveCorner4X = c4x; zone.SleeveCorner4Y = c4y; zone.SleeveCorner4Z = c4z;
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("corner_extraction.log",
+                        $"[{DateTime.Now:HH:mm:ss}] [ERROR] Math corner computation failed for zone {zone.Id}: {ex.Message}\n");
+                }
+            }
+
+            if (updates.Any())
+            {
+                _repository.BatchUpdateSleeveCorners(updates);
+            }
+
+            return updates.Count;
+        }
+
+        /// <summary>
         /// Extract corners from placed cluster sleeves in Revit and save to both ClusterSleeves and ClusterSleeves_v2 tables.
         /// </summary>
         public int ExtractAndSaveCornersForClusters(Document doc)
@@ -77,12 +188,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                 return 0;
             }
             SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Extracting corners for {clusters.Count} cluster sleeves...\n");
-            var updates = new List<(int ClusterInstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)>();
+            var updates = new List<(long ClusterInstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)>();
             foreach (var (clusterInstanceId, hostOrientation) in clusters)
             {
                 try
                 {
-                    Element elem = doc.GetElement(new ElementId(clusterInstanceId));
+                    Element elem = doc.GetElement(ElementIdCompat.FromValue(clusterInstanceId));
                     if (elem == null || !(elem is FamilyInstance))
                     {
                         SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Cluster {clusterInstanceId} not found in Revit\n");
@@ -182,7 +293,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
             {
                 try
                 {
-                    Element elem = doc.GetElement(new ElementId(zone.SleeveInstanceId));
+                    Element elem = doc.GetElement(ElementIdCompat.FromValue(zone.SleeveInstanceId));
                     if (elem == null || !(elem is FamilyInstance))
                     {
                         SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [WARN] Sleeve {zone.SleeveInstanceId} not found in Revit\n");

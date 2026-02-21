@@ -29,7 +29,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // CREATE OPERATIONS
         // ============================================================================
         
-        public int SaveCombinedSleeve(CombinedSleeve combinedSleeve)
+        public long SaveCombinedSleeve(CombinedSleeve combinedSleeve)
         {
             if (combinedSleeve == null)
                 throw new ArgumentNullException(nameof(combinedSleeve));
@@ -38,7 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 try
                 {
-                    int id = SaveCombinedSleeveInternal(combinedSleeve, transaction);
+                    long id = SaveCombinedSleeveInternal(combinedSleeve, transaction);
                     transaction.Commit();
                     _logger($"[SQLite] ✅ Saved combined sleeve {id}");
                     return id;
@@ -65,7 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     foreach (var sleeve in combinedSleeves)
                     {
                         // 1. Save Sleeve
-                        int id = SaveCombinedSleeveInternal(sleeve, transaction);
+                        long id = SaveCombinedSleeveInternal(sleeve, transaction);
                         sleeve.CombinedSleeveId = id;
 
                         // 2. Mark Constituents (Logic duplicated/inlined for transactional safety)
@@ -133,7 +133,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
-        private int SaveCombinedSleeveInternal(CombinedSleeve combinedSleeve, SQLiteTransaction transaction)
+        private long SaveCombinedSleeveInternal(CombinedSleeve combinedSleeve, SQLiteTransaction transaction)
         {
              // ✅ DEDUPLICATE: Ensure constituents are unique before processing/hashing
              if (combinedSleeve.Constituents != null && combinedSleeve.Constituents.Count > 0)
@@ -147,7 +147,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                  combinedSleeve.DeterministicGuid = GenerateDeterministicGuid(combinedSleeve.Constituents);
              }
 
-             int combinedSleeveId = -1;
+             long combinedSleeveId = -1;
              
              // 2a. Check for existing record with this GUID
              if (!string.IsNullOrEmpty(combinedSleeve.DeterministicGuid))
@@ -160,7 +160,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                      var result = cmd.ExecuteScalar();
                      if (result != null && result != DBNull.Value)
                      {
-                         combinedSleeveId = Convert.ToInt32(result);
+                         combinedSleeveId = Convert.ToInt64(result);
                          // Fall through to update
                      }
                  }
@@ -178,7 +178,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                      var result = cmd.ExecuteScalar();
                      if (result != null && result != DBNull.Value)
                      {
-                         combinedSleeveId = Convert.ToInt32(result);
+                         combinedSleeveId = Convert.ToInt64(result);
                          _logger($"[SQLite] ⚠️ Hash mismatch but found existing CombinedSleeve {combinedSleeveId} by RevitID {combinedSleeve.CombinedInstanceId}. Updating...");
                      }
                  }
@@ -272,7 +272,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue("@Corner4Y", combinedSleeve.Corner4Y);
                         cmd.Parameters.AddWithValue("@Corner4Z", combinedSleeve.Corner4Z);
 
-                        combinedSleeveId = Convert.ToInt32(cmd.ExecuteScalar());
+                        combinedSleeveId = Convert.ToInt64(cmd.ExecuteScalar());
              }
              
              if (combinedSleeve.Constituents != null && combinedSleeve.Constituents.Count > 0)
@@ -282,7 +282,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
              return combinedSleeveId;
         }
         
-        private void UpdateCombinedSleeveInternal(int combinedSleeveId, CombinedSleeve s, SQLiteTransaction transaction)
+        private void UpdateCombinedSleeveInternal(long combinedSleeveId, CombinedSleeve s, SQLiteTransaction transaction)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -329,7 +329,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
-        private void DeleteConstituentsInternal(int combinedSleeveId, SQLiteTransaction transaction)
+        private void DeleteConstituentsInternal(long combinedSleeveId, SQLiteTransaction transaction)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -384,7 +384,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
-        public void SaveConstituents(int combinedSleeveId, List<SleeveConstituent> constituents)
+        public void SaveConstituents(long combinedSleeveId, List<SleeveConstituent> constituents)
         {
             using (var transaction = _context.Connection.BeginTransaction())
             {
@@ -403,7 +403,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
         
-        private void SaveConstituentsInternal(int combinedSleeveId, List<SleeveConstituent> constituents, SQLiteTransaction transaction)
+        private void SaveConstituentsInternal(long combinedSleeveId, List<SleeveConstituent> constituents, SQLiteTransaction transaction)
         {
             foreach (var constituent in constituents)
             {
@@ -446,7 +446,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // READ OPERATIONS
         // ============================================================================
         
-        public CombinedSleeve GetCombinedSleeveById(int combinedSleeveId)
+        public CombinedSleeve GetCombinedSleeveById(long combinedSleeveId)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -470,7 +470,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return null;
         }
         
-        public CombinedSleeve GetCombinedSleeveByInstanceId(int instanceId)
+        public CombinedSleeve GetCombinedSleeveByInstanceId(long instanceId)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -494,7 +494,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return null;
         }
         
-        public List<CombinedSleeve> GetCombinedSleevesForCombo(int comboId, int filterId)
+        public List<CombinedSleeve> GetCombinedSleevesForCombo(long comboId, int filterId)
         {
             var combinedSleeves = new List<CombinedSleeve>();
             
@@ -551,7 +551,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return combinedSleeves;
         }
         
-        public List<SleeveConstituent> GetConstituents(int combinedSleeveId)
+        public List<SleeveConstituent> GetConstituents(long combinedSleeveId)
         {
             var constituents = new List<SleeveConstituent>();
             
@@ -579,7 +579,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // UPDATE OPERATIONS
         // ============================================================================
         
-        public void UpdateCombinedSleeveCorners(int combinedSleeveId,
+        public void UpdateCombinedSleeveCorners(long combinedSleeveId,
             double c1x, double c1y, double c1z,
             double c2x, double c2y, double c2z,
             double c3x, double c3y, double c3z,
@@ -648,12 +648,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // DELETE OPERATIONS
         // ============================================================================
         
-        public void DeleteCombinedSleeve(int combinedSleeveId)
+        public void DeleteCombinedSleeve(long combinedSleeveId)
         {
             using (var transaction = _context.Connection.BeginTransaction())
             {
                 try
                 {
+                    // ✅ CRITICAL FIX: Get the CombinedInstanceId BEFORE deleting
+                    // This is needed to reset ClashZones flags
+                    long? combinedInstanceId = null;
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = "SELECT CombinedInstanceId FROM CombinedSleeves WHERE CombinedSleeveId = @CombinedSleeveId";
+                        cmd.Parameters.AddWithValue("@CombinedSleeveId", combinedSleeveId);
+                        var result = cmd.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            combinedInstanceId = Convert.ToInt64(result);
+                        }
+                    }
+                    
+                    // ✅ CRITICAL FIX: Reset ClashZones flags for zones linked to this combined sleeve
+                    if (combinedInstanceId.HasValue && combinedInstanceId.Value > 0)
+                    {
+                        using (var cmd = _context.Connection.CreateCommand())
+                        {
+                            cmd.Transaction = transaction;
+                            cmd.CommandText = @"
+                                UPDATE ClashZones 
+                                SET IsCombinedResolved = 0,
+                                    CombinedClusterSleeveInstanceId = NULL,
+                                    ReadyForPlacementFlag = 1
+                                WHERE CombinedClusterSleeveInstanceId = @CombinedInstanceId";
+                            cmd.Parameters.AddWithValue("@CombinedInstanceId", combinedInstanceId.Value);
+                            var resetCount = cmd.ExecuteNonQuery();
+                            
+                            if (resetCount > 0)
+                            {
+                                _logger($"[SQLite] ✅ Reset {resetCount} ClashZones for deleted combined sleeve {combinedSleeveId} (InstanceId: {combinedInstanceId.Value})");
+                            }
+                        }
+                        
+                        // ✅ CRITICAL FIX: Also reset ClusterSleeves table
+                        using (var cmd = _context.Connection.CreateCommand())
+                        {
+                            cmd.Transaction = transaction;
+                            cmd.CommandText = @"
+                                UPDATE ClusterSleeves 
+                                SET CombinedClusterSleeveInstanceId = -1
+                                WHERE CombinedClusterSleeveInstanceId = @CombinedInstanceId";
+                            cmd.Parameters.AddWithValue("@CombinedInstanceId", combinedInstanceId.Value);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    // Delete the combined sleeve (constituents will be cascade deleted)
                     using (var cmd = _context.Connection.CreateCommand())
                     {
                         cmd.Transaction = transaction;
@@ -689,7 +739,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // FLAG OPERATIONS
         // ============================================================================
         
-        public void MarkConstituentsAsResolved(List<SleeveConstituent> constituents, int combinedInstanceId)
+        public void MarkConstituentsAsResolved(List<SleeveConstituent> constituents, long combinedInstanceId)
         {
             using (var transaction = _context.Connection.BeginTransaction())
             {
@@ -762,6 +812,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
         
+        /// <summary>
+        /// ✅ ROBUSTNESS FIX: Resets all combined sleeve flags in ClashZones and ClusterSleeves.
+        /// Call this at the start of a new run when NOT clearing the database.
+        /// This ensures clean state for combined sleeve processing.
+        /// </summary>
+        public void ResetAllCombinedFlags()
+        {
+            using (var transaction = _context.Connection.BeginTransaction())
+            {
+                try
+                {
+                    int clashZonesReset = 0;
+                    int clusterSleevesReset = 0;
+                    
+                    // Reset ClashZones
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClashZones 
+                            SET IsCombinedResolved = 0,
+                                CombinedClusterSleeveInstanceId = NULL,
+                                ReadyForPlacementFlag = CASE 
+                                    WHEN IsResolvedFlag = 0 AND IsClusterResolvedFlag = 0 THEN 1 
+                                    ELSE ReadyForPlacementFlag 
+                                END
+                            WHERE IsCombinedResolved = 1 OR CombinedClusterSleeveInstanceId IS NOT NULL";
+                        clashZonesReset = cmd.ExecuteNonQuery();
+                    }
+                    
+                    // Reset ClusterSleeves
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClusterSleeves 
+                            SET CombinedClusterSleeveInstanceId = -1
+                            WHERE CombinedClusterSleeveInstanceId > 0";
+                        clusterSleevesReset = cmd.ExecuteNonQuery();
+                    }
+                    
+                    transaction.Commit();
+                    _logger($"[SQLite] ✅ ResetAllCombinedFlags: {clashZonesReset} ClashZones, {clusterSleevesReset} ClusterSleeves");
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger($"[SQLite] ❌ Error in ResetAllCombinedFlags: {ex.Message}");
+                    throw;
+                }
+            }
+        }
+        
         // ============================================================================
         // HELPER METHODS
         // ============================================================================
@@ -771,8 +874,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return new CombinedSleeve
             {
                 CombinedSleeveId = reader.GetInt32(reader.GetOrdinal("CombinedSleeveId")),
-                CombinedInstanceId = reader.GetInt32(reader.GetOrdinal("CombinedInstanceId")),
-                ComboId = reader.IsDBNull(reader.GetOrdinal("ComboId")) ? 0 : reader.GetInt32(reader.GetOrdinal("ComboId")),
+                CombinedInstanceId = GetLong(reader, "CombinedInstanceId", -1),
+                ComboId = GetLong(reader, "ComboId", -1),
                 FilterId = reader.IsDBNull(reader.GetOrdinal("FilterId")) ? 0 : reader.GetInt32(reader.GetOrdinal("FilterId")),
                 DeterministicGuid = reader.IsDBNull(reader.GetOrdinal("DeterministicGuid")) ? null : reader.GetString(reader.GetOrdinal("DeterministicGuid")),
                 Categories = reader.GetString(reader.GetOrdinal("Categories")).Split(',').ToList(),
@@ -826,7 +929,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 ClashZoneId = reader.IsDBNull(reader.GetOrdinal("ClashZoneId")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("ClashZoneId")),
                 ClashZoneGuid = reader.IsDBNull(reader.GetOrdinal("ClashZoneGuid")) ? (Guid?)null : Guid.Parse(reader.GetString(reader.GetOrdinal("ClashZoneGuid"))),
                 ClusterSleeveId = reader.IsDBNull(reader.GetOrdinal("ClusterSleeveId")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("ClusterSleeveId")),
-                ClusterInstanceId = reader.IsDBNull(reader.GetOrdinal("ClusterInstanceId")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("ClusterInstanceId")),
+                ClusterInstanceId = reader.IsDBNull(reader.GetOrdinal("ClusterInstanceId")) ? (long?)null : GetLong(reader, "ClusterInstanceId", -1),
                 
                 CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt"))
             };
@@ -857,5 +960,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return unique;
         }
 
+
+        private static long GetLong(SQLiteDataReader reader, string column, long defaultValue = 0)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? defaultValue : Convert.ToInt64(reader.GetValue(ordinal));
+        }
     }
 }

@@ -108,10 +108,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            // 4. Commit to DB
+            // 4. Commit to DB using high-performance Temp Table merge
             if (zonesToMark.Count > 0)
             {
-                _repository.BulkSetIsCurrentClashFlag(zonesToMark, true);
+                _repository.BulkSetIsCurrentClashFlagTempTable(zonesToMark, true);
             }
 
             return zonesToMark.Count;

@@ -36,7 +36,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             int total = candidates.Count;
             if (total == 0)
             {
-                TaskDialog.Show("Clean Cable Tray Sleeves", "No cable-tray sleeve family instances found.");
+                Autodesk.Revit.UI.TaskDialog.Show("Clean Cable Tray Sleeves", "No cable-tray sleeve family instances found.");
                 return Result.Succeeded;
             }
 
@@ -58,17 +58,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 StructuralElementLogger.LogStructuralElement("INFO", fi.Id, "CLEANUP_CANDIDATE", $"Candidate family={fi.Symbol.Family.Name}, symbol={fi.Symbol.Name}, clearance_mm={UnitUtils.ConvertFromInternalUnits(clearance, UnitTypeId.Millimeters):F2}");
             }
 
-            var td = new TaskDialog("Clean Cable Tray Sleeves")
+            var td = new Autodesk.Revit.UI.TaskDialog("Clean Cable Tray Sleeves")
             {
                 MainInstruction = $"Found {total} cable-tray sleeve family instances.",
                 MainContent = "This will permanently delete the found family instances from the model. Do you want to proceed?",
                 AllowCancellation = true
             };
-            td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Delete all found cable-tray sleeves");
-            td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Cancel (do nothing)");
+            td.AddCommandLink(Autodesk.Revit.UI.TaskDialogCommandLinkId.CommandLink1, "Delete all found cable-tray sleeves");
+            td.AddCommandLink(Autodesk.Revit.UI.TaskDialogCommandLinkId.CommandLink2, "Cancel (do nothing)");
 
             var result = td.Show();
-            if (result != TaskDialogResult.CommandLink1)
+            if (result != Autodesk.Revit.UI.TaskDialogResult.CommandLink1)
             {
                 StructuralElementLogger.LogStructuralElement("INFO", new ElementId(0), "CLEANUP_ABORT", "User cancelled cable-tray cleanup.");
                 return Result.Cancelled;
@@ -83,7 +83,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
 
             StructuralElementLogger.LogStructuralElement("SUCCESS", new ElementId(0), "CLEANUP_DONE", $"Deleted {idsToDelete.Count} cable-tray sleeve instances.");
-            TaskDialog.Show("Clean Cable Tray Sleeves", $"Deleted {idsToDelete.Count} cable-tray sleeve instances.");
+            Autodesk.Revit.UI.TaskDialog.Show("Clean Cable Tray Sleeves", $"Deleted {idsToDelete.Count} cable-tray sleeve instances.");
 
             return Result.Succeeded;
         }

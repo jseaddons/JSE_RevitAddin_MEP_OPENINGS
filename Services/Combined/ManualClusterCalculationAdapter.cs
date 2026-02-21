@@ -50,7 +50,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             if (sleeves == null || sleeves.Count == 0)
                 throw new ArgumentException("Sleeves list cannot be empty");
 
-            var sleeveIds = sleeves.Select(s => s.Id.GetIntegerValue()).ToList();
+            var sleeveIds = sleeves.Select(s => (long)s.Id.GetIntegerValue()).ToList();
             
             JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Info(
                 $"[ManualClusterCalculationAdapter] Fetching corner data for {sleeveIds.Count} sleeves from DB");

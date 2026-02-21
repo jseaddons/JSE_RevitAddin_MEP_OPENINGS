@@ -113,7 +113,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// Loads ClashZone objects from database efficiently using GetClashZonesByGuids.
         /// </summary>
         public void UpdateFlagsAfterPlacement(
-            List<(Guid clashZoneId, int sleeveInstanceId, bool isCluster)> placedSleeves)
+            List<(Guid clashZoneId, long sleeveInstanceId, bool isCluster)> placedSleeves)
         {
             if (placedSleeves == null || placedSleeves.Count == 0)
                 return;
@@ -126,7 +126,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 var guidList = placedSleeves.Select(p => p.clashZoneId).Distinct().ToList();
                 var allDbZones = _repository.GetClashZonesByGuids(guidList) ?? new List<ClashZone>();
                 
-                var clashZonesWithSleeves = new List<(ClashZone clashZone, int sleeveId, bool isCluster)>();
+                var clashZonesWithSleeves = new List<(ClashZone clashZone, long sleeveId, bool isCluster)>();
                 
                 // Match placed sleeves with loaded clash zones
                 foreach (var (clashZoneId, sleeveInstanceId, isCluster) in placedSleeves)
@@ -167,7 +167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// Uses BatchUpdateFlags() for 4-6× performance improvement.
         /// </summary>
         public void BatchUpdateFlagsForPlacement(
-            List<(ClashZone clashZone, int sleeveId)> clashZones, 
+            List<(ClashZone clashZone, long sleeveId)> clashZones, 
             bool isCluster, 
             string category, 
             string filterName = null,
@@ -189,7 +189,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)>();
+                var dbUpdates = new List<(Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)>();
+                
                 foreach (var (clashZone, sleeveId) in clashZones)
                 {
                     if (clashZone == null || sleeveId <= 0) continue;
@@ -242,7 +243,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         clashZone.ClusterSleeveInstanceId,
                         true, // ✅ UNIFIED: Always keep IsCurrentClash true during placement (Reset only on Refresh)
                         clashZone.IsClusteredFlag,
-
                         isCluster ? clashZone.MarkedForClusterProcess : false, // ✅ FIXED: Reset MarkedForClusterProcess to false for individual sleeves
                         clashZone.AfterClusterSleevePlacedSleeveInstanceId, // Pass AfterClusterSleeveId
                         isCluster ? clusterWidth : 0,    // SleeveWidth
@@ -250,6 +250,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         isCluster ? clusterDiameter : 0  // SleeveDiameter
                     ));
                 }
+
                 if (dbUpdates.Count == 0)
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
@@ -306,7 +307,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 // Delete the physical sleeve
                 if (zone.SleeveInstanceId > 0)
                 {
-                    var id = new ElementId(zone.SleeveInstanceId);
+                    var id = ElementIdCompat.FromValue(zone.SleeveInstanceId);
                     var element = _document.GetElement(id);
                     if (element != null)
                     {
@@ -320,7 +321,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 zone.IsResolvedFlag = false;
                 
                 // Update DB
-                var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)>();
+                var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, long AfterClusterSleeveId)>();
                 
                 updates.Add((
                     zone.Id, 

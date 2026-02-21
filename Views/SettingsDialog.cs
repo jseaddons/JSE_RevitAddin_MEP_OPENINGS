@@ -53,8 +53,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         public SettingsDialog()
         {
             // Load settings from file
-            var settingsService = new SettingsService();
-            _settings = settingsService.LoadSettings();
+            // Load settings from ApplicationProfileService (which has project context)
+            _settings = ApplicationProfileService.Instance.GetCurrentSettings();
             
             // Debug logging
             System.Diagnostics.Debug.WriteLine($"[SettingsDialog] Loaded settings: ResetApprovalStatus={_settings.ResetApprovalStatus}, CutOpeningWithHosts={_settings.CutOpeningWithHosts}");
@@ -539,8 +539,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 catch { }
                 
                 // Save to file using SettingsService
-                var settingsService = new SettingsService();
-                settingsService.SaveSettings(_settings);
+                // Save to file using ApplicationProfileService (which has project context)
+                ApplicationProfileService.Instance.SaveCurrentSettings(_settings);
                 
                 this.DialogResult = WinForms.DialogResult.OK;
                 this.Close();

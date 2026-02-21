@@ -13,15 +13,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         void Initialize(Document doc, SleeveDbContext sharedContext);
         ClashZone GetClashZoneByMepElementId(long mepElementId);
-        ClashZone GetClashZoneByClusterInstanceId(int clusterInstanceId);
-        bool IsCombinedSleeve(int instanceId);
+        ClashZone GetClashZoneByClusterInstanceId(long clusterInstanceId);
+        bool IsCombinedSleeve(long instanceId);
     }
 
     public class MarkCacheService : IMarkCacheService
     {
         private Dictionary<long, ClashZone> _clashZoneCache = new Dictionary<long, ClashZone>();
-        private Dictionary<int, ClashZone> _clusterZoneCache = new Dictionary<int, ClashZone>();
-        private HashSet<int> _combinedSleeveCache = new HashSet<int>();
+        private Dictionary<long, ClashZone> _clusterZoneCache = new Dictionary<long, ClashZone>();
+        private HashSet<long> _combinedSleeveCache = new HashSet<long>();
 
         public void Initialize(Document doc, SleeveDbContext sharedContext)
         {
@@ -78,9 +78,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public ClashZone GetClashZoneByMepElementId(long mepElementId) => 
             _clashZoneCache.TryGetValue(mepElementId, out var cz) ? cz : null;
 
-        public ClashZone GetClashZoneByClusterInstanceId(int clusterInstanceId) => 
+        public ClashZone GetClashZoneByClusterInstanceId(long clusterInstanceId) => 
             _clusterZoneCache.TryGetValue(clusterInstanceId, out var cz) ? cz : null;
 
-        public bool IsCombinedSleeve(int instanceId) => _combinedSleeveCache.Contains(instanceId);
+        public bool IsCombinedSleeve(long instanceId) => _combinedSleeveCache.Contains(instanceId);
     }
 }

@@ -21,10 +21,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public static string GetProjectRoot(Document doc)
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var root = Path.Combine(appData, "JSE_MEP_Openings", "Projects");
-            var projectName = Sanitize(doc?.Title ?? "Default");
-            return Path.Combine(root, projectName);
+            // USER REQUEST: Always use AppData path for consistency between Local and BIM 360 models
+            // Path: %APPDATA%\JSE_MEP_Openings\Projects\[ProjectName]
+            
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var root = Path.Combine(appData, "JSE_MEP_Openings", "Projects");
+                
+                // Generate safe project name
+                var rawName = doc?.Title;
+                if (string.IsNullOrEmpty(rawName)) rawName = "Default_Project";
+                
+                // Remove file extension if present (e.g. .rvt)
+                if (rawName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+                    rawName = Path.GetFileNameWithoutExtension(rawName);
+                    
+                var projectName = Sanitize(rawName);
+                var projectPath = Path.Combine(root, projectName);
+                
+                // 🔍 DIAGNOSTIC: Log the resolved path
+                try {
+                     System.Diagnostics.Debug.WriteLine($"ProjectPathService: Resolved '{doc?.Title}' to '{projectPath}'");
+                } catch {}
+
+                if (!Directory.Exists(projectPath))
+                {
+                    Directory.CreateDirectory(projectPath);
+                }
+                
+                return projectPath;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ProjectPathService: Error resolving project path: {ex.Message}");
+                // Absolute fallback
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Default");
+            }
         }
 
         public static string GetFiltersDirectory(Document doc)

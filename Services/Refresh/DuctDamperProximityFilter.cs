@@ -422,7 +422,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
                 return endPoints;
             }
-            catch (Exception ex)
+            catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
             {
                 // Return empty list on error (fail-safe)
                 return new List<XYZ>();

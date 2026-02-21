@@ -14,7 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         // ✅ SESSION TRACKING: Track recently placed cluster sleeves to prevent deletion
         // This protects cluster sleeves that were just placed in the current session
         // from being deleted by DeleteSleeveForIntersectionPointChange() during refresh
-        private static readonly HashSet<int> _recentlyPlacedClusterSleeveIds = new HashSet<int>();
+        private static readonly HashSet<long> _recentlyPlacedClusterSleeveIds = new HashSet<long>();
         private static readonly object _recentlyPlacedLock = new object();
 
         /// <summary>
@@ -22,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// This prevents it from being deleted by DeleteSleeveForIntersectionPointChange() during refresh.
         /// </summary>
         /// <param name="clusterSleeveId">The Element ID (integer value) of the cluster sleeve</param>
-        public static void RegisterRecentlyPlacedClusterSleeve(int clusterSleeveId)
+        public static void RegisterRecentlyPlacedClusterSleeve(long clusterSleeveId)
         {
             if (clusterSleeveId <= 0) return;
             
@@ -62,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// </summary>
         /// <param name="clusterSleeveId">The Element ID (integer value) of the cluster sleeve</param>
         /// <returns>True if the sleeve was recently placed, false otherwise</returns>
-        public static bool IsRecentlyPlacedClusterSleeve(int clusterSleeveId)
+        public static bool IsRecentlyPlacedClusterSleeve(long clusterSleeveId)
         {
             if (clusterSleeveId <= 0) return false;
             

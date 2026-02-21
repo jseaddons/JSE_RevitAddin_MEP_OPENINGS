@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
@@ -12,10 +13,11 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
-using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories; // Added for FilterRepository
+// using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories; // FIX: CS0105 duplicate using directive
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
@@ -46,6 +48,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
         /// <summary>
         /// Executes the optimized end-to-end placement and clustering workflow for a list of filters.
+        /// ✅ CRASH-SAFE: Includes timeout monitoring to prevent Revit hangs
         /// </summary>
         public OrchestratorResult ExecuteOptimizedPlacementWorkflow(IEnumerable<OpeningFilter> filters, IOperationTracker parentTracker = null)
         {
@@ -55,18 +58,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             int totalClusteredZones = 0;
             string correlationId = Guid.NewGuid().ToString();
             var placedZones = new List<ClashZone>();
+            
+            // ✅ CRASH SAFETY: Initialize timeout monitor (5 min per filter, 15 min total)
+            var timeoutMonitor = new MultiFloorTimeoutMonitor(
+                floorTimeoutMinutes: 5, 
+                totalTimeoutMinutes: 15, 
+                logger: msg => _logger($"[WORKFLOW-TIMEOUT] {msg}"));
+            timeoutMonitor.StartOperation();
+            
+            _logger($"[WORKFLOW] 🚀 Starting Optimized Placement Workflow for {filters.Count()} filters...");
+            _logger($"[WORKFLOW] ⏱️ Timeout: 5min per filter, 15min total");
+            var workflowStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             try
             {
-                _logger($"[WORKFLOW] 🚀 Starting Optimized Placement Workflow for {filters.Count()} filters...");
-
                 // 1. INDIVIDUAL PLACEMENT (Loop filters)
                 using (var bulkOp = parentTracker?.TrackSubOperation("1. Bulk Placement (Multi-Filter)"))
                 {
-                    var bulkService = new BulkPlacementService(_doc, _contextFactory, _logger, _perf);
+                    // ✅ Instantiate snapshot transfer service for bulk placement
+                    var snapshotTransferService = new ParameterSnapshotTransferService();
+                    var bulkService = new BulkPlacementService(_doc, _contextFactory, _logger, _perf, null, snapshotTransferService);
 
                     foreach (var filter in filters)
                     {
+                        // ✅ CRASH SAFETY: Check timeout before processing each filter
+                        if (timeoutMonitor.CheckTotalTimeout())
+                        {
+                            _logger($"[WORKFLOW] ⏱️ TOTAL TIMEOUT: Stopping placement after {totalPlaced} sleeves");
+                            throw new TimeoutException($"Placement workflow exceeded 15 minute limit. Placed {totalPlaced} sleeves before timeout.");
+                        }
+
                         using (var filterOp = bulkOp?.TrackSubOperation($"Filter: {filter.Name}"))
                         {
                             var bulkResult = bulkService.ExecuteContextPlacement(_doc, filter, parentTracker);
@@ -80,13 +101,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                 _logger($"[WORKFLOW] ⚠️ Bulk placement for {filter.Name} reported issues: {bulkResult.Error}");
                             }
                         }
+                        
+                        // ✅ CRASH SAFETY: Yield to allow Revit to process messages
+                        System.Windows.Forms.Application.DoEvents();
                     }
                     bulkOp?.SetItemCount(totalPlaced);
                 }
+                _logger($"[WORKFLOW] ⏱️ PHASE 1 (Individual Placement): {workflowStopwatch.ElapsedMilliseconds}ms for {totalPlaced} sleeves");
+
+                // ✅ CRASH SAFETY: Check timeout before geometry extraction
+                if (timeoutMonitor.CheckTotalTimeout())
+                {
+                    _logger($"[WORKFLOW] ⏱️ TOTAL TIMEOUT: Skipping geometry extraction after {totalPlaced} sleeves");
+                    return new OrchestratorResult(true, totalPlaced, totalErrors, correlationId, totalClusters, totalClusteredZones, 
+                        $"Partial success - timeout after individual placement ({totalPlaced} sleeves)");
+                }
 
                 // 2. GEOMETRY EXTRACTION (Only for newly placed sleeves)
+                // ✅ PERF: Compute corners mathematically from placement data (no Revit API calls)
+                // Previously called ExtractAndSaveCornersForZones which did doc.GetElement() + get_BoundingBox()
+                // per sleeve. Now uses CalculatedSleeveWidth/Height + SleevePlacementPoint already on the zone.
                 if (placedZones.Any())
                 {
+                    var geomSw = System.Diagnostics.Stopwatch.StartNew();
                     using (var geomOp = parentTracker?.TrackSubOperation("2. Geometry Extraction"))
                     {
                         using (var db = _contextFactory())
@@ -94,20 +131,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             var repo = new ClashZoneRepository(db, _logger, _perf as PerformanceMonitor);
                             var extractor = new BatchSleeveCornerExtractor(repo);
 
-                            int extracted = extractor.ExtractAndSaveCornersForZones(_doc, placedZones);
-                            _logger($"[WORKFLOW] 📐 Extracted corners for {extracted} new sleeves.");
+                            int extracted = extractor.ComputeAndSaveCornersFromPlacementData(placedZones);
+                            geomSw.Stop();
+                            _logger($"[WORKFLOW] ⏱️ PHASE 2 (Corner Computation): {geomSw.ElapsedMilliseconds}ms for {extracted} sleeves (math-only).");
                         }
                     }
                 }
 
+                // ✅ CRASH SAFETY: Check timeout before clustering
+                if (timeoutMonitor.CheckTotalTimeout())
+                {
+                    _logger($"[WORKFLOW] ⏱️ TOTAL TIMEOUT: Skipping clustering after {totalPlaced} sleeves");
+                    timeoutMonitor.Dispose();
+                    return new OrchestratorResult(true, totalPlaced, totalErrors, correlationId, totalClusters, totalClusteredZones, 
+                        $"Partial success - timeout before clustering ({totalPlaced} sleeves placed)");
+                }
+
                 // 3. GLOBAL CLUSTERING (Calc & Placement)
                 // ✅ FIX: Run clustering for ALL filter categories, not just the first one
+                var clusterSw = System.Diagnostics.Stopwatch.StartNew();
                 using (var clusterOp = parentTracker?.TrackSubOperation("3. Global Clustering"))
                 {
-                    var clusterResult = ExecuteClusteringSequence(filters, parentTracker);
+                    var clusterResult = ExecuteClusteringSequence(filters, parentTracker, timeoutMonitor);
                     totalClusters = clusterResult.clustersPlaced;
                     totalClusteredZones = clusterResult.zonesInClusters;
                 }
+                clusterSw.Stop();
+                _logger($"[WORKFLOW] ⏱️ PHASE 3 (Clustering): {clusterSw.ElapsedMilliseconds}ms ({totalClusters} clusters, {totalClusteredZones} zones)");
 
                 // 4. RESET FLAGS (Mark file combos as processed)
                 ResetProcessedFlags(filters);
@@ -140,18 +190,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                 SafeFileLogger.SafeAppendText("flag_workflow.log", summaryLog.ToString());
 
-                _logger($"[WORKFLOW] ✅ Workflow complete. Individual: {totalPlaced}, Clusters: {totalClusters} (covering {totalClusteredZones} zones)");
+                workflowStopwatch.Stop();
+                _logger($"[WORKFLOW] ✅ Workflow complete in {workflowStopwatch.ElapsedMilliseconds}ms. Individual: {totalPlaced}, Clusters: {totalClusters} (covering {totalClusteredZones} zones)");
+                timeoutMonitor.Dispose();
                 return new OrchestratorResult(true, totalPlaced, totalErrors, correlationId, totalClusters, totalClusteredZones);
+            }
+            catch (TimeoutException tex)
+            {
+                _logger($"[WORKFLOW] ⏱️ TIMEOUT: {tex.Message}");
+                SafeFileLogger.SafeAppendText("workflow_error.log", $"[{DateTime.Now:HH:mm:ss}] Workflow Timeout: {tex.Message}\n");
+                timeoutMonitor?.Dispose();
+                return new OrchestratorResult(true, totalPlaced, totalErrors, correlationId, totalClusters, totalClusteredZones, 
+                    $"Partial success - timeout ({totalPlaced} sleeves placed)");
             }
             catch (Exception ex)
             {
                 _logger($"[WORKFLOW] ❌ CRITICAL ERROR: {ex.Message}");
                 SafeFileLogger.SafeAppendText("workflow_error.log", $"[{DateTime.Now:HH:mm:ss}] Workflow Failed: {ex.Message}\n{ex.StackTrace}\n");
-                return new OrchestratorResult(false, totalPlaced, totalErrors + 1, correlationId, totalClusters, totalClusteredZones);
+                timeoutMonitor?.Dispose();
+                return new OrchestratorResult(false, totalPlaced, totalErrors + 1, correlationId, totalClusters, totalClusteredZones, 
+                    $"Error: {ex.Message}");
             }
         }
 
-        private (int clustersPlaced, int zonesInClusters) ExecuteClusteringSequence(IEnumerable<OpeningFilter> filters, IOperationTracker parentTracker)
+        private (int clustersPlaced, int zonesInClusters) ExecuteClusteringSequence(IEnumerable<OpeningFilter> filters, IOperationTracker parentTracker, MultiFloorTimeoutMonitor timeoutMonitor = null)
         {
             int clustersPlaced = 0;
             int zonesInClusters = 0;
@@ -159,6 +221,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             try
             {
                 _logger("[WORKFLOW][CLUSTER] 🧬 Starting Clustering Sequence...");
+                
+                // ✅ CRASH SAFETY: Check timeout at start of clustering
+                if (timeoutMonitor?.CheckTotalTimeout() == true)
+                {
+                    _logger("[WORKFLOW][CLUSTER] ⏱️ TIMEOUT: Skipping clustering sequence");
+                    return (0, 0);
+                }
 
                 using (var db = _contextFactory())
                 {
@@ -222,7 +291,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     {
                         var algo = new ClusterAlgorithmService();
                         var rotation = new ClusterRotationService(
-                            getClashZoneFunc: (id, _) => repo.GetClashZoneByInstanceId(id),
+                            getClashZoneFunc: (id, _) => repo.GetClashZoneByInstanceId((int)id),
                             getClusterPlacementFunc: null
                         );
                         var calcService = new BatchClusterCalculationService(algo, rotation, db.DatabasePath);
@@ -241,6 +310,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                         if (zones.Count > 0)
                         {
+                            // ✅ CRASH SAFETY: Check timeout before cluster calculation
+                            if (timeoutMonitor?.CheckTotalTimeout() == true)
+                            {
+                                _logger("[WORKFLOW][CLUSTER] ⏱️ TIMEOUT: Skipping cluster calculation");
+                                return (clustersPlaced, zonesInClusters);
+                            }
+                            
                             _logger($"[WORKFLOW][CLUSTER] Calculating clusters for {zones.Count} zones...");
 
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
@@ -283,9 +359,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // C. PLACEMENT & CLEANUP
                     using (var placeTracker = parentTracker?.TrackSubOperation("3c. Cluster Placement & Cleanup"))
                     {
+                        // ✅ CRASH SAFETY: Check timeout before cluster placement
+                        if (timeoutMonitor?.CheckTotalTimeout() == true)
+                        {
+                            _logger("[WORKFLOW][CLUSTER] ⏱️ TIMEOUT: Skipping cluster placement");
+                            return (clustersPlaced, zonesInClusters);
+                        }
+                        
                         var parameterService = new SleeveParameterService(_doc, false, _perf as PlacementPerformanceMonitor);
                         var cleanup = new ClusterCleanupService();
-                        var placeService = new BatchClusterPlacementService(db.DatabasePath, repo, parameterService, cleanup, _perf);
+                        // ✅ Instantiate snapshot transfer service for cluster placement
+                        var clusterSnapshotTransferService = new ParameterSnapshotTransferService();
+                        var placeService = new BatchClusterPlacementService(db.DatabasePath, repo, parameterService, cleanup, _perf, clusterSnapshotTransferService);
 
                         var (placed, failed, cleaned) = placeService.PlaceAllCategoriesAndCleanup(_doc, cleanup);
                         clustersPlaced = placed;

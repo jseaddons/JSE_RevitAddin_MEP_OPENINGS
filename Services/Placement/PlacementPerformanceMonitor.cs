@@ -21,13 +21,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly Stopwatch _totalTimer;
         private static string _lastWrittenLogPath;
         private int _totalZonesProcessed;
+        private static readonly List<string> _logBuffer = new List<string>();
+        private static readonly object _logLock = new object();
 
         public void AddZonesProcessed(int count) => _totalZonesProcessed += count;
 
-        /// <summary>Write to AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_performance.log. No dependency on SafeFileLogger (root cause fix: GetLogDirectory can throw or not be ready).</summary>
+        /// <summary>Write to buffer. Flushed periodically or at end. No longer synchronous File I/O on every call.</summary>
         private static void WritePerformanceLogDirect(string content, bool overwrite = false)
         {
             if (string.IsNullOrEmpty(content)) return;
+            
+            // If overwrite or report generation, flush immediately
+            if (overwrite || content.Contains("REPORT"))
+            {
+                lock (_logLock)
+                {
+                    PerformRealWrite(string.Join("", _logBuffer) + content, overwrite);
+                    _logBuffer.Clear();
+                }
+                return;
+            }
+
+            lock (_logLock)
+            {
+                _logBuffer.Add(content);
+                // Flush every 50 lines to keep log relatively updated without thrashing disk
+                if (_logBuffer.Count > 50)
+                {
+                    FlushLogs();
+                }
+            }
+        }
+
+        public static void FlushLogs()
+        {
+            lock (_logLock)
+            {
+                if (_logBuffer.Count == 0) return;
+                PerformRealWrite(string.Join("", _logBuffer), false);
+                _logBuffer.Clear();
+            }
+        }
+
+        private static void PerformRealWrite(string content, bool overwrite)
+        {
             string path = null;
             try
             {
@@ -39,7 +76,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     Directory.CreateDirectory(logDir);
                 path = Path.Combine(logDir, PlacementPerformanceLogFile);
                 
-                // ✅ USER REQUEST: Overwrite log instead of appending
                 if (overwrite)
                     File.WriteAllText(path, content);
                 else
@@ -52,13 +88,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             try
             {
                 path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), PlacementPerformanceLogFile);
-                
-                // ✅ USER REQUEST: Overwrite log instead of appending
                 if (overwrite)
                     File.WriteAllText(path, content);
                 else
                     File.AppendAllText(path, content);
-                    
                 _lastWrittenLogPath = path;
             }
             catch (Exception) { }
@@ -103,6 +136,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             public long Ms;
         }
         
+        private readonly List<string> _diagnosticMetrics = new List<string>();
+
         public PlacementPerformanceMonitor(string logFileName)
         {
             _logFileName = logFileName;
@@ -146,7 +181,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
         public void LogMetric(string metricName, object value)
         {
-            WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] METRIC: {metricName} = {value}\n");
+            var line = $"{metricName} = {value}";
+            _diagnosticMetrics.Add(line);
+            WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] METRIC: {line}\n");
         }
         
         /// <summary>
@@ -189,6 +226,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             foreach (var item in subOps)
             {
                 if (string.IsNullOrEmpty(item.Name)) continue;
+                
+                // ✅ USER REQUEST: Suppress 0ms sub-operations from the report
+                if (item.TotalMilliseconds <= 0) continue;
+                
                 _subOpsForReport.Add(new SubOpRecord { ParentName = parentName, OpName = item.Name, Ms = item.TotalMilliseconds });
             }
         }
@@ -202,8 +243,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             var report = new StringBuilder();
             
-            // ✅ BUILD TIMESTAMP: Get build timestamp to verify latest code is running
-            string buildTimestamp = "unknown";
+            // ✅ BUILD TIMESTAMP: Hardcoded tag + file-based timestamp for verification
+            string buildTimestamp = "PERF-OPT-V7-CLUSTER-SUBTIMING 2026-02-18";
             string assemblyPath = "unknown";
             try
             {
@@ -211,7 +252,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 assemblyPath = assembly?.Location ?? "unknown";
                 if (!string.IsNullOrWhiteSpace(assemblyPath) && System.IO.File.Exists(assemblyPath))
                 {
-                    buildTimestamp = System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss");
+                    buildTimestamp += $" (file: {System.IO.File.GetLastWriteTime(assemblyPath):HH:mm:ss})";
+                }
+                else
+                {
+                    // Try CodeBase for shadow-copied assemblies
+                    var codeBase = assembly?.GetName()?.CodeBase ?? assembly?.Location;
+                    if (!string.IsNullOrEmpty(codeBase))
+                    {
+                        var uri = new Uri(codeBase);
+                        var localPath = uri.LocalPath;
+                        if (System.IO.File.Exists(localPath))
+                        {
+                            assemblyPath = localPath;
+                            buildTimestamp += $" (file: {System.IO.File.GetLastWriteTime(localPath):HH:mm:ss})";
+                        }
+                    }
                 }
             }
             catch { }
@@ -280,6 +336,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine($"=== END OF REPORT ===");
             report.AppendLine();
             report.AppendLine($"📁 Log file: {GetLastPerformanceLogPath()}");
+            
+            // Flush all buffered logs before writing the final report
+            FlushLogs();
             WritePerformanceLogDirect(report.ToString());
         }
         
@@ -332,10 +391,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine("Steps (by time; % of total):");
             report.AppendLine(new string('-', 72));
 
-            // Exclude "Bulk Individual Sleeve Placement" from rows — it is the total, not a step
-            var stepsOnlyOps = individualOps.Where(op => op.Name == null || !op.Name.Contains("Bulk Individual Sleeve Placement")).ToList();
-            var bulkSubOpsRaw = _subOpsForReport.Where(s => s.ParentName != null && s.ParentName.Contains("Bulk Individual Sleeve Placement")).ToList();
-
             // Exclude redundant wrapper trackers and optional steps from breakdown (cleaner report)
             bool IsRedundantOrOptionalStep(string name)
             {
@@ -343,19 +398,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 var n = name.Trim();
                 return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
-                    || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0;
+                    || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Bulk Individual Sleeve Placement", StringComparison.OrdinalIgnoreCase) >= 0;
             }
-            var bulkSubOps = bulkSubOpsRaw.Where(s => !IsRedundantOrOptionalStep(s.OpName)).OrderByDescending(s => s.Ms).ToList();
 
-            // Single list: top-level steps + sub-steps (excluding redundant/optional), sorted by time descending
+            // identify all sub-operations belonging to individual placement
+            var allIndividualSubOps = _subOpsForReport
+                .Where(s => s.ParentName != null && IsIndividualPlacementOperation(s.ParentName))
+                .ToList();
+
+            // Identify parents that have sub-operations (we'll show sub-ops instead to avoid double-counting)
+            var parentsWithSubOps = allIndividualSubOps
+                .Select(s => s.ParentName)
+                .Distinct()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Single list: top-level steps (without sub-ops) + all sub-steps
             var allSteps = new List<(string Name, long Ms)>();
-            foreach (var op in stepsOnlyOps)
+            
+            // Add top-level ops that DON'T have sub-ops recorded
+            foreach (var op in individualOps)
             {
-                if (!IsRedundantOrOptionalStep(op.Name))
+                if (!IsRedundantOrOptionalStep(op.Name) && !parentsWithSubOps.Contains(op.Name))
+                {
                     allSteps.Add((op.Name, op.TotalMilliseconds));
+                }
             }
-            foreach (var sub in bulkSubOps)
-                allSteps.Add((sub.OpName, sub.Ms));
+            
+            // Add all sub-operations
+            foreach (var sub in allIndividualSubOps)
+            {
+                if (!IsRedundantOrOptionalStep(sub.OpName))
+                {
+                    allSteps.Add((sub.OpName, sub.Ms));
+                }
+            }
+
             foreach (var step in allSteps.OrderByDescending(x => x.Ms))
             {
                 double pct = totalIndividualTime > 0 ? (double)step.Ms / totalIndividualTime * 100 : 0;
@@ -400,7 +478,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             var bulkClusterOp = clusterOps.FirstOrDefault(op => 
                 op.Name != null && 
                 (op.Name.Contains("Global Bulk Cluster Placement") || 
-                 op.Name.Contains("Bulk Cluster Sleeve Placement")));
+                 op.Name.Contains("Bulk Cluster Sleeve Placement") ||
+                 op.Name.Contains("Step 2: CLUSTER PLACEMENT MAIN LOOP")));
             
             long totalClusterTime = bulkClusterOp != null && bulkClusterOp.TotalMilliseconds > 0
                 ? bulkClusterOp.TotalMilliseconds
@@ -505,6 +584,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 report.AppendLine($"{step.Name,-50} {step.Ms,10}ms {pct,5:F1}%");
             }
 
+            // Diagnostic metrics (tick-precision sub-timing from code)
+            if (_diagnosticMetrics.Count > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("--- DIAGNOSTIC METRICS (tick-precision) ---");
+                foreach (var m in _diagnosticMetrics)
+                    report.AppendLine($"  {m}");
+            }
+
             report.AppendLine();
         }
         
@@ -536,16 +624,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                    name.Contains("sync flags") ||
                    name.Contains("delete invalidated") ||
                    name.Contains("plan placement") ||
+                   name.Contains("planning") ||
                    name.Contains("pre-save") ||
+                   name.Contains("pre-saving") ||
                    name.Contains("executebulkplacement") ||
                    name.Contains("regenerate") ||
                    name.Contains("flush deferred") ||
                    name.Contains("update zones") ||
+                   name.Contains("clashzones") ||
                    name.Contains("transaction commit") ||
                    name.Contains("batchupdate") ||
                    name.Contains("savesleevesnapshots") ||
                    name.Contains("retrieved placed data") ||
-                   name.Contains("save placed data");
+                   name.Contains("save placed data") ||
+                   name.Contains("loading") ||
+                   name.Contains("workflow") ||
+                   name.Contains("complete");
         }
         
         /// <summary>
@@ -565,7 +659,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                    (name.Contains("newfamilyinstances2") && name.Contains("cluster")) ||
                    name.Contains("post-placement") ||
                    name.Contains("database updates") ||
-                   name.Contains("cleanup");
+                   name.Contains("cleanup") ||
+                   name.Contains("workflow") ||
+                   name.Contains("complete");
         }
         
         private class OperationMetrics
@@ -613,7 +709,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return new SubOperationTracker(this, subOperationName);
             }
             
-            internal void RecordSubOperation(string name, long milliseconds, long memoryBytes, int itemCount)
+            /// <summary>
+            /// Manually record a sub-operation with pre-calculated metrics.
+            /// </summary>
+            public void RecordSubOperation(string name, long milliseconds, long memoryBytes, int itemCount)
             {
                 if (!_subOperations.ContainsKey(name))
                 {
@@ -636,28 +735,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             public void Dispose()
             {
                 _timer.Stop();
+                long elapsedMs = _timer.ElapsedMilliseconds;
                 long endMemory = GC.GetTotalMemory(false);
                 long memoryDelta = endMemory - _startMemory;
                 
-                _monitor.RecordOperation(_operationName, _timer.ElapsedMilliseconds, memoryDelta, _itemCount);
+                _monitor.RecordOperation(_operationName, elapsedMs, memoryDelta, _itemCount);
                 _monitor.RecordSubOperationsForReport(_operationName, _subOperations.Values.Select(m => (m.Name, m.TotalMilliseconds)));
                 
-                // ✅ Write directly so performance log always appears
-                WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {_timer.ElapsedMilliseconds}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
-                bool isRedundantOrOptional(string name)
+                // ✅ USER REQUEST: Suppress 0ms entries from the direct performance log
+                if (elapsedMs > 0)
                 {
-                    if (string.IsNullOrEmpty(name)) return false;
-                    var n = name.Trim();
-                    return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
-                        || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
-                        || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0;
-                }
-                var subOpsToLog = _subOperations.Values.Where(o => !isRedundantOrOptional(o.Name)).OrderByDescending(o => o.TotalMilliseconds).ToList();
-                WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] DEBUG: Disposing OperationTracker '{_operationName}'. SubOpCount: {subOpsToLog.Count}\n");
-                foreach (var subOp in subOpsToLog)
-                {
-                    double avgMs = subOp.CallCount > 0 ? (double)subOp.TotalMilliseconds / subOp.CallCount : 0;
-                    WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}]   (Sub) {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
+                    WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {elapsedMs}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
+                    
+                    bool isRedundantOrOptional(string name)
+                    {
+                        if (string.IsNullOrEmpty(name)) return false;
+                        var n = name.Trim();
+                        return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
+                            || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
+                            || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0;
+                    }
+                    var subOpsToLog = _subOperations.Values
+                        .Where(o => !isRedundantOrOptional(o.Name) && o.TotalMilliseconds > 0) // ✅ Suppress 0ms sub-ops here too
+                        .OrderByDescending(o => o.TotalMilliseconds)
+                        .ToList();
+                    
+                    if (subOpsToLog.Count > 0)
+                    {
+                        WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] DEBUG: Disposing OperationTracker '{_operationName}'. SubOpCount: {subOpsToLog.Count}\n");
+                        foreach (var subOp in subOpsToLog)
+                        {
+                            double avgMs = subOp.CallCount > 0 ? (double)subOp.TotalMilliseconds / subOp.CallCount : 0;
+                            WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}]   (Sub) {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
+                        }
+                    }
                 }
             }
             
@@ -689,6 +800,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     // For now, flatten sub-operations by tracking them on the parent operation
                     return _parent.TrackSubOperation(subOperationName);
+                }
+
+                /// <summary>
+                /// Manually record a sub-operation (delegates to parent tracker)
+                /// </summary>
+                public void RecordSubOperation(string name, long milliseconds, long memoryBytes, int itemCount)
+                {
+                    _parent.RecordSubOperation(name, milliseconds, memoryBytes, itemCount);
                 }
                 
                 public void Dispose()

@@ -21,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // private StatusUpdateExternalEventHandler? _statusUpdateHandler;
 
         // External events
-        private ExternalEvent? _statusUpdateEvent;
+        // private ExternalEvent? _statusUpdateEvent; // FIX: CS0414 - commented to fix critical warning
 
         // Thread safety
         private readonly object _lock = new object();
@@ -96,7 +96,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // _parameterSyncEvent?.Dispose();
                 // _statusUpdateEvent?.Dispose();
 
-                _statusUpdateEvent = null;
+                // _statusUpdateEvent = null; // FIX: CS0414 - commented to fix critical warning
 
                 // _openingPlacementHandler = null;
                 // _parameterSyncHandler = null;

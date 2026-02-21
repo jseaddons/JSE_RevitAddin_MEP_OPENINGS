@@ -231,7 +231,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                             }
-                            catch (Exception ex)
+                            catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
                             {
                                 // Silently continue - log only in debug mode
                             }
@@ -286,7 +286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
                 {
                     // Silently continue - log only if needed
                 }

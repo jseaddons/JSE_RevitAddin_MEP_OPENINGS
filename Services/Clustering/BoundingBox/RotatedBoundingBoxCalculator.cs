@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Utils;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 {
@@ -14,14 +15,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
     /// </summary>
     public class RotatedBoundingBoxCalculator : IBoundingBoxCalculator
     {
-        private readonly Func<int, string, dynamic> _getClashZoneBySleeveInstanceId;
+        private readonly Func<long, string, dynamic> _getClashZoneBySleeveInstanceId;
         private readonly Func<List<FamilyInstance>, double, (double width, double height, double depth, XYZ mid)> _getClusterBoundingBoxFallback;
 
         /// <summary>
         /// Constructor with dependencies for ClashZone lookup and fallback bounding box calculation.
         /// </summary>
         public RotatedBoundingBoxCalculator(
-            Func<int, string, dynamic> getClashZoneBySleeveInstanceId,
+            Func<long, string, dynamic> getClashZoneBySleeveInstanceId,
             Func<List<FamilyInstance>, double, (double width, double height, double depth, XYZ mid)> getClusterBoundingBoxFallback)
         {
             _getClashZoneBySleeveInstanceId = getClashZoneBySleeveInstanceId ?? throw new ArgumentNullException(nameof(getClashZoneBySleeveInstanceId));
@@ -55,14 +56,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                 foreach (var sleeveData in cluster)
                 {
-                    int sId = sleeveData.SleeveInstanceId;
+                    long sId = sleeveData.SleeveInstanceId;
                     var clashZone = _getClashZoneBySleeveInstanceId(sId, xmlFilePath);
                     
                     if (clashZone == null)
                     {
                         DebugLogger.Warning($"[RotatedBoundingBoxCalculator] DB Lookup Failed for Sleeve {sId}. Using Fallsback.");
                         // Try Revit API as fallback
-                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.GetIntegerValue() == sId);
+                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.ToInt() == sId);
                         if (sleeve != null)
                         {
                             var bbox = sleeve.get_BoundingBox(null);

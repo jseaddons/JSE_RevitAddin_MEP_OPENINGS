@@ -86,12 +86,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return new EdgeToEdgeProximityChecker();
                 }
 
-                // ✅ DECISION 4: Mixed types (one rectangular, one circular) → use BoundingBoxProximityChecker (User Request)
+                // ✅ DECISION 4: Mixed types (one rectangular, one circular) → use MixedTypeProximityChecker
                 if (cz1 != null && cz2 != null && 
                     ((helper.HasRectangularSleeveShape(cz1) && helper.HasCircularSleeveShape(cz2)) ||
                      (helper.HasCircularSleeveShape(cz1) && helper.HasRectangularSleeveShape(cz2))))
                 {
-                    return new BoundingBoxProximityChecker();
+                    SafeFileLogger.SafeAppendText("proximity_checker_selection.log",
+                        $"[{DateTime.Now:HH:mm:ss}] MIXED: {cz1.ClashZoneGuid?.Substring(0,8)} ({cz1.MepElementCategory}) vs {cz2.ClashZoneGuid?.Substring(0,8)} ({cz2.MepElementCategory}) - Host={cz1.StructuralElementType}, Orient={cz1.HostOrientation}\n");
+                    return new MixedTypeProximityChecker();
                 }
 
                 // ✅ DECISION 5: Default fallback → Bounding Box for others

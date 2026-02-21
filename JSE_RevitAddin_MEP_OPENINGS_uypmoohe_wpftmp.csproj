@@ -1,0 +1,429 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <AssemblyName>JSE_RevitAddin_MEP_OPENINGS</AssemblyName>
+    <IntermediateOutputPath>obj\neutral\Debug\</IntermediateOutputPath>
+    <BaseIntermediateOutputPath>obj\neutral\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\</MSBuildProjectExtensionsPath>
+    <_TargetAssemblyProjectName>JSE_RevitAddin_MEP_OPENINGS</_TargetAssemblyProjectName>
+    <RootNamespace>JSE_RevitAddin_MEP_OPENINGS</RootNamespace>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <!-- 
+      ✅ MULTI-VERSION BUILD SYSTEM SKELETON
+      By default, we define ALL frameworks here.
+      This ensures NuGet restore covers the entire solution (Batch Build).
+    -->
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <!-- 
+      ✅ CONFIGURATION FILTERING
+      During a real Build, we override TargetFrameworks with a singular value 
+      based on the selected configuration. This keeps build tasks happy.
+    -->
+    <TargetFrameworks Condition="$(Configuration.Contains('R23'))">net48</TargetFrameworks>
+    <TargetFrameworks Condition="$(Configuration.Contains('R24'))">net48</TargetFrameworks>
+    <TargetFrameworks Condition="$(Configuration.Contains('R25'))">net8.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="$(Configuration.Contains('R26'))">net8.0-windows</TargetFrameworks>
+    <Configurations>Debug;Release;Debug R23;Debug R24;Debug R25;Debug R26;Release R23;Release R24;Release R25;Release R26</Configurations>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>true</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <!-- Revit Version Property Mapping -->
+  <PropertyGroup>
+    <RevitVersion Condition="$(Configuration.Contains('R23'))">2023</RevitVersion>
+    <RevitVersion Condition="$(Configuration.Contains('R24'))">2024</RevitVersion>
+    <RevitVersion Condition="$(Configuration.Contains('R25'))">2025</RevitVersion>
+    <RevitVersion Condition="$(Configuration.Contains('R26'))">2026</RevitVersion>
+    <!-- Framework-aware defaults for generic restore (no R-config specified) -->
+    <RevitVersion Condition="'$(RevitVersion)' == '' AND '$(TargetFramework)' == 'net48'">2024</RevitVersion>
+    <RevitVersion Condition="'$(RevitVersion)' == '' AND '$(TargetFramework)' == 'net8.0-windows'">2025</RevitVersion>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2025</RevitVersion>
+    <DefineConstants Condition="'$(RevitVersion)' == '2023'">$(DefineConstants);REVIT2023</DefineConstants>
+    <DefineConstants Condition="'$(RevitVersion)' == '2024'">$(DefineConstants);REVIT2024</DefineConstants>
+    <DefineConstants Condition="'$(RevitVersion)' == '2025'">$(DefineConstants);REVIT2025</DefineConstants>
+    <DefineConstants Condition="'$(RevitVersion)' == '2026'">$(DefineConstants);REVIT2026</DefineConstants>
+  </PropertyGroup>
+  <!-- TaskDialog ambiguity fix -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net48' AND '$(TargetFramework)' != ''">
+    <Using Include="Autodesk.Revit.UI.TaskDialog" Alias="TaskDialog" />
+    <Using Include="Autodesk.Revit.UI.TaskDialogResult" Alias="TaskDialogResult" />
+    <Using Include="Autodesk.Revit.UI.TaskDialogCommonButtons" Alias="TaskDialogCommonButtons" />
+    <Using Include="Autodesk.Revit.UI.TaskDialogIcon" Alias="TaskDialogIcon" />
+  </ItemGroup>
+  <PropertyGroup>
+    <IsRepackable>true</IsRepackable>
+    <BaseOutputPath>bin\$(Configuration)</BaseOutputPath>
+    <Company>JSE</Company>
+    <Description>OPENING PLACEMENT</Description>
+    <RepackBinariesExcludes>System.Data.SQLite.dll;SQLite.Interop.dll;e_sqlite3.dll</RepackBinariesExcludes>
+  </PropertyGroup>
+  <!-- Global NuGet packages -->
+  <ItemGroup>
+    <PackageReference Include="Nice3point.Revit.Build.Tasks" Version="3.*" />
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageReference Include="ILRepack" Version="2.0.41" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="System.Text.Json" Version="6.0.11" />
+  </ItemGroup>
+  <!-- Framework-specific SQLite -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+  <!-- Revit API Packages per version -->
+  <ItemGroup Condition="'$(RevitVersion)' == '2023'">
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2023.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2023.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2023.*" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RevitVersion)' == '2024'">
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2024.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.*" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RevitVersion)' == '2025'">
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2025.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.*" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RevitVersion)' == '2026'">
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2026.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2026.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.*" />
+  </ItemGroup>
+  <!-- Build Exclusions -->
+  <ItemGroup>
+    <Compile Remove="_BACKUPS\**" />
+    <Compile Remove="**/_BACKUPS/**" />
+    <Compile Remove="obj\**" />
+    <EmbeddedResource Remove="obj\**" />
+    <None Remove="obj\**" />
+    <Compile Remove="Docs\**" />
+    <Compile Remove="**/Docs/**" />
+    <Compile Remove="BACKUP\**" />
+    <Compile Remove="**/BACKUP/**" />
+    <Compile Remove="Backup\**" />
+    <Compile Remove="**/Backup/**" />
+    <Compile Remove="Backup2\**" />
+    <Compile Remove="**/Backup2/**" />
+    <Compile Remove="**/Services_Full/**" />
+    <Compile Remove="**/Archive/**" />
+    <Compile Remove="**/New folder/**" />
+    <Compile Remove="Services\SleevePlacementCoordinator.cs" />
+    <Compile Remove="**/*.backup_*" />
+    <Compile Remove="**/*.bak" />
+    <Compile Remove="**/*.tmp" />
+  </ItemGroup>
+  <!-- 
+    ✅ Post-Build logic - LOCAL DEPLOY ONLY
+    Files are copied to a local deploy folder, NOT to ProgramData.
+    Use deploy-to-revit.ps1 script to deploy when Revit is not running.
+  -->
+  <Target Name="PostBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <LocalDeployFolder>$(MSBuildProjectDirectory)\deploy\$(RevitVersion)\</LocalDeployFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(LocalDeployFolder)" />
+    <MakeDir Directories="$(LocalDeployFolder)x64\" Condition="Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+    <!-- Copy to local deploy folder (always works, no locking issues) -->
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(LocalDeployFolder)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\$(AssemblyName).addin" DestinationFolder="$(LocalDeployFolder)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <SqliteDlls Include="$(OutputPath)System.Data.SQLite.dll" Condition="Exists('$(OutputPath)System.Data.SQLite.dll')" />
+      <SqliteDlls Include="$(OutputPath)x64\SQLite.Interop.dll" Condition="Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SqliteDlls)" DestinationFolder="$(LocalDeployFolder)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutputPath)x64\SQLite.Interop.dll" DestinationFolder="$(LocalDeployFolder)x64\" SkipUnchangedFiles="true" Condition="Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+    <!-- Warning if Revit is running -->
+    <Message Text="✅ Build complete. Files copied to: $(LocalDeployFolder)" Importance="high" />
+    <Message Text="⚠️  To deploy to Revit, close Revit and run: .\deploy-to-revit.ps1 -Version $(RevitVersion)" Importance="high" Condition="'$(DeployToRevit)' != 'true'" />
+    <!-- Only deploy to ProgramData if explicitly requested AND Revit is not running -->
+    <CallTarget Targets="DeployToRevitAddins" Condition="'$(DeployToRevit)' == 'true'" />
+  </Target>
+  <!-- 
+    Separate target for deploying to Revit Addins folder.
+    This is called manually via deploy-to-revit.ps1 or when DeployToRevit=true.
+  -->
+  <Target Name="DeployToRevitAddins">
+    <PropertyGroup>
+      <RevitAddinFolder>C:\ProgramData\Autodesk\Revit\Addins\$(RevitVersion)\</RevitAddinFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(RevitAddinFolder)" />
+    <Copy SourceFiles="$(LocalDeployFolder)$(AssemblyName).dll" DestinationFolder="$(RevitAddinFolder)" ContinueOnError="true" />
+    <Copy SourceFiles="$(LocalDeployFolder)$(AssemblyName).addin" DestinationFolder="$(RevitAddinFolder)" ContinueOnError="true" />
+    <ItemGroup>
+      <LocalSqliteDlls Include="$(LocalDeployFolder)System.Data.SQLite.dll" Condition="Exists('$(LocalDeployFolder)System.Data.SQLite.dll')" />
+      <LocalSqliteDlls Include="$(LocalDeployFolder)x64\SQLite.Interop.dll" Condition="Exists('$(LocalDeployFolder)x64\SQLite.Interop.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LocalSqliteDlls)" DestinationFolder="$(RevitAddinFolder)" ContinueOnError="true" />
+    <MakeDir Directories="$(RevitAddinFolder)x64\" Condition="Exists('$(LocalDeployFolder)x64\SQLite.Interop.dll')" />
+    <Copy SourceFiles="$(LocalDeployFolder)x64\SQLite.Interop.dll" DestinationFolder="$(RevitAddinFolder)x64\" ContinueOnError="true" Condition="Exists('$(LocalDeployFolder)x64\SQLite.Interop.dll')" />
+    <Message Text="✅ Deployed to Revit $(RevitVersion) Addins folder" Importance="high" />
+  </Target>
+  <!-- Local API Reference Fallback -->
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\Accessibility.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\communitytoolkit.mvvm\8.2.2\lib\net6.0\CommunityToolkit.Mvvm.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\Microsoft.CSharp.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.data.sqlite.core\8.0.11\lib\net8.0\Microsoft.Data.Sqlite.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\Microsoft.VisualBasic.Core.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\Microsoft.VisualBasic.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\Microsoft.VisualBasic.Forms.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\Microsoft.Win32.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\Microsoft.Win32.Registry.AccessControl.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\Microsoft.Win32.Registry.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\Microsoft.Win32.SystemEvents.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\mscorlib.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\netstandard.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.toolkit\2025.1.0\lib\net8.0-windows7.0\Nice3point.Revit.Toolkit.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationCore.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.Aero.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.Aero2.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.AeroLite.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.Classic.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.Luna.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationFramework.Royale.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\PresentationUI.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\ReachFramework.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.api.revitapi\2025.4.20\ref\net8.0\RevitAPI.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.api.revitapiui\2025.4.20\ref\net8.0\RevitAPIUI.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\serilog\4.2.0\lib\net8.0\Serilog.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\serilog.sinks.debug\3.0.0\lib\net8.0\Serilog.Sinks.Debug.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\sqlitepclraw.bundle_e_sqlite3\2.1.6\lib\netstandard2.0\SQLitePCLRaw.batteries_v2.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\sqlitepclraw.core\2.1.6\lib\netstandard2.0\SQLitePCLRaw.core.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\sqlitepclraw.provider.e_sqlite3\2.1.6\lib\net6.0-windows7.0\SQLitePCLRaw.provider.e_sqlite3.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.AppContext.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Buffers.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.CodeDom.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Collections.Concurrent.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Collections.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Collections.Immutable.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Collections.NonGeneric.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Collections.Specialized.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ComponentModel.Annotations.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ComponentModel.DataAnnotations.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ComponentModel.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ComponentModel.EventBasedAsync.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ComponentModel.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ComponentModel.TypeConverter.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Configuration.ConfigurationManager.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Configuration.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Console.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Core.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Data.Common.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Data.DataSetExtensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Data.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Design.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.Contracts.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.Debug.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.DiagnosticSource.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Diagnostics.EventLog.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.FileVersionInfo.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Diagnostics.PerformanceCounter.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.Process.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.StackTrace.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.TextWriterTraceListener.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.Tools.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.TraceSource.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Diagnostics.Tracing.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.DirectoryServices.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Drawing.Common.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Drawing.Design.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Drawing.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Drawing.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Dynamic.Runtime.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Formats.Asn1.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Formats.Tar.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Globalization.Calendars.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Globalization.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Globalization.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.Compression.Brotli.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.Compression.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.Compression.FileSystem.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.Compression.ZipFile.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.FileSystem.AccessControl.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.FileSystem.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.FileSystem.DriveInfo.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.FileSystem.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.FileSystem.Watcher.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.IsolatedStorage.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.MemoryMappedFiles.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.IO.Packaging.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.Pipes.AccessControl.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.Pipes.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.IO.UnmanagedMemoryStream.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Linq.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Linq.Expressions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Linq.Parallel.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Linq.Queryable.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Memory.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Http.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Http.Json.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.HttpListener.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Mail.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.NameResolution.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.NetworkInformation.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Ping.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Quic.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Requests.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Security.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.ServicePoint.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.Sockets.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.WebClient.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.WebHeaderCollection.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.WebProxy.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.WebSockets.Client.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Net.WebSockets.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Numerics.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Numerics.Vectors.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ObjectModel.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Printing.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.DispatchProxy.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.Emit.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.Emit.ILGeneration.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.Emit.Lightweight.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.Metadata.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Reflection.TypeExtensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Resources.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Resources.Reader.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Resources.ResourceManager.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Resources.Writer.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.CompilerServices.Unsafe.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.CompilerServices.VisualC.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Handles.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.InteropServices.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.InteropServices.JavaScript.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.InteropServices.RuntimeInformation.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Intrinsics.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Loader.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Numerics.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Serialization.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Serialization.Formatters.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Serialization.Json.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Serialization.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Runtime.Serialization.Xml.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.AccessControl.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Claims.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Algorithms.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Cng.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Csp.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Encoding.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.OpenSsl.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Pkcs.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.ProtectedData.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.X509Certificates.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Security.Cryptography.Xml.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Security.Permissions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Principal.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.Principal.Windows.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Security.SecureString.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ServiceModel.Web.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ServiceProcess.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Text.Encoding.CodePages.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Text.Encoding.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Text.Encoding.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Text.Encodings.Web.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Text.Json.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Text.RegularExpressions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Threading.AccessControl.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Channels.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Overlapped.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Tasks.Dataflow.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Tasks.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Tasks.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Tasks.Parallel.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Thread.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.ThreadPool.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Threading.Timer.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Transactions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Transactions.Local.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.ValueTuple.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Web.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Web.HttpUtility.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Controls.Ribbon.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Windows.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Forms.Design.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Forms.Design.Editors.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Forms.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Forms.Primitives.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Input.Manipulations.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Windows.Presentation.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\System.Xaml.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.Linq.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.ReaderWriter.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.Serialization.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.XDocument.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.XmlDocument.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.XmlSerializer.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.XPath.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\ref\net8.0\System.Xml.XPath.XDocument.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\UIAutomationClient.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\UIAutomationClientSideProviders.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\UIAutomationProvider.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\UIAutomationTypes.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\WindowsBase.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\ref\net8.0\WindowsFormsIntegration.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\UI\CombinedSleeveWindow.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\ViewModels\FamilySelectionWindow.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\JSE_RevitAddin_MEP_OPENINGSDialog.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\JSE_RevitAddin_MEP_OPENINGSView.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\LeftPanel.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\MainDialog.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\MiddlePanel.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\OpeningStatusDialog.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\OpeningStatusPanel.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\ProfileManagementDialog.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\ProfileSetupDialog.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\RightPanel.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\Views\UserControl1.g.cs" />
+    <Compile Include="C:\Jse_Developments\JSE_MEPOPENING_23\obj\neutral\Debug\GeneratedInternalTypeHelper.g.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Analyzer Include="C:\Program Files\dotnet\sdk\10.0.103\Sdks\Microsoft.NET.Sdk\targets\..\analyzers\Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll" />
+    <Analyzer Include="C:\Program Files\dotnet\sdk\10.0.103\Sdks\Microsoft.NET.Sdk\targets\..\analyzers\Microsoft.CodeAnalysis.NetAnalyzers.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\communitytoolkit.mvvm\8.2.2\analyzers\dotnet\roslyn4.3\cs\CommunityToolkit.Mvvm.CodeFixers.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\communitytoolkit.mvvm\8.2.2\analyzers\dotnet\roslyn4.3\cs\CommunityToolkit.Mvvm.SourceGenerators.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\analyzers/dotnet/cs/Microsoft.Interop.ComInterfaceGenerator.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\analyzers/dotnet/cs/Microsoft.Interop.JavaScript.JSImportGenerator.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\analyzers/dotnet/cs/Microsoft.Interop.LibraryImportGenerator.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\analyzers/dotnet/cs/Microsoft.Interop.SourceGeneration.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\analyzers/dotnet/cs/System.Text.Json.SourceGeneration.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.netcore.app.ref\8.0.24\analyzers/dotnet/cs/System.Text.RegularExpressions.Generator.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\analyzers/dotnet/System.Windows.Forms.Analyzers.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\microsoft.windowsdesktop.app.ref\8.0.24\analyzers/dotnet/cs/System.Windows.Forms.Analyzers.CSharp.dll" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

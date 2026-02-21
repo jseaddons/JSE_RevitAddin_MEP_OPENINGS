@@ -35,7 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// </summary>
         /// <param name="clusterInstanceId">Cluster sleeve instance ID</param>
         /// <returns>Tuple of rotation data or null if not found</returns>
-        (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)? GetRotationData(int clusterInstanceId);
+        (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)? GetRotationData(long clusterInstanceId);
 
         /// <summary>
         /// Store rotation data for a cluster sleeve
@@ -48,7 +48,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <param name="rotatedWidth">Rotated width</param>
         /// <param name="rotatedHeight">Rotated height</param>
         /// <param name="rotatedDepth">Rotated depth</param>
-        void StoreRotationData(int clusterInstanceId, double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth);
+        void StoreRotationData(long clusterInstanceId, double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth);
 
         /// <summary>
         /// Clear all stored rotation data
@@ -62,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <param name="sleeveIds">List of unique sleeve instance IDs to pre-load</param>
         /// <param name="xmlFilePath">Optional XML file path for data access</param>
         /// <returns>Number of ClashZones successfully pre-loaded</returns>
-        int PreloadClashZones(IEnumerable<int> sleeveIds, string? xmlFilePath = null);
+        int PreloadClashZones(IEnumerable<long> sleeveIds, string? xmlFilePath = null);
 
         /// <summary>
         /// ✅ OPTIMIZATION: Pre-load ClashZones from dictionary (FAST - no database queries)
@@ -70,6 +70,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// </summary>
         /// <param name="clashZones">Dictionary of ClashZones by SleeveInstanceId (already in memory)</param>
         /// <returns>Number of ClashZones successfully pre-loaded</returns>
-        int PreloadClashZonesFromDictionary(Dictionary<int, ClashZone> clashZones);
+        int PreloadClashZonesFromDictionary(Dictionary<long, ClashZone> clashZones);
     }
 }

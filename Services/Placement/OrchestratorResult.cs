@@ -20,8 +20,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// Number of individual zones that were grouped into clusters
         /// </summary>
         public int ClusteredZoneCount { get; }
+        
+        /// <summary>
+        /// Status message describing the result (e.g., timeout information)
+        /// </summary>
+        public string Message { get; }
 
-        public OrchestratorResult(bool success, int placedCount, int errorCount, string correlationId, int clusterCount = 0, int clusteredZoneCount = 0)
+        public OrchestratorResult(bool success, int placedCount, int errorCount, string correlationId, int clusterCount = 0, int clusteredZoneCount = 0, string message = null)
         {
             Success = success;
             PlacedCount = placedCount;
@@ -29,6 +34,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             CorrelationId = correlationId;
             ClusterCount = clusterCount;
             ClusteredZoneCount = clusteredZoneCount;
+            Message = message;
         }
     }
 }

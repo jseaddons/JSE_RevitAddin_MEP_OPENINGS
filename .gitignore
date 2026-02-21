@@ -11,6 +11,9 @@ obj/
 # Ignore Revit Addin Manifest
 *.addin
 
+# Local deployment folder (built files)
+deploy/
+
 # Ignore logs and temporary data (any *.log anywhere; Logs/ and Log/ folders)
 Logs/
 Log/
@@ -51,3 +54,4 @@ Docs/
 .cursor/
 *.zip
 *.png
+nul

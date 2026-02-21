@@ -65,7 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     msg.AppendLine(" - Walk-up from assembly location: " + asmPath);
                     msg.AppendLine(" - Environment variable: JSE_PROJECT_ROOT");
                     msg.AppendLine(" - Developer fallback: C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23");
-                    TaskDialog.Show("Compare Placement", msg.ToString());
+                    Autodesk.Revit.UI.TaskDialog.Show("Compare Placement", msg.ToString());
                     return Result.Failed;
                 }
 
@@ -93,7 +93,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     sb.AppendLine($" - DuplicationChecker: {dupFile} (exists={File.Exists(dupFile)})");
                     sb.AppendLine($" - Command: {cmdFile} (exists={File.Exists(cmdFile)})");
                     File.WriteAllText(outLog, sb.ToString());
-                    TaskDialog.Show("Compare Placement", sb.ToString());
+                    Autodesk.Revit.UI.TaskDialog.Show("Compare Placement", sb.ToString());
                     return Result.Failed;
                 }
 
@@ -161,13 +161,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                 // Show a short TaskDialog summary
                 string shortSummary = "Placement comparison completed. Output written to:\n" + outLog + "\n\nPrimary finding: Duct places at intersection, CableTray places at centerline (placePoint). Make duplication checks consistent with placement.";
-                TaskDialog.Show("Compare Duct vs CableTray Placement", shortSummary);
+                Autodesk.Revit.UI.TaskDialog.Show("Compare Duct vs CableTray Placement", shortSummary);
 
                 return Result.Succeeded;
             }
             catch (Exception ex)
             {
-                TaskDialog.Show("Compare Placement - Error", ex.ToString());
+                Autodesk.Revit.UI.TaskDialog.Show("Compare Placement - Error", ex.ToString());
                 return Result.Failed;
             }
         }

@@ -21,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Foreign key to CombinedSleeves table
         /// </summary>
-        public int CombinedSleeveId { get; set; }
+        public long CombinedSleeveId { get; set; }
         
         // ============================================================================
         // CONSTITUENT TYPE
@@ -67,7 +67,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Revit element ID for cluster sleeve (ElementId.GetIntegerValue())
         /// Null if this is an individual constituent
         /// </summary>
-        public int? ClusterInstanceId { get; set; }
+        public long? ClusterInstanceId { get; set; }
         
         // ============================================================================
         // TIMESTAMPS

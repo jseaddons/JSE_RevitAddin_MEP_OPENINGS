@@ -193,7 +193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[OPENING_SETTINGS] [CLUSTER] Rounded dimension from {mmDimension:F3}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
+                    // DebugLogger.Info($"[OPENING_SETTINGS] [CLUSTER] Rounded dimension from {mmDimension:F3}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
                 }
                 return roundedDimension;
             }

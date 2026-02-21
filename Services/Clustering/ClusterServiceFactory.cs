@@ -60,12 +60,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // Phase 6: Rotation Service - wire function to load from cache first, then database
             // ✅ CRITICAL FIX: Use cache first (populated by ClusterDataService), then fallback to database
             // This ensures we use the already-loaded data with all rotated bounding box and corner data
-            Func<int, string, Models.ClashZone> getClashZoneFunc = (sleeveId, xmlPath) =>
+            Func<long, string, Models.ClashZone> getClashZoneFunc = (sleeveId, xmlPath) =>
             {
                 // ✅ STEP 1: Try cache first (fast, already loaded with all data including corners and rotated bbox)
                 try
                 {
-                    var cached = dataService.GetClashZoneBySleeveInstanceId(sleeveId);
+                    var cached = dataService.GetClashZoneBySleeveInstanceId((int)sleeveId);
                     if (cached != null)
                     {
                         // ✅ CRITICAL FIX: Check if cached clash zone has bounding boxes
@@ -158,11 +158,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             };
             
             // ✅ Phase 9b: Cluster Placement Lookup Delegate (for Rotation Service)
-            Func<int, XYZ> getClusterPlacementFunc = (clusterId) =>
+            Func<long, XYZ> getClusterPlacementFunc = (clusterId) =>
             {
-                return dataService.GetClusterPlacement(clusterId);
+                return dataService.GetClusterPlacement((int)clusterId);
             };
-            
+
             var rotationService = new ClusterRotationService(getClashZoneFunc, getClusterPlacementFunc);
 
             // Phase 7: Cleanup Service
@@ -192,6 +192,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // This ensures RefactoredClusterService has a non-null flag manager for flag updates
             var flagManagerRefactor = flagManager ?? FlagManagerFactory.CreateAdapter(doc);
             
+            // ✅ SOLID: Create snapshot transfer service for cluster placement
+            var snapshotTransferService = new JSE_RevitAddin_MEP_OPENINGS.Services.ParameterSnapshotTransferService();
+            
             // Wire all services into RefactoredClusterService
             return new RefactoredClusterService(
                 doc: doc,
@@ -205,7 +208,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 strategyFactory: strategyFactory,
                 flagManager: flagManagerRefactor,
                 filterService: filterService,
-                performanceMonitor: performanceMonitor
+                performanceMonitor: performanceMonitor,
+                snapshotTransferService: snapshotTransferService
             );
         }
 
@@ -236,10 +240,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// <returns>Fully-configured RefactoredClusterService with all Phase 1-10 services</returns>
         public static RefactoredClusterService CreateRefactored(
             Document doc,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager? flagManager = null,
-            FilterManagementService? filterService = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager flagManager = null,
+            FilterManagementService filterService = null,
             int timeoutLimitMs = 300000,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? performanceMonitor = null)
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null)
         {
             // ✅ Phase 9: Data Service (required for all other services)
             var dataService = new ClusterDataService(doc);
@@ -259,16 +263,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // ✅ Phase 6: Rotation Service (requires getClashZoneFunc - will be wired from dataService)
             // ✅ CRITICAL FIX: Must return actual ClashZone for Wall/Framing detection and dimension calculation
             // Previously returned null, causing hostType=Floor/Other, wrong dimensions (Width=0, Height=0), wrong orientation
-            Func<int, string, ClashZone> getClashZoneFunc = (sleeveId, xmlPath) =>
+            Func<long, string, ClashZone> getClashZoneFunc = (sleeveId, xmlPath) =>
             {
-                return dataService.GetClashZoneBySleeveInstanceId(sleeveId);
+                return dataService.GetClashZoneBySleeveInstanceId((int)sleeveId);
             };
             // ✅ Phase 9b: Cluster Placement Lookup Delegate
-            Func<int, XYZ> getClusterPlacementFunc = (clusterId) =>
+            Func<long, XYZ> getClusterPlacementFunc = (clusterId) =>
             {
-                return dataService.GetClusterPlacement(clusterId);
+                return dataService.GetClusterPlacement((int)clusterId);
             };
-            
+
             var rotationService = new ClusterRotationService(getClashZoneFunc, getClusterPlacementFunc);
 
             // ✅ Phase 4: Strategy Factory (stateless)
@@ -284,6 +288,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             
             var placementService = CreatePlacementService(doc, dataService, rotationService, flagManagerToUse, null); // ✅ SOLID: Pass doc for SleeveParameterService
 
+            // ✅ SOLID: Create snapshot transfer service for cluster placement
+            var snapshotTransferService = new JSE_RevitAddin_MEP_OPENINGS.Services.ParameterSnapshotTransferService();
+            
             // ✅ Create RefactoredClusterService with all services wired
             return new RefactoredClusterService(
                 doc: doc,
@@ -297,7 +304,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 strategyFactory: strategyFactory,
                 flagManager: flagManagerToUse,
                 filterService: filterService,
-                performanceMonitor: performanceMonitor
+                performanceMonitor: performanceMonitor,
+                snapshotTransferService: snapshotTransferService
             );
         }
 
@@ -308,7 +316,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             Document doc, // ✅ SOLID: Required for SleeveParameterService dependency injection
             IClusterDataService dataService,
             IClusterRotationService rotationService,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager? flagManager,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager flagManager,
             Func<string, string?>? getFilterNameForCategory)
         {
             // ✅ Wire function delegates for PlacementService
@@ -388,7 +396,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
             };
 
-            getFilterNameForCategory ??= (category) => null; // Default to null if not provided
+            if (getFilterNameForCategory == null)
+                getFilterNameForCategory = (category) => null; // Default to null if not provided
 
             // ✅ SOLID: Create SleeveParameterService for dependency injection
             var parameterService = new SleeveParameterService(doc);

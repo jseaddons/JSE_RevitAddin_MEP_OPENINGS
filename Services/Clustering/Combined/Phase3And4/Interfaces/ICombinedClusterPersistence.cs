@@ -17,7 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.In
         /// </summary>
         List<ClashZone> QueueDatabaseUpdates(
             CombinedClusterCandidate combinedCluster,
-            int combinedSleeveInstanceId);
+            long combinedSleeveInstanceId);
         
         /// <summary>
         /// Update XML files with combined cluster information.
@@ -25,11 +25,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.In
         /// </summary>
         void UpdateXmlWithCombinedClusterInfo(
             CombinedClusterCandidate combinedCluster,
-            int combinedSleeveInstanceId);
+            long combinedSleeveInstanceId);
 
         /// <summary>
         /// Persists the combined cluster data directly to the repository (Direct Write).
         /// </summary>
-        void PersistCombinedCluster(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId);
+        void PersistCombinedCluster(CombinedClusterCandidate combinedCluster, long combinedSleeveInstanceId);
     }
 }

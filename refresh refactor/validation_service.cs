@@ -164,8 +164,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             try
             {
-                int mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
-                int hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
+                int mepId = zone.MepElementId?.GetIntegerValue() ?? (int)zone.MepElementIdValue;
+                int hostId = zone.StructuralElementId?.GetIntegerValue() ?? (int)zone.StructuralElementIdValue;
                 
                 // Simple hash combining MEP + Host IDs
                 unchecked

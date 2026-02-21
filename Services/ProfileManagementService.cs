@@ -22,69 +22,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public event EventHandler<ProfileChangedEventArgs>? ProfileChanged;
         public event EventHandler<StatusUpdateEventArgs>? StatusUpdated;
 
-        public ProfileManagementService(string? projectPath = null)
+        public ProfileManagementService(string? projectRootDirectory = null)
         {
             // Make profiles truly project-specific
-            string currentProject;
-            if (!string.IsNullOrEmpty(projectPath))
+            // User Request: Use AppData\Roaming\JSE_MEP_Openings\Projects\[ProjectName] directly
+            
+            string currentProjectName = "Default";
+
+            if (!string.IsNullOrEmpty(projectRootDirectory))
             {
-                // Use the actual project path to create a unique identifier
-                // Hash the project path to create a stable, unique identifier
-                var projectHash = projectPath.GetHashCode().ToString("X8");
-                currentProject = $"Project_{projectHash}";
+                // ✅ CRITICAL FIX: Ensure path is absolute. If relative (e.g. "Default"), make it absolute under AppData.
+                if (!Path.IsPathRooted(projectRootDirectory))
+                {
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    _profileDirectory = Path.Combine(appData, "JSE_MEP_Openings", "Projects", projectRootDirectory);
+                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Converted relative path '{projectRootDirectory}' to absolute: {_profileDirectory}");
+                }
+                else
+                {
+                    _profileDirectory = projectRootDirectory;
+                }
                 
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Creating project-specific directory for path: {projectPath}");
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Project identifier: {currentProject}");
+                // Extract project name from the directory path for the filename
+                // Path is ...\Projects\[ProjectName]
+                currentProjectName = new DirectoryInfo(_profileDirectory).Name;
+                
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Using project directory: {_profileDirectory}");
             }
             else
             {
-                currentProject = "Default"; // For testing without project path
+                // Fallback for testing/default
+                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                _profileDirectory = Path.Combine(appData, "JSE_MEP_Openings", "Default");
+                currentProjectName = "Default";
             }
             
-            // Create project-specific directory with fallback for permission issues
-            if (!string.IsNullOrEmpty(projectPath))
-            {
-                try
-                {
-                    // Try to create profiles directory in the same directory as the project file
-                    var projectDir = Path.GetDirectoryName(projectPath);
-                    var projectProfilesDir = Path.Combine(projectDir ?? "", "JSE_MEP_Profiles");
-                    
-                    // ✅ CRITICAL FIX: Use step-by-step directory creation
-                    EnsureDirectoryStructure(projectProfilesDir);
-                    
-                    _profileDirectory = projectProfilesDir;
-                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Using project directory: {_profileDirectory}");
-                }
-                catch (Exception ex)
-                {
-                    // If we can't create in project directory, fall back to AppData with project-specific subfolder
-                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Cannot create project directory, using AppData fallback: {ex.Message}");
-                    
-                    var projectName = Path.GetFileNameWithoutExtension(projectPath) ?? "UnknownProject";
-                    _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-                                                   "JSE_MEP_Openings", "Projects", projectName);
-                    
-                    // ✅ CRITICAL FIX: Use step-by-step directory creation for fallback too
-                    try
-                    {
-                        EnsureDirectoryStructure(_profileDirectory);
-                    }
-                    catch (Exception fallbackEx)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Cannot create AppData fallback directory: {fallbackEx.Message}");
-                        // Continue anyway - error will be logged but won't prevent service initialization
-                    }
-                }
-            }
-            else
-            {
-                // Fallback to AppData only for testing
-                _profileDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-                                               "JSE_MEP_Openings", currentProject);
-            }
-            
-            _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProject}.xml");
+            // Generate filename: profiles_[ProjectName].json
+            _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProjectName}.json");
             _availableProfiles = new List<UserProfile>();
 
             // ✅ CRITICAL FIX: Ensure all parent directories are created step-by-step with proper error handling
@@ -457,65 +431,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine($"LoadProfiles: Checking file: {_profileFilePath}");
                 System.Diagnostics.Debug.WriteLine($"LoadProfiles: File exists: {File.Exists(_profileFilePath)}");
                 
-                // DISABLED: Hardcoded log write - use DebugLogger instead
-                // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Checking file: {_profileFilePath}\n");
-                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: File exists: {File.Exists(_profileFilePath)}\n");
-                
                 if (File.Exists(_profileFilePath))
                 {
                     System.Diagnostics.Debug.WriteLine($"LoadProfiles: File size: {new FileInfo(_profileFilePath).Length} bytes");
-                    // DISABLED: Hardcoded log write
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: File size: {new FileInfo(_profileFilePath).Length} bytes\n");
                     
-                    var serializer = new XmlSerializer(typeof(List<UserProfile>));
-                    using (var reader = new FileStream(_profileFilePath, FileMode.Open))
+                    var json = File.ReadAllText(_profileFilePath);
+                    var profiles = Newtonsoft.Json.JsonConvert.DeserializeObject<List<UserProfile>>(json);
+                    
+                    if (profiles != null)
                     {
-                        var profiles = (List<UserProfile>?)serializer.Deserialize(reader);
-                        if (profiles != null)
-                        {
-                            _availableProfiles.Clear();
-                            _availableProfiles.AddRange(profiles);
-                            System.Diagnostics.Debug.WriteLine($"LoadProfiles: Successfully loaded {profiles.Count} profiles");
-                            // DISABLED: Hardcoded log write
-                            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Successfully loaded {profiles.Count} profiles\n");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"LoadProfiles: Deserialized profiles is null");
-                            // DISABLED: Hardcoded log write
-                            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Deserialized profiles is null\n");
-                        }
+                        _availableProfiles.Clear();
+                        _availableProfiles.AddRange(profiles);
+                        System.Diagnostics.Debug.WriteLine($"LoadProfiles: Successfully loaded {profiles.Count} profiles");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"LoadProfiles: Deserialized profiles is null");
                     }
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"LoadProfiles: Profile file does not exist");
-                    // DISABLED: Hardcoded log write
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Profile file does not exist\n");
+                    // Check for XML file (migration)
+                    var xmlPath = _profileFilePath.Replace(".json", ".xml");
+                    if (File.Exists(xmlPath))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"LoadProfiles: Found legacy XML file, attempting migration: {xmlPath}");
+                        try
+                        {
+                            var serializer = new XmlSerializer(typeof(List<UserProfile>));
+                            using (var reader = new FileStream(xmlPath, FileMode.Open))
+                            {
+                                var profiles = (List<UserProfile>?)serializer.Deserialize(reader);
+                                if (profiles != null)
+                                {
+                                    _availableProfiles.Clear();
+                                    _availableProfiles.AddRange(profiles);
+                                    System.Diagnostics.Debug.WriteLine($"LoadProfiles: Successfully migrated {profiles.Count} profiles from XML");
+                                    
+                                    // Save as JSON immediately
+                                    SaveProfiles();
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"LoadProfiles: XML migration failed: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"LoadProfiles: Profile file does not exist");
+                    }
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"LoadProfiles: ERROR - {ex.Message}");
                 
-                // DISABLED: Hardcoded log write - use DebugLogger instead
-                // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-                // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: ERROR - {ex.Message}\n");
-                
-                // FALLBACK: Try to load profiles from config files when XML fails
+                // FALLBACK: Try to load profiles from config files when JSON/XML fails
                 try
                 {
-                    // DISABLED: Hardcoded log write
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Attempting fallback from config files\n");
                     LoadProfilesFromConfigFiles();
-                    // DISABLED: Hardcoded log write
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Fallback successful - loaded {_availableProfiles.Count} profiles\n");
                 }
                 catch (Exception fallbackEx)
                 {
-                    // DISABLED: Hardcoded log write
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfiles: Fallback also failed - {fallbackEx.Message}\n");
                     StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(
                         $"Failed to load profiles: {ex.Message}", 
                         StatusType.Error, 
@@ -524,6 +503,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
         }
+
+
 
         /// <summary>
         /// Fallback method to load profiles from config files when XML serialization fails
@@ -576,17 +557,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // DISABLED: Hardcoded log write
                         // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Created profile '{profileName}' from config file\n");
                     }
-                    catch (Exception ex)
+                    catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
                     {
                         // DISABLED: Hardcoded log write
                         // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Error processing config file {configFile}: {ex.Message}\n");
                     }
                 }
-                
+
                 // DISABLED: Hardcoded log write
                 // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] LoadProfilesFromConfigFiles: Successfully loaded {_availableProfiles.Count} profiles from config files\n");
             }
-            catch (Exception ex)
+            catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
             {
                 // DISABLED: Hardcoded log write - use DebugLogger instead
                 // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
@@ -616,7 +597,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}");
                 
-                // ✅ CRITICAL FIX: Ensure directory exists before saving (handles cases where initial creation failed)
+                // Ensure directory exists
                 try
                 {
                     EnsureDirectoryStructure(_profileDirectory);
@@ -626,25 +607,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     System.Diagnostics.Debug.WriteLine($"SaveProfiles: WARNING - Directory creation failed: {dirEx.Message}. Attempting to save anyway.");
                 }
                 
-                // Use conditional logging instead of hardcoded file writes
                 var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Saving {_availableProfiles.Count} profiles to: {_profileFilePath}\n");
                 
-                var serializer = new XmlSerializer(typeof(List<UserProfile>));
-                using (var writer = new FileStream(_profileFilePath, FileMode.Create))
-                {
-                    serializer.Serialize(writer, _availableProfiles);
-
-                }
+                var json = Newtonsoft.Json.JsonConvert.SerializeObject(_availableProfiles, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(_profileFilePath, json);
                 
-                System.Diagnostics.Debug.WriteLine($"SaveProfiles: Successfully saved profiles to XML file");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Successfully saved profiles to XML file\n");
+                System.Diagnostics.Debug.WriteLine($"SaveProfiles: Successfully saved profiles to JSON file");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: Successfully saved profiles to JSON file\n");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"SaveProfiles: ERROR - {ex.Message}");
                 
-                // Use conditional logging instead of hardcoded file writes
                 var debugLogPath = SafeFileLogger.GetLogFilePath("profile_save_debug.log");
                 JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] SaveProfiles: ERROR - {ex.Message}\n");
                 

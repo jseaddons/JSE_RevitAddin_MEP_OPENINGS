@@ -486,7 +486,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         
                         // We need to fetch the original sleeve data (ClashZone or ClusterSleeveData)
                         // The repository has methods for this.
-                        var selectedIntIds = _selectedIds.Select(id => id.GetIntegerValue()).ToList();
+                        var selectedIntIds = _selectedIds.Select(id => (long)id.GetIntegerValue()).ToList();
                         
                         var individualSleeves = _repo.GetClashZonesBySleeveIds(selectedIntIds);
                         // Note: GetClashZonesBySleeveIds might return multiple zones for same sleeve? Usually 1:1 for uncombined.
@@ -530,7 +530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                 // But we know it exists in ClashZoneRepository.
                                 if (_repo is ClashZoneRepository concreteRepo)
                                 {
-                                     var clusters = concreteRepo.GetClusterSleevesByInstanceIds(new List<int> { id.GetIntegerValue() });
+                                     var clusters = concreteRepo.GetClusterSleevesByInstanceIds(new List<long> { id.GetIntegerValue() });
                                      if(clusters != null && clusters.Count > 0)
                                      {
                                          sourceData = clusters[0];

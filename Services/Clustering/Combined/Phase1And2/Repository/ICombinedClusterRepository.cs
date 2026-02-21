@@ -10,7 +10,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
     {
         IReadOnlyList<ClashZone> LoadClusteredZones(Autodesk.Revit.DB.Document doc, string filterName, IReadOnlyCollection<string> categories);
 
-        Dictionary<int, Dictionary<string, string>> LoadSnapshotParameters(IEnumerable<int> sleeveInstanceIds);
+        Dictionary<long, Dictionary<string, string>> LoadSnapshotParameters(IEnumerable<long> sleeveInstanceIds);
 
         void SaveCombinedClusterMetadata(string filterName, IReadOnlyCollection<ClashZone> updatedZones);
 

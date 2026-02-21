@@ -68,5 +68,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces
         /// Track a sub-operation within this operation.
         /// </summary>
         IOperationTracker TrackSubOperation(string subOperationName);
+
+        /// <summary>
+        /// Manually record a sub-operation with pre-calculated metrics.
+        /// Useful for recording results of loops without per-iteration overhead.
+        /// </summary>
+        void RecordSubOperation(string name, long milliseconds, long memoryBytes = 0, int itemCount = 0);
     }
 }

@@ -3,21 +3,47 @@ using Autodesk.Revit.DB;
 namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
     /// <summary>
+    /// ⚠️⚠️⚠️ PROTECTED CODE: CRITICAL VERSION DETECTION LOGIC ⚠️⚠️⚠️
+    /// DO NOT MODIFY, SIMPLIFY, OR REMOVE THIS LOGIC.
+    /// This file is the central source of truth for Revit versioning across the entire project.
+    /// Incorrect changes here will break logging, database paths, and API compatibility.
+    /// 
     /// Centralized Revit version info abstraction using compile-time constants.
     /// Keeps runtime checks lightweight and avoids scattering #if blocks.
-    /// Extend by adding new compile constants in the csproj when supporting further versions.
     /// </summary>
     public static class VersionInfo
     {
-#if REVIT2024_OR_GREATER
+        // ✅ EXHAUSTIVE VERSION DETECTION
+#if REVIT2026
+        public const int CurrentMajor = 2026;
+        public const bool Is2024Plus = true;
+        public const bool Is2025Plus = true;
+        public const bool Is2026Plus = true;
+#elif REVIT2025
+        public const int CurrentMajor = 2025;
+        public const bool Is2024Plus = true;
+        public const bool Is2025Plus = true;
+        public const bool Is2026Plus = false;
+#elif REVIT2024
         public const int CurrentMajor = 2024;
         public const bool Is2024Plus = true;
-#else
+        public const bool Is2025Plus = false;
+        public const bool Is2026Plus = false;
+#elif REVIT2023
         public const int CurrentMajor = 2023;
         public const bool Is2024Plus = false;
+        public const bool Is2025Plus = false;
+        public const bool Is2026Plus = false;
+#else
+        // Fallback for design-time or generic builds
+        public const int CurrentMajor = 2025;
+        public const bool Is2024Plus = true;
+        public const bool Is2025Plus = true;
+        public const bool Is2026Plus = false;
 #endif
+
         /// <summary>
-        /// Returns true if current build targets at least the specified Revit major version.
+        /// ⚠️ PROTECTED: Returns true if current build targets at least the specified Revit major version.
         /// </summary>
         public static bool IsAtLeast(int major) => CurrentMajor >= major;
 

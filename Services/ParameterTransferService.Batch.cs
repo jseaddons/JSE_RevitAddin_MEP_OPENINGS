@@ -34,10 +34,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var stopwatchCalc = new System.Diagnostics.Stopwatch();
             var stopwatchWrite = new System.Diagnostics.Stopwatch();
 
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                File.AppendAllText(debugLogPath, $"\n===== BATCH PARAM_TRANSFER SESSION STARTED {DateTime.Now} =====\n");
-            }
+            SafeFileLogger.SafeAppendText("transfer_debug.log", $"\n===== BATCH PARAM_TRANSFER SESSION STARTED {DateTime.Now} =====\n");
 
             // 1. VALIDATION & SETUP
             if (openingIds == null || openingIds.Count == 0)
@@ -125,8 +122,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Priority 1: Combined Sleeve
                 if (snapshotIndex.TryGetByCombined(identity.CombinedInstanceId, out var constituents))
                 {
-                    var aggregatedParams = AggregateCombinedParameters(constituents, snapshotIndex, useHost: false);
-                    var aggregatedHostParams = AggregateCombinedParameters(constituents, snapshotIndex, useHost: true);
+                    var aggregatedParams = AggregateConstituentParameters(constituents, snapshotIndex, useHost: false);
+                    var aggregatedHostParams = AggregateConstituentParameters(constituents, snapshotIndex, useHost: true);
                     snapshot = new SleeveSnapshotView 
                     { 
                         SleeveInstanceId = identity.SleeveInstanceId,
@@ -230,14 +227,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             stopwatchTotal.Stop();
 
             // PERFORMANCE LOGGING
-            if (!DeploymentConfiguration.DeploymentMode && openingIds.Count > 0)
+            if (openingIds.Count > 0)
             {
                  var msg = $"PERFORMANCE [PARAM_TRANSFER]: Total={stopwatchTotal.ElapsedMilliseconds}ms | " +
                           $"SnapLoad={stopwatchLoadSnapshot.ElapsedMilliseconds}ms | " +
                           $"Read={stopwatchRead.ElapsedMilliseconds}ms | " +
                           $"Calc={stopwatchCalc.ElapsedMilliseconds}ms | " +
                           $"Write={stopwatchWrite.ElapsedMilliseconds}ms ({(setSuccessCount > 0 ? (stopwatchWrite.ElapsedMilliseconds / setSuccessCount) : 0)} ms/param)\n";
-                 File.AppendAllText(debugLogPath, msg);
+                 SafeFileLogger.SafeAppendText("transfer_debug.log", msg);
             }
 
             result.Success = true;

@@ -20,6 +20,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         public XYZ PlacementPoint { get; }
         public bool IsCircular { get; }
         public string SleeveFamilyName { get; }
+        public ElementId LevelId { get; } // ✅ Added for placement optimization
         
         // Metadata for logging and risk assessment
         public double RawSleeveSizeFt { get; }
@@ -46,7 +47,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             string logTrace,
             string familyName,
             XYZ placementPoint = null,
-            bool isCircular = false)
+            bool isCircular = false,
+            ElementId levelId = null)
         {
             ClashZoneId = clashZoneId;
             HostType = hostType;
@@ -66,6 +68,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             SleeveFamilyName = familyName;
             PlacementPoint = placementPoint;
             IsCircular = isCircular;
+            LevelId = levelId;
         }
     }
 

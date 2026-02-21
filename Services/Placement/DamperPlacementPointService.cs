@@ -64,7 +64,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                  if (zone.StructuralElementIdValue > 0)
                  {
                       // 1. Try active document
-                      hostElement = _doc.GetElement(new ElementId(zone.StructuralElementIdValue));
+                      hostElement = _doc.GetElement(ElementIdCompat.FromValue(zone.StructuralElementIdValue));
                       
                       // 2. If not found, try linked documents
                       if (hostElement == null)
@@ -83,7 +83,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                    var linkDoc = link.GetLinkDocument();
                                    if (linkDoc != null)
                                    {
-                                       var verify = linkDoc.GetElement(new ElementId(zone.StructuralElementIdValue));
+                                       var verify = linkDoc.GetElement(ElementIdCompat.FromValue(zone.StructuralElementIdValue));
                                        if (verify != null)
                                        {
                                            hostElement = verify;
@@ -116,7 +116,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                   
                   // Fix: zone.MepElementId is of type ElementId, so compare IntegerValue > 0
                   Transform damperLinkTransform = null; // Store link transform for damper coordinate conversion
-                  if (zone.MepElementId?.GetIntegerValue() > 0) 
+                  if (zone.MepElementId?.GetIdValue() > 0) 
                   {
                       // Fix: zone.MepElementId is already ElementId, do not wrap in new ElementId()
                       damperElement = _doc.GetElement(zone.MepElementId);

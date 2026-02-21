@@ -19,12 +19,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Database primary key (auto-increment)
         /// </summary>
-        public int CombinedSleeveId { get; set; }
+        public long CombinedSleeveId { get; set; }
         
         /// <summary>
         /// Revit element ID (ElementId.GetIntegerValue())
         /// </summary>
-        public int CombinedInstanceId { get; set; }
+        public long CombinedInstanceId { get; set; }
         
         /// <summary>
         /// Deterministic GUID generated from constituent sleeve IDs
@@ -39,7 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// File combination ID (links to FileCombos table)
         /// </summary>
-        public int ComboId { get; set; }
+        public long ComboId { get; set; }
         
         /// <summary>
         /// Filter ID (links to Filters table)

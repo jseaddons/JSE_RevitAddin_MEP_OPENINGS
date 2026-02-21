@@ -145,7 +145,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         try
                         {
-                            var clusterSleeve = doc.GetElement(new ElementId(clusterSleeveId)) as FamilyInstance;
+                            var clusterSleeve = doc.GetElement(ElementIdCompat.FromValue(clusterSleeveId)) as FamilyInstance;
                             
                             if (clusterSleeve == null)
                             {
@@ -200,7 +200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // Use first MEP element's ID (or aggregate if multiple)
                                     if (mepElements.Count == 1)
                                     {
-                                        clashZone.MepElementIdValue = mepElements[0].Id.GetIntegerValue();
+                                        clashZone.MepElementIdValue = mepElements[0].Id.GetIdValue();
                                     }
                                     else
                                     {
@@ -213,7 +213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                         else
                                         {
-                                            clashZone.MepElementIdValue = mepElements[0].Id.GetIntegerValue();
+                                            clashZone.MepElementIdValue = mepElements[0].Id.GetIdValue();
                                         }
                                     }
                                 }
@@ -311,7 +311,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[UpdateXmlService] Found {intersectingElements.Count} MEP elements intersecting cluster sleeve {sleeve.Id.GetIntegerValue()}");
+                    DebugLogger.Info($"[UpdateXmlService] Found {intersectingElements.Count} MEP elements intersecting cluster sleeve {sleeve.Id.GetIdValue()}");
                 return intersectingElements;
             }
             catch (Exception ex)

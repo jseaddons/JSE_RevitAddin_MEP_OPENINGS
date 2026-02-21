@@ -1,0 +1,13 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+C:\Jse_Developments\JSE_MEPOPENING_23\Commands\UniversalSleevePlacementCommand.cs(276,9): error CS1524: Expected catch or finally [C:\Jse_Developments\JSE_MEPOPENING_23\JSE_RevitAddin_MEP_OPENINGS_epn1jiyo_wpftmp.csproj::TargetFramework=net8.0-windows]
+C:\Jse_Developments\JSE_MEPOPENING_23\Commands\UniversalSleevePlacementCommand.cs(276,10): error CS1513: } expected [C:\Jse_Developments\JSE_MEPOPENING_23\JSE_RevitAddin_MEP_OPENINGS_epn1jiyo_wpftmp.csproj::TargetFramework=net8.0-windows]
+
+Build FAILED.
+
+C:\Jse_Developments\JSE_MEPOPENING_23\Commands\UniversalSleevePlacementCommand.cs(276,9): error CS1524: Expected catch or finally [C:\Jse_Developments\JSE_MEPOPENING_23\JSE_RevitAddin_MEP_OPENINGS_epn1jiyo_wpftmp.csproj::TargetFramework=net8.0-windows]
+C:\Jse_Developments\JSE_MEPOPENING_23\Commands\UniversalSleevePlacementCommand.cs(276,10): error CS1513: } expected [C:\Jse_Developments\JSE_MEPOPENING_23\JSE_RevitAddin_MEP_OPENINGS_epn1jiyo_wpftmp.csproj::TargetFramework=net8.0-windows]
+    0 Warning(s)
+    2 Error(s)
+
+Time Elapsed 00:00:04.63

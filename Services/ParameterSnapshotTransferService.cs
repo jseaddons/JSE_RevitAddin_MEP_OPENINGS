@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
-using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -23,7 +22,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var ids = sleeveElementIds
                 .Where(e => e != null && e != ElementId.InvalidElementId)
-                .Select(e => e.GetIntegerValue())
+                .Select(e => e.GetIdValue()) // Use unified extension method
+
                 .Distinct()
                 .ToList();
             if (ids.Count == 0) return 0;
@@ -43,14 +43,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ✅ OPTIMIZATION 4: Pre-cache elements and parameters to avoid repeated API calls
-            var elementCache = new Dictionary<int, Element>();
-            var parameterCache = new Dictionary<int, Dictionary<string, Parameter>>();
+            var elementCache = new Dictionary<long, Element>();
+            var parameterCache = new Dictionary<long, Dictionary<string, Parameter>>();
             
             foreach (var sleeveId in ids)
             {
                 try
                 {
-                    var element = doc.GetElement(new ElementId(sleeveId));
+                    var element = doc.GetElement(ElementIdCompat.FromValue(sleeveId)); // Multi-version safe
+
                     if (element != null && element.IsValidObject)
                     {
                         elementCache[sleeveId] = element;
@@ -98,7 +99,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         continue;
                     }
 
-                    var elementId = new ElementId(sleeveId);
+                    var elementId = ElementIdCompat.FromValue(sleeveId);
                     var paramsToTransfer = new Dictionary<string, string>();
 
                     // Check each parameter - skip if already matches snapshot value
@@ -204,7 +205,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ OPTIMIZATION 2: Check if parameter should be skipped (already matches snapshot value).
         /// Returns true if current value matches expected snapshot value (already transferred).
         /// </summary>
-        private bool ShouldSkipParameter(Element element, string parameterName, string expectedValue, Dictionary<int, Dictionary<string, Parameter>> parameterCache)
+        private bool ShouldSkipParameter(Element element, string parameterName, string expectedValue, Dictionary<long, Dictionary<string, Parameter>> parameterCache)
+
         {
             try
             {
@@ -213,7 +215,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // ✅ OPTIMIZATION 4: Use cached parameter if available
                 Parameter param = null;
-                var elementId = element.Id.GetIntegerValue();
+                long elementId = element.Id.GetIdValue();
+
                 if (parameterCache.TryGetValue(elementId, out var paramDict) && paramDict.TryGetValue(parameterName, out param))
                 {
                     // Use cached parameter

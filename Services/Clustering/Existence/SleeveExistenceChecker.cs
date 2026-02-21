@@ -154,7 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Existence
                         bool exists = false;
                         if (clashZone.SleeveInstanceId > 0)
                         {
-                            exists = SleeveExists(clashZone.SleeveInstanceId);
+                            exists = SleeveExists((int)clashZone.SleeveInstanceId);
                         }
 
                         result[clashZone.Id] = exists;

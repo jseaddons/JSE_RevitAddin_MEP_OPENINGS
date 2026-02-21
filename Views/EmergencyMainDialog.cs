@@ -879,7 +879,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             statusTooltip.SetToolTip(_statusLabel, "Status information - hover to see full message");
             _statusPanel.Controls.Add(_statusLabel);
 
-            int statusButtonSpacing = 5; // Space between status bar buttons
+            // int statusButtonSpacing = 5; // FIX: CS0219 - commented to fix critical warning (Space between status bar buttons)
             int buttonStartX = 220; // Start position for buttons (after status label) - moved further right
             
             // ✅ NOTE: Refresh button moved to header panel (left of OK button)
@@ -3678,7 +3678,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void AddParameterRow(string parameterName, string value)
         {
-            int rowHeight = 28;
+            // int rowHeight = 28; // FIX: CS0219 - commented to fix critical warning
             // int top = 30 + (_parameterRows.Count * (rowHeight + 6)); // Parameter service moved to separate dialog
 
             var row = new WinForms.Panel
@@ -3744,7 +3744,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void ReflowParameterRows()
         {
-            int rowHeight = 28;
+            // int rowHeight = 28; // FIX: CS0219 - commented to fix critical warning
             // for (int i = 0; i < _parameterRows.Count; i++) // Parameter service moved to separate dialog
             // {
             //     var row = _parameterRows[i]; // Parameter service moved to separate dialog
@@ -4363,8 +4363,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
+                // ✅ CRITICAL DIAGNOSTIC: Log entry to SaveConditionsToXml
+                DebugLogger.Info($"[SaveConditionsToXml] ===== CALLED ===== Categories: {string.Join(", ", selectedCategories ?? new List<string>())}");
+                SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] SaveConditionsToXml: STARTED for {selectedCategories?.Count ?? 0} categories\n");
+                
                 // Use project-specific Filters directory
                 string projectFiltersDir = _document != null ? ProjectPathService.GetFiltersDirectory(_document) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
+                DebugLogger.Info($"[SaveConditionsToXml] Project Filters Dir: {projectFiltersDir}");
+                
                 var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => DebugLogger.Info(msg));
                 
                 // Get selected filters
@@ -4635,7 +4641,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var markPrefixes = new object(); 
                 var selectedFilterNames = GetSelectedFilterItems();
                 var selectedFilterName = selectedFilterNames.Count > 0 ? selectedFilterNames[0] : "Default";
-                _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName);
+                // ✨ AUTOMATION: Get levels from active section box
+                var levels = GetLevelsFromSectionBox();
+                if (levels != null && levels.Count > 0)
+                {
+                    DebugLogger.Info($"[OnOkClick] Auto-detected {levels.Count} levels from Section Box");
+                }
+                else
+                {
+                    DebugLogger.Info("[OnOkClick] No Section Box or levels detected - processing all levels");
+                }
+
+                _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName, levels);
 
                 try { SafeFileLogger.SafeAppendText("placement_event_trace.log", $"[{DateTime.Now:HH:mm:ss}] CLICK_OK: raising external event\n"); } catch { }
 
@@ -4665,6 +4682,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
         
+        /// <summary>
+        /// Retrieves levels that are within the bounds of the active 3D view's section box.
+        /// Returns null if no section box is active or if the view is not a 3D view.
+        /// </summary>
+        private List<Level> GetLevelsFromSectionBox()
+        {
+            try
+            {
+                var doc = GetCurrentDocument();
+                if (doc == null) return null;
+
+                var view3D = doc.ActiveView as View3D;
+                if (view3D == null || !view3D.IsSectionBoxActive)
+                {
+                    DebugLogger.Info("[GetLevelsFromSectionBox] No active 3D view or Section Box not active");
+                    return null;
+                }
+
+                var sectionBox = view3D.GetSectionBox();
+                if (sectionBox == null) return null;
+
+                var zMin = sectionBox.Min.Z;
+                var zMax = sectionBox.Max.Z;
+
+                // Buffer to include levels slightly outside (e.g. floor finish) - 1.0 ft
+                double buffer = 1.0; 
+
+                var allLevels = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Level))
+                    .Cast<Level>()
+                    .OrderBy(l => l.Elevation)
+                    .ToList();
+
+                var levelsInBox = allLevels
+                    .Where(l => l.Elevation >= (zMin - buffer) && l.Elevation <= (zMax + buffer))
+                    .ToList();
+
+                DebugLogger.Info($"[GetLevelsFromSectionBox] Found {levelsInBox.Count} levels between Z={zMin:F2} and Z={zMax:F2}");
+                return levelsInBox;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[GetLevelsFromSectionBox] Error: {ex.Message}");
+                return null;
+            }
+        }
+
         private bool ValidateConfiguration()
         {
             try
@@ -5678,10 +5742,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                 }
                 
-                // Save to simple file
-                var simpleFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-                    "JSE_MEP_Openings", "ui_state.txt");
-                Directory.CreateDirectory(Path.GetDirectoryName(simpleFile) ?? "");
+                // Save to project-specific folder
+                string projectDir;
+                if (_document != null)
+                {
+                    projectDir = ProjectPathService.GetProjectRoot(_document);
+                }
+                else
+                {
+                    projectDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "JSE_MEP_Openings", "Default");
+                }
+                Directory.CreateDirectory(projectDir);
+                var simpleFile = Path.Combine(projectDir, "ui_state.txt");
                 File.WriteAllLines(simpleFile, uiState);
                 
                 DebugLogger.Info($"Saved {uiState.Count} UI state items to: {simpleFile}");
@@ -5695,12 +5768,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             try
             {
-                var simpleFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-                    "JSE_MEP_Openings", "ui_state.txt");
-                
+                // Load from project-specific folder
+                string projectDir;
+                if (_document != null)
+                {
+                    projectDir = ProjectPathService.GetProjectRoot(_document);
+                }
+                else
+                {
+                    projectDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "JSE_MEP_Openings", "Default");
+                }
+                var simpleFile = Path.Combine(projectDir, "ui_state.txt");
+
                 if (!File.Exists(simpleFile))
                     return;
-                
+
                 var uiState = File.ReadAllLines(simpleFile).ToList();
                 DebugLogger.Info($"Loading {uiState.Count} UI state items from: {simpleFile}");
                 
@@ -7034,10 +7117,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DebugLogger.Info($"[OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML fallback")})");
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML")})\n");
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) // Surfacing error for diagnostics
                     {
-                        // DISABLED: Excessive logging - JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ❌ ERROR enabling OK button: {ex.Message}\n");
-                        // DISABLED: Excessive logging - JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Stack: {ex.StackTrace}\n");
+                        DebugLogger.Error($"[OK_BUTTON_DEBUG] ❌ ERROR enabling OK button: {ex.Message}");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ❌ ERROR enabling OK button: {ex.Message}\n");
                         _okButton.Enabled = false; 
                     }
                 }

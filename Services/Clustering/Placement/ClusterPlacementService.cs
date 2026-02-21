@@ -896,7 +896,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             }
 
             // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid
-            if (OptimizationFlags.UseSafeElementValidation)
+            if (OptimizationFlags.SkipRedundantValidation)
             {
                 if (!clusterSleeve.IsValidObject)
                 {
@@ -1472,14 +1472,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// </summary>
         public static string GetFamilyName(string hostType, string mepCategory, double dimension, bool isCluster = false)
         {
+            return GetFamilyName(hostType, mepCategory, dimension, isCluster, hostOrientation: null);
+        }
+
+        public static string GetFamilyName(string hostType, string mepCategory, double dimension, bool isCluster, string hostOrientation)
+        {
             // ✅ SIMPLE LOGIC FOR CLUSTERS: Clusters are ALWAYS rectangular
             if (isCluster)
             {
-                // ✅ CLUSTER SIMPLIFICATION: If it's a wall or framing, use Wall family; otherwise always use Slab family
-                bool isWallOrFraming = hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                bool isWallOrFraming = hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 ||
                                       hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0;
-                                      
-                return isWallOrFraming ? "RectangularOpeningOnWall" : "RectangularOpeningOnSlab";
+
+                if (!isWallOrFraming)
+                    return "RectangularOpeningOnSlab";
+
+                // ✅ PERF FIX: X-wall clusters use _X pre-rotated family (skip runtime rotation)
+                bool isXOriented = string.Equals(hostOrientation?.Trim(), "X", StringComparison.OrdinalIgnoreCase);
+                return isXOriented ? "RectangularOpeningOnWall_X" : "RectangularOpeningOnWall";
             }
 
             var settings = ApplicationProfileService.Instance.GetCurrentSettings();
@@ -1521,7 +1530,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             
             if (isWallHost)
             {
-                return isCircular ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
+                bool isXOriented = string.Equals(hostOrientation?.Trim(), "X", StringComparison.OrdinalIgnoreCase);
+                if (isCircular)
+                    return isXOriented ? "CircularOpeningOnWall_X" : "CircularOpeningOnWall";
+                else
+                    return isXOriented ? "RectangularOpeningOnWall_X" : "RectangularOpeningOnWall";
             }
             else if (hostType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
             {

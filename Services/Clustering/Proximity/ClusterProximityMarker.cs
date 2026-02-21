@@ -159,15 +159,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         }
 
         /// <summary>
-        /// Checks if a zone has any other zones within the proximity tolerance.
-        /// Uses appropriate proximity checker based on sleeve shapes.
+        /// ✅ PERF: Checks if a zone has any other zones within the proximity tolerance.
+        /// Optimized: center-distance pre-filter eliminates most pairs without factory/checker overhead.
+        /// Direct ClashZone usage instead of dynamic wrappers.
         /// </summary>
         private bool CheckProximityToOtherZones(ClashZone targetZone, List<ClashZone> allZones)
         {
             if (allZones.Count <= 1)
                 return false;
 
-            // For each other zone, check if it's within proximity
+            // ✅ PERF: Pre-compute target center for fast distance rejection
+            double tx = targetZone.SleevePlacementPointX;
+            double ty = targetZone.SleevePlacementPointY;
+            double tz = targetZone.SleevePlacementPointZ;
+
+            // Max possible sleeve half-diagonal (generous upper bound: 5 ft = ~1.5m)
+            // If centers are farther apart than tolerance + 2*maxHalfDiagonal, skip
+            double maxHalfDiag = 5.0;
+            double earlyRejectDistSq = (_proximityTolerance + 2 * maxHalfDiag) * (_proximityTolerance + 2 * maxHalfDiag);
+
+            // Reuse a single helper instance for corner-based checks
+            var cornerHelper = new SleeveCornerProximityHelper();
+
             foreach (var otherZone in allZones)
             {
                 // Skip self-comparison
@@ -181,28 +194,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                         continue;
                 }
 
-                // Create dynamic sleeve objects for checker compatibility
-                dynamic sleeve1 = new { ClashZone = targetZone };
-                dynamic sleeve2 = new { ClashZone = otherZone };
+                // ✅ PERF: Fast center-to-center distance pre-filter (squared, no sqrt)
+                double dx = otherZone.SleevePlacementPointX - tx;
+                double dy = otherZone.SleevePlacementPointY - ty;
+                double dz = otherZone.SleevePlacementPointZ - tz;
+                double distSq = dx * dx + dy * dy + dz * dz;
+
+                if (distSq > earlyRejectDistSq)
+                    continue; // Too far apart, skip expensive checker
 
                 try
                 {
-                    // Get appropriate proximity checker using factory
-                    var checker = ProximityCheckerFactory.CreateChecker(sleeve1, sleeve2, 0.0, false);
-                    if (checker.CheckProximity(sleeve1, sleeve2, _proximityTolerance))
+                    // ✅ PERF: Direct corner-based proximity check without dynamic/factory overhead
+                    if (cornerHelper.AreWithinProximity(targetZone, otherZone, _proximityTolerance))
                     {
-                        return true; // Found a nearby zone
+                        return true;
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    _logger?.Invoke($"[PROXIMITY-MARKER] ⚠️ Error during proximity check between zones: {ex.Message}");
-                    // If checker fails, assume not proximate and continue
                     continue;
                 }
             }
 
-            return false; // No nearby zones found
+            return false;
         }
     }
 }

@@ -89,6 +89,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// ✅ Get the Revit document - needed by wrapper for sleeve verification
+        /// </summary>
+        public Document GetDocument()
+        {
+            return _document;
+        }
+        
+        /// <summary>
         /// Main refresh execution - orchestrates all helper services
         /// </summary>
         public Result ExecuteRefresh(
@@ -260,7 +268,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ProcessIntersections(context);
             
             // PHASE 9: Capture Parameters
-            CaptureParameters(context);
+            // ✅ REDUNDANCY FIX: Skip Phase 8 if bulk capture already handled parameters in Phase 6
+            if (!OptimizationFlags.UseBulkIntersectionProcessing)
+            {
+                CaptureParameters(context);
+            }
+            else if (!context.IsDeploymentMode)
+            {
+                DebugLogger.Info("[REFRESH-REFACTORED] Skipping Phase 8 (Parameter Capture) - handled by Bulk Phase 6");
+            }
             
             // PHASE 10: Merge and Save
             UpdateProgress(80, "Merging and saving...");
@@ -1328,6 +1344,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     context.ExistingClashZones = processedZones;
                     context.ValidatedZones = validationResult.ValidZones ?? new List<ClashZone>();
                     context.InvalidatedZones = validationResult.InvalidZones ?? new List<ClashZone>();
+                    
+                    // ✅ CRITICAL FIX: Ensure IsCurrentClash is set for all zones in context
+                    if (context.ValidatedZones != null)
+                    {
+                        foreach (var zone in context.ValidatedZones)
+                        {
+                            zone.IsCurrentClash = true;
+                        }
+                    }
+
+                    // ✅ PATH 3 SYNC: Force invalidated zones to Ready status
+                    if (context.PathStrategy is Path3Strategy && context.InvalidatedZones != null && context.InvalidatedZones.Count > 0)
+                    {
+                        DebugLogger.Info($"[REFRESH-REFACTORED] ⚡ PATH 3: Forcing {context.InvalidatedZones.Count} invalidated zones to Ready status");
+                        foreach (var zone in context.InvalidatedZones)
+                        {
+                            zone.IsCurrentClash = true;
+                            zone.ReadyForPlacementFlag = true;
+                            
+                            // Reset resolution status since they are invalidated (moved/changed)
+                            zone.IsResolved = false;
+                            zone.IsClusterResolved = false;
+                            zone.IsCombinedResolved = false;
+                            zone.SleeveInstanceId = -1;
+                            zone.ClusterSleeveInstanceId = -1;
+                        }
+                    }
+                    else if (context.InvalidatedZones != null)
+                    {
+                        // Even if not Path 3, they are still "Current" if they exists in this session
+                        foreach (var zone in context.InvalidatedZones)
+                        {
+                            zone.IsCurrentClash = true;
+                        }
+                    }
                 
                     if (validationResult.InvalidZones.Count > 0)
                     {
@@ -1874,8 +1925,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Create SectionBoxService instance
                 var sectionBoxService = new SectionBoxService();
 
-                // Get active 3D view with section box
-                if (_uiDocument?.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                // Get active 3D view
+                if (_uiDocument?.ActiveView is View3D view3D)
                 {
                     // Create database context for storing section box
                     using (var dbContext = new Data.SleeveDbContext(_document, msg =>
@@ -1884,15 +1935,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
                     }))
                     {
-                        // Capture and store section box bounds
+                        // Capture and store section box bounds (now handles inactive state)
                         sectionBoxService.CaptureAndStore(view3D, dbContext.Connection);
 
                         if (!context.IsDeploymentMode)
                         {
-                            DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] ✅ Section box bounds captured and stored successfully");
+                            DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] ✅ Section box state captured and synchronized to database");
                         }
                         SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                            $"[{DateTime.Now}] [SECTION-BOX] ✅ Section box bounds captured and stored successfully\n");
+                            $"[{DateTime.Now}] [SECTION-BOX] ✅ Section box state captured and synchronized to database\n");
                     }
                 }
                 else

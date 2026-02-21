@@ -124,6 +124,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 _context.NewClashZones = new List<ClashZone>();
                 _context.AllClashZones = _context.ExistingClashZones ?? new List<ClashZone>();
                 
+                // ✅ CRITICAL FIX: Ensure IsCurrentClash is set for loaded zones in Superfast Path
+                // This ensures they are included in the synchronized ReadyForPlacementFlag update
+                if (_context.AllClashZones != null)
+                {
+                    foreach (var zone in _context.AllClashZones)
+                    {
+                        zone.IsCurrentClash = true;
+                    }
+                }
+                
                 _logger($"[INTERSECTION-PROCESSOR] ✅ SUPERFAST PATH: Using {_context.AllClashZones.Count} existing zones from database (no detection, no damper processing)");
                 
                 return _context.AllClashZones;
@@ -339,11 +349,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             _logger($"[INTERSECTION-PROCESSOR] After MEP intersection filtering: {filteredIntersections.Count} intersections (removed {intersections.Count - filteredIntersections.Count} elements)");
 
             // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService
+            // PERF FIX: Seed storage with existing in-memory zones so PATH 1/3 lookups work.
+            // Without this, zoneMap is always empty → ALL zones go through full CreateClashZone (PATH 2).
+            var storage = new ClashZoneStorage();
+            if (_context.ExistingClashZones?.Count > 0)
+                storage.ClashZones.AddRange(_context.ExistingClashZones);
             var clashZoneService = new ClashZoneService(
-                new ClashZoneStorage(),
+                storage,
                 msg => _logger($"[CLASH-ZONE-SERVICE] {msg}"),
                 Services.FlagManagement.FlagManagerFactory.CreateAdapter(_context.Document),
                 new GuidManager(_context.Document));
+            
+            // ✅ PERFORMANCE: Pass performance monitor for sub-timing of clash zone creation
+            clashZoneService.SetPerformanceMonitor(_performanceMonitor);
 
             // ✅ PROGRESS CALLBACK: Update progress dialog with intersection counts DURING detection
             // Update progress based on raw intersections (before conversion to clash zones)

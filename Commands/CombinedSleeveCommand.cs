@@ -33,6 +33,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         var uidoc = commandData.Application.ActiveUIDocument;
                         var doc = uidoc.Document;
 
+                        // Ensure profile/settings context is set to the active project folder
+                        ApplicationProfileService.Instance.UpdateForCurrentDocument(doc);
+
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info("[CombinedSleeveCommand] Starting Combined Sleeve UI...");
 
@@ -62,7 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         var placementService = new CombinedSleevePlacementService(doc, combinedSleeveRepo, proximityService, cornerService); // NEW: Agent A
 
                         // 3. Manual Calculation Components (Adapter + Helpers)
-                        var getClashZoneFunc = new Func<int, string, Models.ClashZone>((id, xml) => {
+                        var getClashZoneFunc = new Func<long, string, Models.ClashZone>((id, xml) => {
                             var zones = repo.GetClashZonesBySleeveIds(new[] { id });
                             return (zones != null && zones.Count > 0) ? zones[0] : null; 
                         });

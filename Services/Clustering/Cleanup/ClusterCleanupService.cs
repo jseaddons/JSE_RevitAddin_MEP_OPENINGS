@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
@@ -68,7 +69,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 }
 
                 // ✅ Point-in-box query: batched when many cluster IDs (SQLite param limit ~999; Revit delete in chunks)
+                // ✅ CRITICAL FIX: Track which cluster each sleeve belongs to for Stage 2 constituent assignment
                 var sleevesToDelete = new HashSet<int>();
+                var sleeveToClusterMap = new Dictionary<int, int>(); // SleeveInstanceId -> ClusterInstanceId
                 var clusterIdBatches = (clusterInstanceIds != null && clusterInstanceIds.Count > 0)
                     ? clusterInstanceIds.Select((id, i) => (id, i)).GroupBy(x => x.i / MaxClusterIdsPerQuery).Select(g => g.Select(x => x.id).ToList()).ToList()
                     : new List<List<int>> { null }; // null = no IN filter (all clusters)
@@ -81,7 +84,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     using (var cmd = context.Connection.CreateCommand())
                     {
                         var query = @"
-                            SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId
+                            SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId, cz.ClashZoneGuid
                             FROM ClashZones cz
                             CROSS JOIN ClusterSleeves_v2 cs
                             WHERE cz.SleeveInstanceId > 0
@@ -117,7 +120,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                                 while (reader.Read())
                                 {
                                     var sleeveId = reader.GetInt32(reader.GetOrdinal("SleeveInstanceId"));
+                                    var clusterId = reader.GetInt32(reader.GetOrdinal("ClusterInstanceId"));
                                     sleevesToDelete.Add(sleeveId);
+                                    sleeveToClusterMap[sleeveId] = clusterId;
                                 }
                             }
                         }
@@ -162,6 +167,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
 
                 SafeFileLogger.SafeAppendText("batch_v2.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP DEBUG: About to delete {sleevesToDelete.Count} sleeves from Revit\n");
+
+                // ✅ CRITICAL FIX: Stage 2 - Run DB operations in the background
+                // This makes them cluster constituents so Parameter Service will aggregate their parameters
+                var mapCopy = new Dictionary<int, int>(sleeveToClusterMap);
+                var sleeveIdsCopy = sleevesToDelete.ToList();
+                string bgDbPath = context.DatabasePath;
+
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        using (var bgContext = new SleeveDbContext(bgDbPath))
+                        {
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 (BACKGROUND): Assigning ClusterInstanceId to {mapCopy.Count} zones as cluster constituents\n");
+                            AssignClusterInstanceIdToStage2Zones(bgContext, mapCopy);
+
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 (BACKGROUND): Flushing parameters from {sleeveIdsCopy.Count} sleeves to cluster snapshots\n");
+                            FlushParametersToClusterSleeves(bgContext, null, sleeveIdsCopy); // Cannot use Revit doc in background safely
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_errors.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ❌ STAGE 2 BACKGROUND ERROR: {ex.Message}\n{ex.StackTrace}\n");
+                    }
+                });
 
                 int deletedCount = 0;
                 try
@@ -401,6 +434,500 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
             }
 
             return sleevesToDelete.Count;
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Stage 2 parameter flushing for cluster sleeves.
+        /// Aggregates parameters from sleeves being deleted into the parent cluster sleeve snapshot.
+        /// </summary>
+        private void FlushParametersToClusterSleeves(SleeveDbContext context, Document doc, List<int> sleeveInstanceIds)
+        {
+            if (sleeveInstanceIds == null || sleeveInstanceIds.Count == 0)
+                return;
+
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 FLUSH: Starting parameter aggregation for {sleeveInstanceIds.Count} sleeves\n");
+
+            try
+            {
+                // Group sleeves by their parent cluster (find which cluster each sleeve is inside)
+                var sleevesByCluster = new Dictionary<int, List<int>>(); // ClusterInstanceId -> SleeveIds
+                
+                foreach (var sleeveId in sleeveInstanceIds)
+                {
+                    try
+                    {
+                        using (var cmd = context.Connection.CreateCommand())
+                        {
+                            // Find which cluster this sleeve is inside (same logic as CleanupSleevesWithinClusters)
+                            cmd.CommandText = @"
+                                SELECT cs.ClusterInstanceId
+                                FROM ClashZones cz
+                                CROSS JOIN ClusterSleeves_v2 cs
+                                WHERE cz.SleeveInstanceId = @sleeveId
+                                  AND cs.ClusterInstanceId > 0
+                                  AND cz.SleevePlacementX >= cs.BoundingBoxMinX AND cz.SleevePlacementX <= cs.BoundingBoxMaxX
+                                  AND cz.SleevePlacementY >= cs.BoundingBoxMinY AND cz.SleevePlacementY <= cs.BoundingBoxMaxY
+                                  AND cz.SleevePlacementZ >= cs.BoundingBoxMinZ AND cz.SleevePlacementZ <= cs.BoundingBoxMaxZ
+                                LIMIT 1";
+                            cmd.Parameters.AddWithValue("@sleeveId", sleeveId);
+                            var result = cmd.ExecuteScalar();
+                            
+                            if (result != null && result != DBNull.Value)
+                            {
+                                int clusterId = Convert.ToInt32(result);
+                                if (!sleevesByCluster.ContainsKey(clusterId))
+                                    sleevesByCluster[clusterId] = new List<int>();
+                                sleevesByCluster[clusterId].Add(sleeveId);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 FLUSH: Error finding cluster for sleeve {sleeveId}: {ex.Message}\n");
+                    }
+                }
+
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 FLUSH: Found {sleevesByCluster.Count} clusters to update\n");
+
+                // Flush parameters for each cluster
+                foreach (var kvp in sleevesByCluster)
+                {
+                    int clusterInstanceId = kvp.Key;
+                    var clusterSleeveIds = kvp.Value;
+                    
+                    try
+                    {
+                        FlushParametersForSingleCluster(context, doc, clusterInstanceId, clusterSleeveIds);
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 FLUSH: Failed for cluster {clusterInstanceId}: {ex.Message}\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 FLUSH: Error in FlushParametersToClusterSleeves: {ex.Message}\n");
+            }
+        }
+
+        /// <summary>
+        /// Flushes parameters from individual sleeves to a single cluster sleeve snapshot.
+        /// </summary>
+        private void FlushParametersForSingleCluster(SleeveDbContext context, Document doc, int clusterInstanceId, List<int> sleeveInstanceIds)
+        {
+            if (sleeveInstanceIds.Count == 0)
+                return;
+
+            // SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 FLUSH: Cluster {clusterInstanceId} - Aggregating {sleeveInstanceIds.Count} sleeves\n");
+
+            var mepParamsToMerge = new Dictionary<string, object>();
+            var hostParamsToMerge = new Dictionary<string, object>();
+
+            // Step 1: Read parameters from sleeves being deleted (use ClashZoneGuid lookup)
+            foreach (var sleeveId in sleeveInstanceIds)
+            {
+                try
+                {
+                    // Get ClashZoneGuid for this sleeve
+                    string clashZoneGuid = null;
+                    using (var guidCmd = context.Connection.CreateCommand())
+                    {
+                        guidCmd.CommandText = "SELECT ClashZoneGuid FROM ClashZones WHERE SleeveInstanceId = @sleeveId LIMIT 1";
+                        guidCmd.Parameters.AddWithValue("@sleeveId", sleeveId);
+                        var result = guidCmd.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                            clashZoneGuid = result.ToString();
+                    }
+
+                    if (!string.IsNullOrEmpty(clashZoneGuid))
+                    {
+                        // Query SleeveSnapshots by ClashZoneGuid
+                        using (var cmd = context.Connection.CreateCommand())
+                        {
+                            cmd.CommandText = @"
+                                SELECT MepParametersJson, HostParametersJson 
+                                FROM SleeveSnapshots 
+                                WHERE UPPER(ClashZoneGuid) = UPPER(@guid)";
+                            cmd.Parameters.AddWithValue("@guid", clashZoneGuid);
+                            
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                if (reader.Read())
+                                {
+                                    var mepJson = reader.IsDBNull(0) ? null : reader.GetString(0);
+                                    var hostJson = reader.IsDBNull(1) ? null : reader.GetString(1);
+                                    
+                                    if (!string.IsNullOrEmpty(mepJson))
+                                    {
+                                        try
+                                        {
+                                            var mepParams = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(mepJson);
+                                            if (mepParams != null)
+                                            {
+                                                foreach (var param in mepParams)
+                                                {
+                                                    if (!string.IsNullOrEmpty(param.Key) && param.Value != null)
+                                                    {
+                                                        if (!mepParamsToMerge.ContainsKey(param.Key))
+                                                            mepParamsToMerge[param.Key] = param.Value;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        catch { }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Fallback: Extract from Revit element if no snapshot found
+                    if (mepParamsToMerge.Count == 0)
+                    {
+                        ExtractParametersFromRevitElement(doc, sleeveId, mepParamsToMerge, hostParamsToMerge);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 FLUSH: Error reading params for sleeve {sleeveId}: {ex.Message}\n");
+                }
+            }
+
+            if (mepParamsToMerge.Count == 0 && hostParamsToMerge.Count == 0)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 FLUSH: No parameters found for cluster {clusterInstanceId}\n");
+                return;
+            }
+
+            // Step 2: Read existing cluster snapshot
+            string existingMepJson = null;
+            using (var cmd = context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT MepParametersJson 
+                    FROM SleeveSnapshots 
+                    WHERE ClusterInstanceId = @clusterId
+                    LIMIT 1";
+                cmd.Parameters.AddWithValue("@clusterId", clusterInstanceId);
+                var result = cmd.ExecuteScalar();
+                if (result != null && result != DBNull.Value)
+                    existingMepJson = result.ToString();
+            }
+
+            // Step 3: Merge with aggregation (same logic as CombinedSleevePlacementService)
+            var finalParams = MergeWithAggregation(existingMepJson, mepParamsToMerge);
+
+            // Step 4: Update cluster snapshot
+            using (var cmd = context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    UPDATE SleeveSnapshots 
+                    SET MepParametersJson = @mepParams,
+                        UpdatedAt = CURRENT_TIMESTAMP
+                    WHERE ClusterInstanceId = @clusterId";
+                cmd.Parameters.AddWithValue("@mepParams", System.Text.Json.JsonSerializer.Serialize(finalParams));
+                cmd.Parameters.AddWithValue("@clusterId", clusterInstanceId);
+                
+                int rowsUpdated = cmd.ExecuteNonQuery();
+                // SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 FLUSH: Cluster {clusterInstanceId} - Updated {rowsUpdated} row(s), {finalParams.Count} params\n");
+            }
+        }
+
+        /// <summary>
+        /// Extracts parameters directly from a Revit element.
+        /// </summary>
+        private void ExtractParametersFromRevitElement(Document doc, int sleeveId, Dictionary<string, object> mepParams, Dictionary<string, object> hostParams)
+        {
+            try
+            {
+                if (doc == null) return; // Called from background thread, cannot access Revit API
+
+                var element = doc.GetElement(new ElementId(sleeveId));
+                if (element == null) return;
+
+                foreach (Parameter param in element.Parameters)
+                {
+                    try
+                    {
+                        if (!param.HasValue || string.IsNullOrEmpty(param.Definition?.Name))
+                            continue;
+
+                        var paramName = param.Definition.Name;
+                        object paramValue = null;
+
+                        switch (param.StorageType)
+                        {
+                            case StorageType.String:
+                                paramValue = param.AsString();
+                                break;
+                            case StorageType.Double:
+                                paramValue = param.AsDouble();
+                                break;
+                            case StorageType.Integer:
+                                paramValue = param.AsInteger();
+                                break;
+                            case StorageType.ElementId:
+                                var id = param.AsElementId();
+                                paramValue = id?.GetIntegerValue() ?? 0;
+                                break;
+                        }
+
+                        if (paramValue != null)
+                        {
+                            if (IsMepParameter(paramName))
+                            {
+                                if (!mepParams.ContainsKey(paramName))
+                                    mepParams[paramName] = paramValue;
+                            }
+                            else
+                            {
+                                if (!hostParams.ContainsKey(paramName))
+                                    hostParams[paramName] = paramValue;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Determines if a parameter name indicates it's an MEP-related parameter.
+        /// </summary>
+        private bool IsMepParameter(string paramName)
+        {
+            if (string.IsNullOrEmpty(paramName))
+                return false;
+
+            var mepKeywords = new[] 
+            { 
+                "MEP", "DUCT", "PIPE", "CABLE", "CONDUIT", "TRAY",
+                "SYSTEM", "SERVICE", "SIZE", "DIAMETER", "WIDTH", "HEIGHT",
+                "LEVEL", "OFFSET", "FLOW", "VELOCITY", "PRESSURE"
+            };
+
+            var upperName = paramName.ToUpperInvariant();
+            return mepKeywords.Any(kw => upperName.Contains(kw));
+        }
+
+        /// <summary>
+        /// Merges two parameter dictionaries, aggregating values when they differ.
+        /// </summary>
+        private Dictionary<string, object> MergeWithAggregation(string existingJson, Dictionary<string, object> newParams)
+        {
+            var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            
+            // Load existing params
+            if (!string.IsNullOrEmpty(existingJson) && existingJson != "{}")
+            {
+                try
+                {
+                    var existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(existingJson);
+                    if (existing != null)
+                    {
+                        foreach (var kvp in existing)
+                            result[kvp.Key] = kvp.Value;
+                    }
+                }
+                catch { }
+            }
+            
+            // Merge new params with aggregation
+            foreach (var kvp in newParams)
+            {
+                if (result.ContainsKey(kvp.Key))
+                {
+                    var existingValue = result[kvp.Key]?.ToString() ?? "";
+                    var newValue = kvp.Value?.ToString() ?? "";
+                    
+                    if (!string.Equals(existingValue, newValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!existingValue.Contains(newValue, StringComparison.OrdinalIgnoreCase))
+                        {
+                            result[kvp.Key] = $"{existingValue}, {newValue}";
+                        }
+                    }
+                }
+                else
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Assigns ClusterInstanceId to Stage 2 cleaned up zones in ClashZones table.
+        /// This makes them cluster constituents so Parameter Service will aggregate their parameters.
+        /// </summary>
+        private void AssignClusterInstanceIdToStage2Zones(SleeveDbContext context, Dictionary<int, int> sleeveToClusterMap)
+        {
+            if (sleeveToClusterMap.Count == 0)
+                return;
+
+            SafeFileLogger.SafeAppendText("placement_performance.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 ASSIGN: Updating {sleeveToClusterMap.Count} zones as cluster constituents\n");
+
+            int entryCount = 0;
+            const int batchSize = 100;
+            var updates = sleeveToClusterMap.ToList();
+            
+            for (int i = 0; i < updates.Count; i += batchSize)
+            {
+                var batch = updates.Skip(i).Take(batchSize).ToList();
+                if (batch.Count == 0) continue;
+
+                try
+                {
+                    using (var cmd = context.Connection.CreateCommand())
+                    {
+                        var caseBuilder = new System.Text.StringBuilder();
+                        var idList = new System.Text.StringBuilder();
+                        
+                        caseBuilder.Append("CASE SleeveInstanceId ");
+                        
+                        for (int j = 0; j < batch.Count; j++)
+                        {
+                            string pSleeve = $"@s{j}";
+                            string pCluster = $"@c{j}";
+                            
+                            caseBuilder.Append($"WHEN {pSleeve} THEN {pCluster} ");
+                            idList.Append(j == 0 ? pSleeve : $", {pSleeve}");
+                            
+                            cmd.Parameters.AddWithValue(pSleeve, batch[j].Key); // SleeveInstanceId
+                            cmd.Parameters.AddWithValue(pCluster, batch[j].Value); // ClusterInstanceId
+                        }
+                        
+                        caseBuilder.Append("END");
+
+                        cmd.CommandText = $@"
+                            UPDATE ClashZones 
+                            SET ClusterInstanceId = {caseBuilder},
+                                IsClusterResolvedFlag = 1,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE SleeveInstanceId IN ({idList})
+                              AND (ClusterInstanceId IS NULL OR ClusterInstanceId = 0)";
+                        
+                        int rows = cmd.ExecuteNonQuery();
+                        entryCount += rows;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("placement_performance.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 ASSIGN BATCH FAILED: {ex.Message}\n");
+                }
+            }
+
+            SafeFileLogger.SafeAppendText("placement_performance.log", 
+                $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 ASSIGN: Updated {entryCount} zones as cluster constituents in {Math.Ceiling((double)updates.Count / batchSize)} batches\n");
+
+            // ✅ CRITICAL FIX: Also update SleeveSnapshots to set ClusterInstanceId for Stage 2 sleeves
+            // This ensures Parameter Service sees them as cluster constituents
+            UpdateSleeveSnapshotsForStage2Sleeves(context, sleeveToClusterMap);
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Updates SleeveSnapshots table to set ClusterInstanceId for Stage 2 cleaned up sleeves.
+        /// This makes them appear as cluster constituents to the Parameter Service.
+        /// </summary>
+        private void UpdateSleeveSnapshotsForStage2Sleeves(SleeveDbContext context, Dictionary<int, int> sleeveToClusterMap)
+        {
+            if (sleeveToClusterMap.Count == 0)
+                return;
+
+            SafeFileLogger.SafeAppendText("placement_performance.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 SNAPSHOT: Updating {sleeveToClusterMap.Count} snapshots with ClusterInstanceId\n");
+
+            int entryCount = 0;
+            const int batchSize = 50; // Smaller batch size for complex query
+            var updates = sleeveToClusterMap.ToList();
+
+            for (int i = 0; i < updates.Count; i += batchSize)
+            {
+                var batch = updates.Skip(i).Take(batchSize).ToList();
+                if (batch.Count == 0) continue;
+
+                try
+                {
+                    using (var cmd = context.Connection.CreateCommand())
+                    {
+                        var caseBuilder = new System.Text.StringBuilder();
+                        var idList = new System.Text.StringBuilder();
+                        
+                        caseBuilder.Append("CASE SleeveInstanceId ");
+                        
+                        for (int j = 0; j < batch.Count; j++)
+                        {
+                            string pSleeve = $"@s{j}";
+                            string pCluster = $"@c{j}";
+                            
+                            caseBuilder.Append($"WHEN {pSleeve} THEN {pCluster} ");
+                            idList.Append(j == 0 ? pSleeve : $", {pSleeve}");
+                            
+                            cmd.Parameters.AddWithValue(pSleeve, batch[j].Key);
+                            cmd.Parameters.AddWithValue(pCluster, batch[j].Value);
+                        }
+                        
+                        caseBuilder.Append("END");
+                        string ids = idList.ToString();
+
+                        // 1. UPDATE existing snapshots
+                        cmd.CommandText = $@"
+                            UPDATE SleeveSnapshots 
+                            SET ClusterInstanceId = {caseBuilder},
+                                SourceType = 'Cluster',
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE SleeveInstanceId IN ({ids});";
+                        
+                        int updated = cmd.ExecuteNonQuery();
+
+                        // 2. INSERT missing snapshots (from ClashZones)
+                        cmd.CommandText = $@"
+                            INSERT INTO SleeveSnapshots (
+                                SleeveInstanceId, ClusterInstanceId, SourceType,
+                                ClashZoneGuid, MepParametersJson, HostParametersJson,
+                                CreatedAt, UpdatedAt
+                            )
+                            SELECT 
+                                SleeveInstanceId, 
+                                {caseBuilder}, 
+                                'Cluster',
+                                ClashZoneGuid, MepParameterValuesJson, HostParameterValuesJson,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                            FROM ClashZones
+                            WHERE SleeveInstanceId IN ({ids})
+                              AND SleeveInstanceId NOT IN (SELECT SleeveInstanceId FROM SleeveSnapshots WHERE SleeveInstanceId IN ({ids}))";
+                        
+                        int inserted = cmd.ExecuteNonQuery();
+                        entryCount += (updated + inserted);
+                        
+                        if (updated + inserted > 0)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_performance.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 SNAPSHOT BATCH: Updated {updated}, Inserted {inserted}\n");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("placement_performance.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 SNAPSHOT BATCH FAILED: {ex.Message}\n");
+                }
+            }
+            
+            SafeFileLogger.SafeAppendText("placement_performance.log", 
+                $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 SNAPSHOT: Processed {entryCount} snapshots in {Math.Ceiling((double)updates.Count / batchSize)} batches\n");
         }
     }
 }

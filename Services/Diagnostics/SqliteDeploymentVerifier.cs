@@ -19,15 +19,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Diagnostics
             _verified = true;
 
             string executionDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
+            
+#if NET8_0_OR_GREATER
+            string managedName = "Microsoft.Data.Sqlite.dll";
+            string nativeName = "e_sqlite3.dll";
+            string assemblyName = "Microsoft.Data.Sqlite";
+#else
             string managedName = "System.Data.SQLite.dll";
             string nativeName = "SQLite.Interop.dll"; // Usually in x64 subfolder
+            string assemblyName = "System.Data.SQLite";
+#endif
+
             string managedPath = Path.Combine(executionDir, managedName);
             string nativePathDirect = Path.Combine(executionDir, nativeName);
             string nativePathX64 = Path.Combine(executionDir, "x64", nativeName);
 
             bool assemblyLoaded = AppDomain.CurrentDomain
                 .GetAssemblies()
-                .Any(a => string.Equals(a.GetName().Name, "System.Data.SQLite", StringComparison.OrdinalIgnoreCase));
+                .Any(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
 
             // Attempt explicit load if not already loaded and file exists
             if (!assemblyLoaded && File.Exists(managedPath))
@@ -48,7 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Diagnostics
             bool nativePresent = File.Exists(nativePathDirect) || File.Exists(nativePathX64);
 
             // Log summary
-            string summary = $"ExecutionDir={executionDir}; ManagedPresent={managedPresent}; NativePresent={nativePresent}; AssemblyLoaded={assemblyLoaded}; ManagedPath={managedPath}; NativePathDirect={nativePathDirect}; NativePathX64={nativePathX64}";
+            string summary = $"ExecutionDir={executionDir}; ManagedPresent={managedPresent}; NativePresent={nativePresent}; AssemblyLoaded={assemblyLoaded}; ManagedPath={managedPath}; NativePathDirect={nativePathDirect}";
             Log.Information("[SQLite] Deployment Summary: {Summary}", summary);
 
             if (additionalLogFile != null)
@@ -63,15 +72,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Diagnostics
             // Actionable guidance if something is missing
             if (!managedPresent && !assemblyLoaded)
             {
-                Log.Warning("[SQLite] ❌ Managed provider missing AND not loaded. Ensure System.Data.SQLite.Core NuGet restored and not merged by ILRepack.");
+                Log.Warning("[SQLite] ❌ Managed provider missing ({ManagedName}) AND not loaded.", managedName);
             }
             else if (!nativePresent)
             {
-                Log.Warning("[SQLite] ❌ Native interop DLL missing. Expected {NativeName} in root or x64 subfolder. SQLite operations may fail.", nativeName);
+                Log.Warning("[SQLite] ❌ Native interop DLL missing. Expected {NativeName} in root or x64 subfolder.", nativeName);
             }
             else
             {
-                Log.Information("[SQLite] ✅ All required managed/native components available (or already loaded).");
+                Log.Information("[SQLite] ✅ All required managed/native components available ({ManagedName}, {NativeName}).", managedName, nativeName);
             }
         }
     }

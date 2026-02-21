@@ -13,7 +13,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
     /// </summary>
     public class PipePlacementStrategy : ISleevePlacementStrategy
     {
-        public MepElementSize GetMepElementSize(Element mepElement)
+        public MepElementSize GetMepElementSize(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
             var pipe = mepElement as Pipe;
             if (pipe == null)
@@ -24,48 +24,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             
             var size = new MepElementSize { Shape = "Round" }; // Pipes are always round
             
-            var diamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
-            if (diamParam != null && diamParam.HasValue)
+            if (TryGetDoubleParameter(pipe, parameters, "Diameter", out double diameter))
             {
-                size.Diameter = diamParam.AsDouble();
+                size.Diameter = diameter;
                 size.Width = size.Diameter;
                 size.Height = size.Diameter;
             }
             
             // Check insulation
-            var insulationParam = mepElement.LookupParameter("Insulation Thickness") 
-                               ?? mepElement.LookupParameter("InsulationThickness");
-            
-            // ⚠️ DIAGNOSTIC: Log insulation detection for debugging
-            DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: Checking insulation parameters");
-            DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: InsulationThickness param = {insulationParam?.AsDouble() ?? -1:F6}ft");
-            
-            if (insulationParam != null && insulationParam.HasValue)
+            if (TryGetDoubleParameter(mepElement, parameters, "Insulation Thickness", out double thickness))
             {
-                double thickness = insulationParam.AsDouble();
                 double thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
                 DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: Insulation thickness = {thicknessMm:F1}mm ({thickness:F6}ft)");
                 
-                if (thickness > 0.001) // > ~0.3mm
+                if (thickness > 0.001) 
                 {
                     size.IsInsulated = true;
                     size.InsulationThickness = thickness;
-                    DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: ✅ INSULATED (thickness > 0.3mm)");
+                    DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: ✅ INSULATED");
                 }
-                else
-                {
-                    DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: ❌ NOT INSULATED (thickness ≤ 0.3mm)");
-                }
-            }
-            else
-            {
-                DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: ❌ NOT INSULATED (no insulation parameter)");
             }
             
             // ⚠️ DIAGNOSTIC: Log final insulation status for XML storage
             DebugLogger.Info($"[PipeStrategy] Pipe {mepElement.Id}: FINAL STATUS - Shape='{size.Shape}', IsInsulated={size.IsInsulated}, InsulationThickness={size.InsulationThickness:F6}ft");
             
             return size;
+        }
+
+        private bool TryGetDoubleParameter(Element element, System.Collections.Generic.Dictionary<string, string>? parameters, string name, out double value)
+        {
+            value = 0;
+            if (parameters != null && parameters.TryGetValue(name, out var strVal) && !string.IsNullOrEmpty(strVal))
+            {
+                if (double.TryParse(strVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value))
+                    return true;
+            }
+            
+            var p = element.LookupParameter(name);
+            if (p != null && p.HasValue)
+            {
+                value = p.AsDouble();
+                return true;
+            }
+            return false;
         }
         
         public double GetClearance(MepElementSize mepSize, OpeningConditions conditions)
@@ -79,8 +80,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             return UnitUtils.ConvertToInternalUnits(clearanceMm, UnitTypeId.Millimeters);
         }
         
-        public string GetSystemAbbreviation(Element mepElement)
+        public string GetSystemAbbreviation(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
+            if (parameters != null && parameters.TryGetValue("System Abbreviation", out var abbr) && !string.IsNullOrEmpty(abbr))
+            {
+                return abbr;
+            }
             var pipe = mepElement as Pipe;
             if (pipe?.MEPSystem != null)
             {

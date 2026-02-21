@@ -261,10 +261,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                 
                 return clashZones; // Return empty list (NO XML fallback)
             }
-            
-            // ⚠️ REMOVED: All XML loading code - database only now
-            // No XML fallback for any path (PATH 1, PATH 2, PATH 3 all use database exclusively)
+
+            /* WARNFIX_R23: CS0162 - unreachable duplicate return (catch already returns above)
             return clashZones;
+            */
         }
 
         /// <summary>

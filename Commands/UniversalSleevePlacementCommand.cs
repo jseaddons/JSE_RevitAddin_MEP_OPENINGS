@@ -111,7 +111,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     "Please use the main 'Place Sleeves' button in the Emergency Main Dialog instead.\n\n" +
                     "The new orchestrator provides better performance with bulk placement support.");
                 return;
-                
+
+#pragma warning disable CS0162 // FIX: CS0162 - unreachable code kept for reference
                 // ---- 1. VALIDATION: Check document state (NO transaction) ----
                 if (!ValidateDocument())
                 {
@@ -261,17 +262,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
             }
             catch (Exception ex)
+#pragma warning restore CS0162
             {
                 DebugLogger.Error($"{_logPrefix} Exception: {ex.Message}");
                 DebugLogger.Error($"{_logPrefix} Stack trace: {ex.StackTrace}");
-                
-                MessageBox.Show($"Error placing {_category} sleeves:\n\n{ex.Message}", 
-                    "Sleeve Placement Error", 
-                    MessageBoxButtons.OK, 
+
+                MessageBox.Show($"Error placing {_category} sleeves:\n\n{ex.Message}",
+                    "Sleeve Placement Error",
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
         }
-        
+
         private ISleevePlacementStrategy CreateStrategy(string category)
         {
             return category switch

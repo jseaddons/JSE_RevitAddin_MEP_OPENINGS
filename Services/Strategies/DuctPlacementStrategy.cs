@@ -12,7 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
     /// </summary>
     public class DuctPlacementStrategy : ISleevePlacementStrategy
     {
-        public MepElementSize GetMepElementSize(Element mepElement)
+        public MepElementSize GetMepElementSize(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
             var duct = mepElement as Duct;
             if (duct == null)
@@ -24,59 +24,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             var size = new MepElementSize();
             
             // Check if round
-            var diamParam = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM);
-            if (diamParam != null && diamParam.HasValue && diamParam.AsDouble() > 0.001)
+            if (TryGetDoubleParameter(duct, parameters, "Diameter", out double diameter) && diameter > 0.001)
             {
                 size.Shape = "Round";
-                size.Diameter = diamParam.AsDouble();
-                size.Width = size.Diameter;
-                size.Height = size.Diameter;
+                size.Diameter = diameter;
+                size.Width = diameter;
+                size.Height = diameter;
             }
             else
             {
                 // Rectangular
                 size.Shape = "Rectangular";
-                var widthParam = duct.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM);
-                var heightParam = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM);
-                
-                size.Width = widthParam?.AsDouble() ?? 0.0;
-                size.Height = heightParam?.AsDouble() ?? 0.0;
+                TryGetDoubleParameter(duct, parameters, "Width", out double w);
+                TryGetDoubleParameter(duct, parameters, "Height", out double h);
+                size.Width = w;
+                size.Height = h;
             }
             
             // Check insulation
-            var insulationParam = mepElement.LookupParameter("Insulation Thickness") 
-                               ?? mepElement.LookupParameter("InsulationThickness");
-            
-            // ⚠️ DIAGNOSTIC: Log insulation detection for debugging
-            DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: Checking insulation parameters");
-            DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: InsulationThickness param = {insulationParam?.AsDouble() ?? -1:F6}ft");
-            
-            if (insulationParam != null && insulationParam.HasValue)
+            if (TryGetDoubleParameter(mepElement, parameters, "Insulation Thickness", out double thickness))
             {
-                double thickness = insulationParam.AsDouble();
                 double thicknessMm = UnitUtils.ConvertFromInternalUnits(thickness, UnitTypeId.Millimeters);
                 DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: Insulation thickness = {thicknessMm:F1}mm ({thickness:F6}ft)");
                 
-                if (thickness > 0.001) // > ~0.3mm
+                if (thickness > 0.001) 
                 {
                     size.IsInsulated = true;
                     size.InsulationThickness = thickness;
-                    DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ✅ INSULATED (thickness > 0.3mm)");
+                    DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ✅ INSULATED");
                 }
-                else
-                {
-                    DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ❌ NOT INSULATED (thickness ≤ 0.3mm)");
-                }
-            }
-            else
-            {
-                DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: ❌ NOT INSULATED (no insulation parameter)");
             }
             
             // ⚠️ DIAGNOSTIC: Log final insulation status for XML storage
             DebugLogger.Info($"[DuctStrategy] Duct {mepElement.Id}: FINAL STATUS - Shape='{size.Shape}', IsInsulated={size.IsInsulated}, InsulationThickness={size.InsulationThickness:F6}ft");
             
             return size;
+        }
+
+        private bool TryGetDoubleParameter(Element element, System.Collections.Generic.Dictionary<string, string>? parameters, string name, out double value)
+        {
+            value = 0;
+            if (parameters != null && parameters.TryGetValue(name, out var strVal) && !string.IsNullOrEmpty(strVal))
+            {
+                if (double.TryParse(strVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value))
+                    return true;
+            }
+            
+            var p = element.LookupParameter(name);
+            if (p != null && p.HasValue)
+            {
+                value = p.AsDouble();
+                return true;
+            }
+            return false;
         }
         
         public double GetClearance(MepElementSize mepSize, OpeningConditions conditions)
@@ -117,8 +117,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             return UnitUtils.ConvertToInternalUnits(clearanceMm, UnitTypeId.Millimeters);
         }
         
-        public string GetSystemAbbreviation(Element mepElement)
+        public string GetSystemAbbreviation(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
+            if (parameters != null && parameters.TryGetValue("System Abbreviation", out var abbr) && !string.IsNullOrEmpty(abbr))
+            {
+                return abbr;
+            }
             var duct = mepElement as Duct;
             if (duct?.MEPSystem != null)
             {

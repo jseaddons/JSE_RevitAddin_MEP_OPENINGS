@@ -46,7 +46,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             // Reverted Parallelism per user request ("if not effective for single level, forget it")
             foreach (var levelGroup in clustersByLevel)
             {
-                var processedClusterIds = new HashSet<int>();
+                var processedClusterIds = new HashSet<long>();
                 int candidateIdBase = 1; 
 
                 // Sort by size (largest first) - Local to this level

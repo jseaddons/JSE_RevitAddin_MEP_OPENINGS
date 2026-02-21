@@ -1,50 +1,74 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36301.6 d17.14
+# Visual Studio Version 18
+VisualStudioVersion = 18.2.11415.280
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JSE_RevitAddin_MEP_OPENINGS", "JSE_RevitAddin_MEP_OPENINGS.csproj", "{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug R21|Any CPU = Debug R21|Any CPU
-		Debug R22|Any CPU = Debug R22|Any CPU
 		Debug R23|Any CPU = Debug R23|Any CPU
+		Debug R23|x64 = Debug R23|x64
 		Debug R24|Any CPU = Debug R24|Any CPU
+		Debug R24|x64 = Debug R24|x64
 		Debug R25|Any CPU = Debug R25|Any CPU
+		Debug R25|x64 = Debug R25|x64
 		Debug R26|Any CPU = Debug R26|Any CPU
-		Release R21|Any CPU = Release R21|Any CPU
-		Release R22|Any CPU = Release R22|Any CPU
+		Debug R26|x64 = Debug R26|x64
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
 		Release R23|Any CPU = Release R23|Any CPU
+		Release R23|x64 = Release R23|x64
 		Release R24|Any CPU = Release R24|Any CPU
+		Release R24|x64 = Release R24|x64
 		Release R25|Any CPU = Release R25|Any CPU
+		Release R25|x64 = Release R25|x64
 		Release R26|Any CPU = Release R26|Any CPU
+		Release R26|x64 = Release R26|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R21|Any CPU.ActiveCfg = Debug R21|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R21|Any CPU.Build.0 = Debug R21|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R22|Any CPU.ActiveCfg = Debug R22|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R22|Any CPU.Build.0 = Debug R22|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R23|Any CPU.ActiveCfg = Debug R23|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R23|Any CPU.Build.0 = Debug R23|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R23|x64.ActiveCfg = Debug R23|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R23|x64.Build.0 = Debug R23|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R24|Any CPU.ActiveCfg = Debug R24|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R24|Any CPU.Build.0 = Debug R24|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R24|x64.ActiveCfg = Debug R24|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R24|x64.Build.0 = Debug R24|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R25|Any CPU.ActiveCfg = Debug R25|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R25|Any CPU.Build.0 = Debug R25|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R25|x64.ActiveCfg = Debug R25|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R25|x64.Build.0 = Debug R25|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R26|Any CPU.ActiveCfg = Debug R26|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R26|Any CPU.Build.0 = Debug R26|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R21|Any CPU.ActiveCfg = Release R21|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R21|Any CPU.Build.0 = Release R21|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R22|Any CPU.ActiveCfg = Release R22|Any CPU
-		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R22|Any CPU.Build.0 = Release R22|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R26|x64.ActiveCfg = Debug R26|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug R26|x64.Build.0 = Debug R26|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug|Any CPU.Build.0 = Debug|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug|x64.ActiveCfg = Debug|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Debug|x64.Build.0 = Debug|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R23|Any CPU.ActiveCfg = Release R23|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R23|Any CPU.Build.0 = Release R23|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R23|x64.ActiveCfg = Release R23|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R23|x64.Build.0 = Release R23|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R24|Any CPU.ActiveCfg = Release R24|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R24|Any CPU.Build.0 = Release R24|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R24|x64.ActiveCfg = Release R24|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R24|x64.Build.0 = Release R24|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R25|Any CPU.ActiveCfg = Release R25|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R25|Any CPU.Build.0 = Release R25|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R25|x64.ActiveCfg = Release R25|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R25|x64.Build.0 = Release R25|x64
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R26|Any CPU.ActiveCfg = Release R26|Any CPU
 		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R26|Any CPU.Build.0 = Release R26|Any CPU
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R26|x64.ActiveCfg = Release R26|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release R26|x64.Build.0 = Release R26|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release|Any CPU.ActiveCfg = Release|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release|Any CPU.Build.0 = Release|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release|x64.ActiveCfg = Release|x64
+		{AC69D51F-5C97-C2EC-3C9E-3BC22F763A1D}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

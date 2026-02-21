@@ -12,7 +12,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public int SnapshotId { get; set; }
         public int? SleeveInstanceId { get; set; }
         public int? ClusterInstanceId { get; set; }
-        public string SourceType { get; set; } = "Individual"; // Individual | Cluster
+        public int? CombinedInstanceId { get; set; }
+        public string SourceType { get; set; } = "Individual"; // Individual | Cluster | Combined
         public int? FilterId { get; set; }
         public int? ComboId { get; set; }
         public string MepElementIdsJson { get; set; } = "[]";

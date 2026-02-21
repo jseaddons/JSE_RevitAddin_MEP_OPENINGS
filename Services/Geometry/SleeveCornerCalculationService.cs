@@ -356,10 +356,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
                 // CalculateCornersFromParameters correctly handles rotation for all orientations.
                 return CalculateCornersFromParameters(sleeve, structuralType);
 
-                // ✅ FLOOR SLEEVES: Use parameter-based calculation with rotation handling
-                // AABB bbox cannot handle rotated sleeves - we need OBB from parameters + rotation
-                // FloorSleeveStrategy.RetrieveCorners handles rotation at RetrieveRotatedFloorCorners()
-                return CalculateCornersFromParameters(sleeve);
+                // FIX: CS0162 - unreachable code commented out
+                // // ✅ FLOOR SLEEVES: Use parameter-based calculation with rotation handling
+                // // AABB bbox cannot handle rotated sleeves - we need OBB from parameters + rotation
+                // // FloorSleeveStrategy.RetrieveCorners handles rotation at RetrieveRotatedFloorCorners()
+                // return CalculateCornersFromParameters(sleeve);
             }
             catch (Exception ex)
             {

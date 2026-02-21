@@ -66,8 +66,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
         /// - Database-first approach
         /// </summary>
         /// <param name="placedSleeves">List of placed sleeves with clash zone ID, sleeve instance ID, and cluster flag</param>
-        void UpdateFlagsAfterPlacement(
-            List<(Guid clashZoneId, int sleeveInstanceId, bool isCluster)> placedSleeves);
+        public void UpdateFlagsAfterPlacement(
+            List<(Guid clashZoneId, long sleeveInstanceId, bool isCluster)> placedSleeves);
         
         /// <summary>
         /// Batch update flags for placement (optimized version).
@@ -82,7 +82,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
         /// <param name="category">MEP category name</param>
         /// <param name="filterName">Optional filter name</param>
         void BatchUpdateFlagsForPlacement(
-            List<(ClashZone clashZone, int sleeveId)> clashZones, 
+            List<(ClashZone clashZone, long sleeveId)> clashZones, 
             bool isCluster, 
             string category, 
             string filterName = null,

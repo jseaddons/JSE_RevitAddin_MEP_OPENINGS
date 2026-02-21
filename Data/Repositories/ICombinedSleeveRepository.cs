@@ -20,7 +20,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         /// <param name="combinedSleeve">Combined sleeve data to save</param>
         /// <returns>Database-generated CombinedSleeveId</returns>
-        int SaveCombinedSleeve(CombinedSleeve combinedSleeve);
+        long SaveCombinedSleeve(CombinedSleeve combinedSleeve);
 
         /// <summary>
         /// Saves a batch of combined sleeves and marks their constituents as resolved in a single transaction.
@@ -33,7 +33,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         /// <param name="combinedSleeveId">ID of the combined sleeve</param>
         /// <param name="constituents">List of constituents to save</param>
-        void SaveConstituents(int combinedSleeveId, List<SleeveConstituent> constituents);
+        void SaveConstituents(long combinedSleeveId, List<SleeveConstituent> constituents);
         
         // ============================================================================
         // READ OPERATIONS
@@ -44,14 +44,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         /// <param name="combinedSleeveId">Database ID</param>
         /// <returns>Combined sleeve data, or null if not found</returns>
-        CombinedSleeve GetCombinedSleeveById(int combinedSleeveId);
+        CombinedSleeve GetCombinedSleeveById(long combinedSleeveId);
         
         /// <summary>
         /// Retrieves a combined sleeve by its Revit instance ID.
         /// </summary>
         /// <param name="instanceId">Revit ElementId.GetIntegerValue()</param>
         /// <returns>Combined sleeve data, or null if not found</returns>
-        CombinedSleeve GetCombinedSleeveByInstanceId(int instanceId);
+        CombinedSleeve GetCombinedSleeveByInstanceId(long instanceId);
         
         /// <summary>
         /// Retrieves all combined sleeves for a specific combo and filter.
@@ -59,7 +59,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="comboId">File combination ID</param>
         /// <param name="filterId">Filter ID</param>
         /// <returns>List of combined sleeves</returns>
-        List<CombinedSleeve> GetCombinedSleevesForCombo(int comboId, int filterId);
+        List<CombinedSleeve> GetCombinedSleevesForCombo(long comboId, int filterId);
         
         /// <summary>
         /// Retrieves all combined sleeves in the current document.
@@ -72,7 +72,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         /// <param name="combinedSleeveId">Combined sleeve ID</param>
         /// <returns>List of constituents</returns>
-        List<SleeveConstituent> GetConstituents(int combinedSleeveId);
+        List<SleeveConstituent> GetConstituents(long combinedSleeveId);
         
         // ============================================================================
         // UPDATE OPERATIONS
@@ -95,7 +95,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="c4x">Corner 4 X coordinate</param>
         /// <param name="c4y">Corner 4 Y coordinate</param>
         /// <param name="c4z">Corner 4 Z coordinate</param>
-        void UpdateCombinedSleeveCorners(int combinedSleeveId,
+        void UpdateCombinedSleeveCorners(long combinedSleeveId,
             double c1x, double c1y, double c1z,
             double c2x, double c2y, double c2z,
             double c3x, double c3y, double c3z,
@@ -109,7 +109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Deletes a combined sleeve and all its constituents (cascade delete).
         /// </summary>
         /// <param name="combinedSleeveId">Combined sleeve ID to delete</param>
-        void DeleteCombinedSleeve(int combinedSleeveId);
+        void DeleteCombinedSleeve(long combinedSleeveId);
         
         // ============================================================================
         // FLAG OPERATIONS
@@ -122,6 +122,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         /// <param name="constituents">List of constituents to mark as resolved</param>
         /// <param name="combinedInstanceId">The Revit Instance ID of the placed combined sleeve</param>
-        void MarkConstituentsAsResolved(List<SleeveConstituent> constituents, int combinedInstanceId);
+        void MarkConstituentsAsResolved(List<SleeveConstituent> constituents, long combinedInstanceId);
+        
+        /// <summary>
+        /// ✅ ROBUSTNESS FIX: Resets all combined sleeve flags in ClashZones and ClusterSleeves.
+        /// Call this at the start of a new run when NOT clearing the database.
+        /// This ensures clean state for combined sleeve processing.
+        /// </summary>
+        void ResetAllCombinedFlags();
     }
 }

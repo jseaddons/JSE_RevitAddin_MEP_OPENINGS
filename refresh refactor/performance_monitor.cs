@@ -129,8 +129,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             string reportPath = SafeFileLogger.GetLogFilePath($"performance_{_logFileName}");
             SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", report.ToString());
             
+            // ✅ NEW: Generate CSV report for Excel analysis
+            GenerateCsvReport(totalClashZones);
+
             if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[PERFORMANCE] Report written to: {reportPath}");
+        }
+
+        /// <summary>
+        /// Generate CSV performance report for Excel analysis
+        /// </summary>
+        public void GenerateCsvReport(int totalClashZones)
+        {
+            try
+            {
+                var csv = new StringBuilder();
+                csv.AppendLine("Operation,Calls,Total(ms),Avg(ms),Min(ms),Max(ms),Items,Items/s");
+
+                foreach (var op in _operations.Values.OrderByDescending(o => o.TotalMilliseconds))
+                {
+                    double avgMs = op.CallCount > 0 ? (double)op.TotalMilliseconds / op.CallCount : 0;
+                    double itemsPerSec = op.TotalMilliseconds > 0 
+                        ? (double)op.TotalItemCount / op.TotalMilliseconds * 1000 
+                        : 0;
+
+                    csv.AppendLine($"{op.Name},{op.CallCount},{op.TotalMilliseconds},{avgMs:F2},{op.MinMilliseconds},{op.MaxMilliseconds},{op.TotalItemCount},{itemsPerSec:F0}");
+                }
+
+                string csvFileName = $"performance_{_logFileName.Replace(".log", "")}.csv";
+                string csvPath = SafeFileLogger.GetLogFilePath(csvFileName);
+                
+                // Clear file if exists and write header
+                if (System.IO.File.Exists(csvPath)) System.IO.File.Delete(csvPath);
+                SafeFileLogger.SafeAppendTextAlways(csvFileName, csv.ToString());
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[PERFORMANCE] CSV Report written to: {csvPath}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[PERFORMANCE] Failed to generate CSV report: {ex.Message}");
+            }
         }
         
         private class OperationMetrics

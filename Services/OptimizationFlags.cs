@@ -277,7 +277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Impact: Adds logging overhead but reveals where time is spent
         /// Location: Services/ClashZoneService.cs (CreateClashZone)
         /// </summary>
-        public static bool EnableDetailedClashZoneProfiler { get; set; } = true;
+        public static bool EnableDetailedClashZoneProfiler { get; set; } = false;
 
         /// <summary>
         /// Skip XML processing during Flag Reset operation (database-only mode optimization)
@@ -364,7 +364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = true; // ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging { get; set; } = false; // ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -475,7 +475,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: No performance logging (deployment mode)
         /// Default: false (disabled for deployment - enable for diagnostics)
         /// </summary>
-        public static bool LogPerformanceMetrics { get; set; } = false;
+        public static bool LogPerformanceMetrics { get; set; } = true;
         
         #endregion
         
@@ -491,7 +491,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } =false; // DISABLED for performance - was causing 2.6x slowdown
+        public static bool UseDiagnosticMode { get; set; } = false; // false = no per-zone debug logging overhead
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)
@@ -757,7 +757,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When true: Removes validation for elements just placed in same transaction (90% reduction in GetElement calls)
         /// When false: Validates every element (current behavior)
         /// Default: true (safe - elements just placed should be valid)
-        /// Location: Services/NewSleevePlacerService.cs
+        /// Location: Services/NewSleevePlacerService.cs, Services/Placement/SleeveParameterService.cs
         /// </summary>
         public static bool SkipRedundantValidation { get; set; } = true;
 
@@ -834,7 +834,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/NewSleevePlacerService.cs
         /// ⚠️ CRITICAL: This flag prevents the document mismatch bug we experienced in parameter transfer
         /// </summary>
-        public static bool UseSafeElementValidation { get; set; } = true;
 
         /// <summary>
         /// Enable safe transaction management (checks IsModifiable, handles rollback properly)
@@ -853,6 +852,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/NewSleevePlacerService.cs
         /// </summary>
         public static bool UsePerformanceMonitoring { get; set; } = true;
+
+        /// <summary>
+        /// 🚀 MULTI-FLOOR OPTIMIZATION: Enable 3-phase global placement flow
+        /// When true: 
+        ///   Phase 1: Place ALL individual sleeves (all floors) → 1 Regenerate
+        ///   Phase 2: Cluster ALL floors together → 1 Regenerate
+        ///   Phase 3: Delete ALL old sleeves → 1 Regenerate
+        ///   Result: Only 3 Regenerates total (vs 3N for N floors)
+        /// When false: Legacy per-floor processing (3 regenerates per floor)
+        /// Default: false (safe - use legacy until tested)
+        /// ⚠️ ROLLBACK: Set to false to revert to working code instantly
+        /// </summary>
+        public static bool UseOptimizedMultiFloorFlow { get; set; } = false;
 
         /// <summary>
         /// Enable timeout protection for long-running operations
@@ -1159,7 +1171,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // Phase 3: Conservative defaults
             UseIncrementalDetection = false;
-            UseDiagnosticMode = true;
+            UseDiagnosticMode = false;
             
             // Sleeve Placement: Safe defaults (all enabled)
             UseOptimizedXmlSaves = true;
@@ -1215,7 +1227,9 @@ Phase 3 (10% + 90% incremental): IncrementalDetection={UseIncrementalDetection},
 Section Box Optimizations: BoundingBoxSectionBoxFilter={UseBoundingBoxSectionBoxFilter}, CurveInBoundingBoxFilter={UseCurveInBoundingBoxFilter}, ViewIndependentCollector={UseViewIndependentCollector}
 Spatial Optimizations: LevelBasedSpatialGrid={UseLevelBasedSpatialGrid}, MultiSolidCache={UseMultiSolidCache}
 Advanced Optimizations: ProgressiveLOD={UseProgressiveLOD}, HybridSpatialIndex={UseHybridSpatialIndex}, LogPerformanceMetrics={LogPerformanceMetrics}
+#pragma warning disable CS0618 // FIX: CS0618 - obsolete flags kept for backward compatibility logging
 Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNewZoneFilter}, FamilyManager={UseNewFamilyManager}";
+#pragma warning restore CS0618
         }
         
         #endregion
@@ -1242,7 +1256,7 @@ Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNew
         /// When false: Skips corner extraction and clustering, only places individual sleeves.
         /// Default: true
         /// </summary>
-        public static bool EnableClusteringWorkflow { get; set; } = true;
+        public static bool EnableClusteringWorkflow { get; set; } = false;
 
         /// <summary>
         /// Sleeve InstanceIds to trace in cluster_debug.log and batch_v2.log (e.g. 1436672, 1436679, 1436686).

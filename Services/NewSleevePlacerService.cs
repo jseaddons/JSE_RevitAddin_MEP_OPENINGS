@@ -8,8 +8,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
-using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refactored;
@@ -20,7 +20,6 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Configuration;
 using JSE_RevitAddin_MEP_OPENINGS.Services; // For OpeningSettingsHelper
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
-using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -384,6 +383,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ? PHASE 1 OPTIMIZATION: Pre-cache all required levels and family symbols upfront (eliminates redundant Revit API calls)
             if (filteredZones.Count > 0)
             {
+                var cacheSw = System.Diagnostics.Stopwatch.StartNew();
                 if (OptimizationFlags.UseFamilySymbolCache)
                 {
                     PreCacheFamilySymbols(filteredZones);
@@ -391,6 +391,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Γ£à NEW: Pre-cache all required levels from zone data
                 PreCacheAllRequiredLevels(filteredZones);
+                cacheSw.Stop();
+                SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏱️ PRE-PLACEMENT CACHE: {cacheSw.ElapsedMilliseconds}ms for {filteredZones.Count} zones\n");
             }
             if (_zoneFilterService != null)
             {
@@ -422,7 +424,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ? PARALLEL PROCESSING: Run planning in parallel (pure computations, no Revit API calls)
                         // This includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
+                        var planSw = System.Diagnostics.Stopwatch.StartNew();
                         planningResult = _planner.Plan(filteredZones);
+                        planSw.Stop();
+                        
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏱️ PARALLEL PLANNING: {planSw.ElapsedMilliseconds}ms for {filteredZones.Count} zones\n");
+
                         planningTracker?.SetItemCount(planningResult.TotalCount);
                         
                         // Create lookup map: ClashZoneId -> PlanningDto for fast access during placement
@@ -491,6 +498,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info($"[NewSleevePlacer] Optimization Flags: UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, UseNewSleevePlacerService={OptimizationFlags.UseNewSleevePlacerService}");
             }
+
 
             // ? FORCE FLAG: Ensure batching is enabled for this operation (Fixes regression)
             OptimizationFlags.UseBatchedParameterWrites = true;
@@ -587,7 +595,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         bool sleeveExists = false;
                         if (clashZone.SleeveInstanceId > 0)
                         {
-                            var element = _doc.GetElement(new ElementId(clashZone.SleeveInstanceId));
+                            var element = _doc.GetElement(ElementIdCompat.FromValue(clashZone.SleeveInstanceId));
                             if (element != null && element is FamilyInstance)
                             {
                                 sleeveExists = true;
@@ -663,7 +671,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ? SAFE ELEMENT VALIDATION: Validate element by ID (avoids document mismatch bug)
                         // ?? CRITICAL: Do NOT compare documents by reference (causes false positives)
                         // Use element ID validation instead - if doc.GetElement() succeeds, element is in correct document
-                        if (OptimizationFlags.UseSafeElementValidation)
+                        if (!OptimizationFlags.SkipRedundantValidation)
                         {
                             try
                             {
@@ -703,7 +711,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ DELEGATE TO FLAG MANAGER: Update flags using dedicated service
                         if (_flagManager != null)
                         {
-                            var updateList = new List<(Guid, int, bool)> { (clashZone.Id, placedSleeve.Id.GetIntegerValue(), false) };
+                            var updateList = new List<(Guid, long, bool)> { (clashZone.Id, (long)placedSleeve.Id.GetIntegerValue(), false) };
                             _flagManager.UpdateFlagsAfterPlacement(updateList);
                         }
                         
@@ -994,7 +1002,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var sampleZone = placedSleeveData[0].zone;
                             if (sampleZone != null && sampleZone.SleeveInstanceId > 0)
                             {
-                                var s = _doc.GetElement(new ElementId(sampleZone.SleeveInstanceId)) as FamilyInstance;
+                                var s = _doc.GetElement(ElementIdCompat.FromValue(sampleZone.SleeveInstanceId)) as FamilyInstance;
                                 if (s != null)
                                 {
                                     var w = s.LookupParameter("Width")?.AsDouble() * 304.8 ?? -1;
@@ -2004,7 +2012,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ? SAFE ELEMENT VALIDATION: Validate instance was created successfully
-                if (OptimizationFlags.UseSafeElementValidation)
+                if (!OptimizationFlags.SkipRedundantValidation)
                 {
                     if (instance == null || !instance.IsValidObject)
                     {

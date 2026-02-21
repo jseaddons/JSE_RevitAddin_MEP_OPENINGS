@@ -29,7 +29,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
             List<dynamic> cluster,
             double rotationAngle,
             out XYZ origin,
-            Func<int, string, dynamic> getClashZoneBySleeveInstanceId,
+            Func<long, string, dynamic> getClashZoneBySleeveInstanceId,
             string xmlFilePath = null)
         {
             origin = XYZ.Zero;
@@ -52,7 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                 {
                     // ✅ FIX: Explicitly extract SleeveInstanceId from dynamic to avoid dynamic dispatch errors
                     // Access the property once and store in a local variable
-                    int sleeveInstanceId;
+                    long sleeveInstanceId;
                     try
                     {
                         // Try to get SleeveInstanceId from dynamic object
@@ -60,13 +60,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                         object sleeveIdObj = dynSleeve.SleeveInstanceId;
                         if (sleeveIdObj == null) continue;
                         
-                        // Convert to int
-                        if (sleeveIdObj is int id)
-                            sleeveInstanceId = id;
-                        else if (sleeveIdObj is long longId)
-                            sleeveInstanceId = (int)longId;
+                        // Convert to long
+                        if (sleeveIdObj is long longId)
+                            sleeveInstanceId = longId;
+                        else if (sleeveIdObj is int intId)
+                            sleeveInstanceId = intId;
                         else
-                            sleeveInstanceId = Convert.ToInt32(sleeveIdObj);
+                            sleeveInstanceId = Convert.ToInt64(sleeveIdObj);
                     }
                     catch
                     {

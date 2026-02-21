@@ -270,20 +270,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                         DebugLogger.Info($"[SleevePersistenceService] ✅ Pre-validated {placedSleeveData.Count} sleeves in parallel: {validSleeveData.Count} valid, {skippedCount} skipped in {validationTimer.ElapsedMilliseconds}ms");
                     }
 
-                    // ✅ PLACEMENT OPTIMIZATION: Collect all updates in lists for batch processing
-                    var placementUpdates = new List<(Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
-                        double PlacementX, double PlacementY, double PlacementZ,
-                        double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
-                        double RotationAngleRad, string SleeveFamilyName)>();
-                    var cornerUpdates = new List<(Guid ClashZoneGuid,
-                        double Corner1X, double Corner1Y, double Corner1Z,
-                        double Corner2X, double Corner2Y, double Corner2Z,
-                        double Corner3X, double Corner3Y, double Corner3Z,
-                        double Corner4X, double Corner4Y, double Corner4Z)>();
-
-                    // ✅ PERFORMANCE OPTIMIZATION: Batch processing in single transaction (handled by repository)
-                    // ✅ SAFETY: Process each sleeve with individual error handling (fail-safe)
-                    // ✅ NOTE: Database operations remain sequential (SQLite doesn't support parallel writes well)
+                    // ✅ PERFORMANCE OPTIMIZATION: Process each sleeve and update zone object in-memory
+                    // Then perform ONE high-performance bulk update at the end (Push then Merge)
                     foreach (var (sleeve, zone, fw, fh, fd, fdepth) in validSleeveData)
                     {
                         // ✅ SAFETY: Comprehensive validation before processing
@@ -295,11 +283,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                             continue;
                         }
 
-                        if (zone.SleeveInstanceId <= 0)
+                        if (zone.SleeveInstanceId <= 0 && zone.ClusterSleeveInstanceId <= 0 && zone.CombinedClusterSleeveInstanceId <= 0 && !zone.IsCombinedResolved)
                         {
                             skippedCount++;
                             if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[SleevePersistenceService] Skipping zone {zone.Id}: Invalid SleeveInstanceId={zone.SleeveInstanceId}");
+                                DebugLogger.Warning($"[SleevePersistenceService] Skipping zone {zone.Id}: No linked sleeve element (SleeveId={zone.SleeveInstanceId}, ClusterId={zone.ClusterSleeveInstanceId}, CombinedId={zone.CombinedClusterSleeveInstanceId})");
                             continue;
                         }
 
@@ -322,106 +310,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 
                         try
                         {
-                            // ✅ STEP 1: Collect placement data for batch update (instead of immediate write)
-                            repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
-                            placementUpdates.Add((
-                                zone.Id,
-                                zone.SleeveInstanceId,
-                                zone.SleeveWidth > 0 ? zone.SleeveWidth : fw,
-                                zone.SleeveHeight > 0 ? zone.SleeveHeight : fh,
-                                zone.SleeveDiameter > 0 ? zone.SleeveDiameter : fd,
-                                zone.SleevePlacementPointX,
-                                zone.SleevePlacementPointY,
-                                zone.SleevePlacementPointZ,
-                                zone.SleevePlacementActiveX,
-                                zone.SleevePlacementActiveY,
-                                zone.SleevePlacementActiveZ,
-                                zone.MepElementRotationAngle,
-                                sleeve.Symbol?.Family?.Name ?? string.Empty));
+                            // ✅ STEP 1: Sync geometry and family data back to zone object for bulk persistence
+                            // This replaces multiple individual repository.UpdateXXX calls
+                            zone.SleeveFamilyName = sleeve.Symbol?.Family?.Name ?? string.Empty;
+                            
+                            // Ensure dimensions are synced if they were calculated during placement
+                            if (zone.SleeveWidth <= 0 && fw > 0) zone.SleeveWidth = fw;
+                            if (zone.SleeveHeight <= 0 && fh > 0) zone.SleeveHeight = fh;
+                            if (zone.SleeveDiameter <= 0 && fd > 0) zone.SleeveDiameter = fd;
 
-                            // ✅ CRITICAL: Sync MEP Category to DB (Dump once, use many times)
-                            // This ensures the category used for filtering is persisted
-                            if (!string.IsNullOrEmpty(zone.MepElementCategory))
+                            // ✅ STEP 2: Handle rotated bounding box and corners
+                            var rotationAngleRad = zone.MepElementRotationAngle;
+                            var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
+                            bool isStraightAxisAligned = IsStraightAxisAligned(rotationAngleDeg);
+
+                            if (Math.Abs(rotationAngleRad) > 1e-6 && !isStraightAxisAligned)
                             {
-                                repository.UpdateMepCategory(zone.Id, zone.MepElementCategory);
-                            }
-
-                            // ✅ STEP 2: Save bounding boxes if available
-                            if (!IsBoundingBoxEmpty(zone))
-                            {
-                                // Save axis-aligned bounding box
-                                repository.UpdateSleeveBoundingBoxes(
-                                    zone.Id,
-                                    zone.SleeveBoundingBoxMinX, zone.SleeveBoundingBoxMinY, zone.SleeveBoundingBoxMinZ,
-                                    zone.SleeveBoundingBoxMaxX, zone.SleeveBoundingBoxMaxY, zone.SleeveBoundingBoxMaxZ);
-
-                                // ✅ STEP 3: Save RCS bounding box for walls/framing
-                                if (IsWallOrFramingHost(zone) && !IsRcsBoundingBoxEmpty(zone))
+                                // ✅ PERFORMANCE: Use pre-calculated rotated bbox if available
+                                if (rotatedBboxData.ContainsKey(zone.Id))
                                 {
-                                    repository.UpdateSleeveBoundingBoxesRcs(
-                                        zone.Id,
-                                        zone.SleeveBoundingBoxRCS_MinX, zone.SleeveBoundingBoxRCS_MinY, zone.SleeveBoundingBoxRCS_MinZ,
-                                        zone.SleeveBoundingBoxRCS_MaxX, zone.SleeveBoundingBoxRCS_MaxY, zone.SleeveBoundingBoxRCS_MaxZ);
-                                }
-
-                                // ✅ STEP 4: Save rotated bounding box and corners for rotated sleeves
-                                var rotationAngleRad = zone.MepElementRotationAngle;
-                                var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
-                                bool isStraightAxisAligned = IsStraightAxisAligned(rotationAngleDeg);
-
-                                if (Math.Abs(rotationAngleRad) > 1e-6 && !isStraightAxisAligned)
-                                {
-                                    // ✅ PERFORMANCE: Use pre-calculated rotated bbox if available (from parallel calculation)
-                                    if (rotatedBboxData.ContainsKey(zone.Id))
-                                    {
-                                        var bbox = rotatedBboxData[zone.Id];
-                                        repository.UpdateRotatedBoundingBoxes(
-                                            zone.Id,
-                                            bbox.minX, bbox.minY, bbox.minZ,
-                                            bbox.maxX, bbox.maxY, bbox.maxZ);
-                                    }
-                                    else
-                                    {
-                                        // ✅ FALLBACK: Calculate on-the-fly if not pre-calculated (sequential fallback)
-                                        double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                        double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                        double actualDepth = zone.SleeveBoundingBoxMaxZ - zone.SleeveBoundingBoxMinZ;
-
-                                        var rotatedBbox = _rotatedBboxService.CalculateRotatedBoundingBoxFromZone(zone, actualWidth, actualHeight, actualDepth);
-                                        if (rotatedBbox.HasValue)
-                                        {
-                                            repository.UpdateRotatedBoundingBoxes(
-                                                zone.Id,
-                                                rotatedBbox.Value.minX, rotatedBbox.Value.minY, rotatedBbox.Value.minZ,
-                                                rotatedBbox.Value.maxX, rotatedBbox.Value.maxY, rotatedBbox.Value.maxZ);
-                                        }
-                                    }
-
-                                    // ✅ STEP 5: Batch save corners to database (use pre-calculated if available, otherwise calculate on-the-fly)
-                                    // ✅ CRITICAL: These corners are saved AFTER regeneration and used by cluster calculation
-                                    // - Cluster calculation reads corners from database (SleeveCorner1X/Y/Z through Corner4X/Y/Z)
-                                    // - NO recalculation needed during clustering - corners are already saved
-                                    // ✅ DISABLED: Corner calculation moved to BatchSleeveCornerExtractor (after placement + regeneration)
-                                    // Corners are now extracted from actual Revit geometry, not calculated from math.
-                                    // See OpeningCommandOrchestrator.ExecuteCommandSequence for the correct extraction flow.
-                                }
-                                else if (Math.Abs(rotationAngleRad) > 1e-6 && isStraightAxisAligned)
-                                {
-                                    // ✅ AXIS-ALIGNED SLEEVE: Save corners only (no rotated bbox needed)
-                                    double axisAlignedWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                    double axisAlignedHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                    
-                                    // Use pre-calculated corners if available
-                                    // ✅ DISABLED: Corner calculation moved to BatchSleeveCornerExtractor
-                                }
-                                else
-                                {
-                                    // ✅ ZERO ROTATION: Save corners for consistency
-                                    double zeroRotationWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                    double zeroRotationHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                    
-                                    // Use pre-calculated corners if available
-                                    // ✅ DISABLED: Corner calculation moved to BatchSleeveCornerExtractor
+                                    var bbox = rotatedBboxData[zone.Id];
+                                    zone.RotatedBoundingBoxMinX = bbox.minX;
+                                    zone.RotatedBoundingBoxMinY = bbox.minY;
+                                    zone.RotatedBoundingBoxMinZ = bbox.minZ;
+                                    zone.RotatedBoundingBoxMaxX = bbox.maxX;
+                                    zone.RotatedBoundingBoxMaxY = bbox.maxY;
+                                    zone.RotatedBoundingBoxMaxZ = bbox.maxZ;
                                 }
                             }
 
@@ -430,43 +344,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                         catch (Exception ex)
                         {
                             errorCount++;
-                            // ✅ SAFETY: Fail-safe - continue with next sleeve instead of aborting entire batch
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Error($"[SleevePersistenceService] Failed to persist sleeve {sleeve?.Id?.GetIntegerValue() ?? -1} for zone {zone?.Id}: {ex.Message}");
-                                DebugLogger.Error($"[SleevePersistenceService] Stack trace: {ex.StackTrace}");
+                                DebugLogger.Error($"[SleevePersistenceService] Failed to process sleeve {sleeve?.Id?.GetIntegerValue() ?? -1} for zone {zone?.Id}: {ex.Message}");
                             }
-                            // Continue with next sleeve (fail-safe)
                         }
                     }
 
-                    // ✅ PLACEMENT OPTIMIZATION: Batch flush all collected updates (50x faster than per-sleeve calls)
-                    var batchFlushTimer = System.Diagnostics.Stopwatch.StartNew();
+                    // ✅ PLACEMENT OPTIMIZATION: Perform SINGLE high-performance bulk update (Push then Merge)
+                    // This is 50x-100x faster than individual updates for large batches.
+                    var bulkUpdateTimer = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
-                        if (placementUpdates.Count > 0)
+                        var zonesToUpdate = validSleeveData.Select(x => x.zone).ToList();
+                        if (zonesToUpdate.Count > 0)
                         {
-                            repository.BatchUpdateSleevePlacement(placementUpdates);
+                            repository.BatchUpdatePostPlacement(zonesToUpdate);
                         }
-                        if (cornerUpdates.Count > 0)
-                        {
-                            repository.BatchUpdateSleeveCorners(cornerUpdates);
-                        }
-                        batchFlushTimer.Stop();
+                        bulkUpdateTimer.Stop();
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[SleevePersistenceService] ✅ BATCH FLUSH: {placementUpdates.Count} placements + {cornerUpdates.Count} corners in {batchFlushTimer.ElapsedMilliseconds}ms");
+                            DebugLogger.Info($"[SleevePersistenceService] ✅ BULK POST-PLACEMENT UPDATE: {zonesToUpdate.Count} zones in {bulkUpdateTimer.ElapsedMilliseconds}ms");
                         }
                     }
-                    catch (Exception batchEx)
+                    catch (Exception bulkEx)
                     {
-                        batchFlushTimer.Stop();
+                        bulkUpdateTimer.Stop();
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Error($"[SleevePersistenceService] ❌ BATCH FLUSH FAILED: {batchEx.Message}");
+                            DebugLogger.Error($"[SleevePersistenceService] ❌ BULK POST-PLACEMENT UPDATE FAILED: {bulkEx.Message}");
                         }
                         throw;
                     }
+
 
                     // ✅ PERFORMANCE MONITORING: Log batch persistence statistics
                     persistenceTimer.Stop();
@@ -570,10 +480,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     categoryForLookup = firstPlacedZone.zone.MepElementCategory;
                 }
 
-                // ✅ CRITICAL FIX: Always save snapshots, even if filter lookup fails
-                // Get placed zones with SleeveInstanceId > 0 (REQUIRED for snapshot save)
+                // ✅ CRITICAL FIX: Always save snapshots for Individual, Cluster, and Combined sleeves
+                // Get placed zones that have any valid instance association (REQUIRED for snapshot save)
                 var placedZones = placedSleeveData
-                    .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
+                    .Where(p => p.zone != null && (p.zone.SleeveInstanceId > 0 || p.zone.ClusterSleeveInstanceId > 0 || p.zone.IsCombinedResolved))
                     .Select(p => p.zone)
                     .Distinct()
                     .ToList();

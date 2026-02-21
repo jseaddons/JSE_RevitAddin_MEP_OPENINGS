@@ -154,7 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                             tracker?.SetItemCount(successCount);
                         }
-                        catch (Exception ex)
+                        catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
                         {
                             // ✅ ERROR HANDLING: Rollback transaction on any failure
                             transaction.Rollback();
@@ -229,28 +229,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private async Task<BatchUpdateResult> ProcessBulkUpdateAsync(List<ParameterUpdateBatch> updates)
         {
             var result = new BatchUpdateResult();
-            
+
             try
             {
-                // ✅ OPTIMIZATION: Use parameterized bulk update query
                 var parameterNames = updates.Select(u => u.ParameterName).Distinct().ToList();
-                var sleeveGuids = updates.Select(u => u.SleeveGuid).Distinct().ToList();
 
                 foreach (var parameterName in parameterNames)
                 {
                     var parameterUpdates = updates.Where(u => u.ParameterName == parameterName).ToList();
-                    
-                    // ✅ OPTIMIZATION: Use CASE WHEN for bulk updates
-                    var updateQuery = $@"
-                        UPDATE SleeveParameters 
-                        SET {parameterName} = CASE SleeveGuid 
-                            {string.Join(" ", parameterUpdates.Select(u => $"WHEN '{u.SleeveGuid}' THEN '{u.ParameterValue}' "))}
-                            ELSE {parameterName} 
-                        END
-                        WHERE SleeveGuid IN ({string.Join(",", parameterUpdates.Select(u => $"'{u.SleeveGuid}'"))})";
 
-                    using (var command = new SQLiteCommand(updateQuery, (SQLiteConnection)_dbContext.Connection))
+                    // Build parameterized CASE WHEN query to prevent SQL injection
+                    var queryBuilder = new System.Text.StringBuilder();
+                    queryBuilder.Append($"UPDATE SleeveParameters SET [{parameterName}] = CASE SleeveGuid ");
+
+                    using (var command = new SQLiteCommand("", (SQLiteConnection)_dbContext.Connection))
                     {
+                        for (int i = 0; i < parameterUpdates.Count; i++)
+                        {
+                            queryBuilder.Append($"WHEN @guid{i} THEN @val{i} ");
+                            command.Parameters.AddWithValue($"@guid{i}", parameterUpdates[i].SleeveGuid);
+                            command.Parameters.AddWithValue($"@val{i}", parameterUpdates[i].ParameterValue);
+                        }
+                        queryBuilder.Append($"ELSE [{parameterName}] END WHERE SleeveGuid IN (");
+                        queryBuilder.Append(string.Join(",", Enumerable.Range(0, parameterUpdates.Count).Select(i => $"@guid{i}")));
+                        queryBuilder.Append(")");
+
+                        command.CommandText = queryBuilder.ToString();
                         var rowsAffected = await command.ExecuteNonQueryAsync();
                         result.SuccessCount += rowsAffected;
                     }

@@ -8,7 +8,7 @@ using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Helpers;
+// using JSE_RevitAddin_MEP_OPENINGS.Services.Helpers; // ✅ Removed legacy VersionInfo import
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm;
@@ -88,7 +88,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         private readonly Services.Geometry.ISleeveCornerCalculationService _cornerService;
         
         // ✅ SOLID REFACTORING: Pre-calculation service (optional, used when flag enabled)
-        private readonly IClusterPreCalculationService? _preCalculationService;
+        private readonly IClusterPreCalculationService _preCalculationService;
         
         // ✅ PATH 1a: Existence checker for smart placement (SOLID - SRP)
         private readonly ISleeveExistenceChecker _existenceChecker;
@@ -101,6 +101,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         // ✅ BATCH V2 SERVICES
         private readonly BatchClusterCalculationService _batchCalculationService;
         private readonly BatchClusterPlacementService _batchPlacementService;
+        
+        // ✅ SNAPSHOT TRANSFER SERVICE: For transferring MEP parameters from snapshots to cluster sleeves
+        private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IParameterSnapshotTransferService _snapshotTransferService;
         
         // Internal state
         private string? _filterName;
@@ -139,10 +142,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             IClusterTimeoutService timeoutService,
             Services.Geometry.ISleeveCornerCalculationService cornerService,
             ClusteringStrategyFactory? strategyFactory = null,
-            Services.Interfaces.Refactor.IFlagManager? flagManager = null,
+            Services.Interfaces.Refactor.IFlagManager flagManager = null,
             FilterManagementService? filterService = null,
-            IClusterPreCalculationService? preCalculationService = null,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null)
+            IClusterPreCalculationService preCalculationService = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IParameterSnapshotTransferService snapshotTransferService = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
@@ -153,6 +157,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             _timeoutService = timeoutService ?? throw new ArgumentNullException(nameof(timeoutService));
             _cornerService = cornerService ?? throw new ArgumentNullException(nameof(cornerService));
             _performanceMonitor = performanceMonitor;
+            _snapshotTransferService = snapshotTransferService;
             
             // ✅ BATCH V2: Initialize new services
             // Get the project-specific database path from SleeveDbContext
@@ -169,8 +174,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             
             // ✅ CODE REUSE: Inject SleeveParameterService for consistent parameter logic
             var parameterService = new JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveParameterService(doc);
-            // ✅ BATCH V2: Pass injected monitor to batch placement service
-            _batchPlacementService = new BatchClusterPlacementService(dbPath, new ClashZoneRepository(new SleeveDbContext(doc)), parameterService, cleanupService, _performanceMonitor);
+            // ✅ BATCH V2: Pass injected monitor and snapshot transfer service to batch placement service
+            _batchPlacementService = new BatchClusterPlacementService(dbPath, new ClashZoneRepository(new SleeveDbContext(doc)), parameterService, cleanupService, _performanceMonitor, _snapshotTransferService);
             
             _flagManager = flagManager ?? throw new ArgumentNullException(nameof(flagManager));
             _strategyFactory = strategyFactory ?? new ClusteringStrategyFactory();
@@ -223,7 +228,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                     foreach (var z in clashZones)
                     {
-                        if (OptimizationFlags.ShouldTraceSleeve(z.SleeveInstanceId))
+                        if (OptimizationFlags.ShouldTraceSleeve((int)z.SleeveInstanceId))
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [TRACE SLEEVE] SleeveId={z.SleeveInstanceId} in clustering input: Category={targetCategory}, Guid={z.Id}, IsClusterResolved={z.IsClusterResolved}, MarkedForClusterProcess={z.MarkedForClusterProcess}\n");
                             SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [TRACE SLEEVE] {z.SleeveInstanceId} in input for {targetCategory}\n");
@@ -336,13 +341,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             // ✅ LOGGING: Log Build Timestamp to verify correct DLL is running (PATH 2/3)
             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING CLUSTERING (PATH 2/3) - Build: {Services.Helpers.VersionInfo.GetBuildTimestamp()} - Version: {Services.Helpers.VersionInfo.VersionTag}\n");
+                $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING CLUSTERING (PATH 2/3) - Build: {VersionInfo.GetBuildTimestamp()} - Version: {VersionInfo.VersionTag}\n");
 
             // 🔥 CRITICAL: Direct System.IO logging to ensure we always see entry (bypasses SafeFileLogger completely)
             // This MUST work in both R2023 and R2024
             try
             {
-                var versionTag = Services.Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
+                var versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
 
@@ -357,9 +362,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 var assemblyPath = assembly?.Location ?? "unknown";
                 var buildTime = File.Exists(assemblyPath) ? File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss") : "unknown";
 
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ClusterSleeves METHOD CALLED\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] Version: {versionTag}, Assembly: {Path.GetFileName(assemblyPath)}, BuildTime: {buildTime}\n");
-                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] Parameters: category={targetCategory}, filter={filterName}, comboId={comboId}, filterId={filterId}\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ClusterSleeves METHOD CALLED\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] Version: {versionTag}, Assembly: {Path.GetFileName(assemblyPath)}, BuildTime: {buildTime}\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] Parameters: category={targetCategory}, filter={filterName}, comboId={comboId}, filterId={filterId}\n");
             }
             catch (Exception ex)
             {
@@ -375,7 +380,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 var buildTimestamp = !string.IsNullOrWhiteSpace(assemblyPath)
                     ? System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss")
                     : "unknown";
-                var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
+                var versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"\n========== REFACTORED CLUSTER SERVICE STARTED ==========\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | VERSION: {versionTag} | Assembly: {Path.GetFileName(assemblyPath)}\n");
@@ -438,23 +443,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     loadTracker.SetItemCount(allClashZones?.Count ?? 0);
                 }
 
-                try
-                {
-                    string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE: Loaded {allClashZones?.Count ?? 0} clash zones from database for category '{targetCategory}'\n");
-                }
-                catch { }
-
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE: Loaded {allClashZones?.Count ?? 0} clash zones from database for category '{targetCategory}'\n");
 
                 if (allClashZones == null || allClashZones.Count == 0)
                 {
-                    try
-                    {
-                        string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXIT: No clash zones loaded for category '{targetCategory}' - RETURNING (0, 0)\n");
-                    }
-                    catch { }
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ EXIT: No clash zones loaded for category '{targetCategory}'\n");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -489,14 +481,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     if (isForceDetection || isPath3Validated || isPath3Invalidated || isPath3New)
                     {
                         var clustersToDelete = new List<ElementId>();
-                        var clusterIdsSeen = new HashSet<int>();
+                        var clusterIdsSeen = new HashSet<long>();
 
                         foreach (var cz in allClashZones)
                         {
                             if (cz.ClusterSleeveInstanceId > 0 && cz.IsClusterResolved && !clusterIdsSeen.Contains(cz.ClusterSleeveInstanceId))
                             {
                                 clusterIdsSeen.Add(cz.ClusterSleeveInstanceId);
-                                clustersToDelete.Add(new ElementId(cz.ClusterSleeveInstanceId));
+                                clustersToDelete.Add(ElementIdCompat.FromValue(cz.ClusterSleeveInstanceId));
                             }
                         }
 
@@ -593,7 +585,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         // Only process zones that were previously clustered
                         if (cz.ClusterSleeveInstanceId > 0 && cz.IsClusterResolved)
                         {
-                            var clusterSleeve = doc.GetElement(new ElementId(cz.ClusterSleeveInstanceId));
+                            var clusterSleeve = doc.GetElement(ElementIdCompat.FromValue(cz.ClusterSleeveInstanceId));
                             if (clusterSleeve == null || !clusterSleeve.IsValidObject)
                             {
                                 // ✅ SELF-HEALING: Cluster sleeve was deleted - reset flags and allow re-clustering
@@ -723,12 +715,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                 }
 
-                try
-                {
-                    string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ FILTERED: {filteredClashZones.Count} clash zones ready for clustering (SleeveId>0, not cluster resolved, category='{targetCategory}')\n");
-                }
-                catch { }
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ FILTERED: {filteredClashZones.Count} clash zones ready for clustering (SleeveId>0, not cluster resolved, category='{targetCategory}')\n");
 
                 // ✅ PHASE 6: PRE-CLUSTERING VALIDATION
@@ -778,13 +764,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                 if (filteredClashZones.Count == 0)
                 {
-                    try
-                    {
-                        string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXIT: No sleeves to cluster after filtering - RETURNING (0, 0)\n");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [FLOW] EXIT: filteredClashZones=0 (check STEP 1-4 above for category='{targetCategory}')\n");
-                    }
-                    catch { }
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ EXIT: No sleeves to cluster after filtering\n");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -887,7 +866,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 continue;
                             }
 
-                            int referenceHostId = firstClashZone.StructuralElementIdValue;
+                            long referenceHostId = firstClashZone.StructuralElementIdValue;
                             string referenceOrientation = (firstClashZone.HostOrientation ?? "").Trim();
                             double referenceThickness = firstClashZone.StructuralElementThickness;
 
@@ -1016,15 +995,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             $"[{DateTime.Now:HH:mm:ss}] 🚀 Starting parallel pre-calculation for all clusters\n");
 
                         // ✅ Build ClashZone dictionary for fast lookup
-                        var clashZoneDict = new Dictionary<int, ClashZone>();
-                        if (allClashZones != null && allClashZones.Count > 0)
+                        // ✅ CRITICAL OPTIMIZATION: Pre-load ClashZones into dictionary for PreCalculation service
+                        // This avoids individual database lookups during parallel processing (MUCH faster)
+                        var clashZoneDict = new Dictionary<long, ClashZone>();
+                        foreach (var cz in filteredClashZones)
                         {
-                            foreach (var cz in allClashZones)
+                            if (cz.SleeveInstanceId > 0)
                             {
-                                if (cz.SleeveInstanceId > 0)
-                                {
-                                    clashZoneDict[cz.SleeveInstanceId] = cz;
-                                }
+                                clashZoneDict[cz.SleeveInstanceId] = cz;
                             }
                         }
 
@@ -1032,7 +1010,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             $"[{DateTime.Now:HH:mm:ss}] 📦 Passing {clashZoneDict.Count} pre-loaded ClashZones to pre-calculation\n");
 
                         // ✅ EXECUTE PRE-CALCULATION (No Try/Catch Wrapper)
-                        preCalculatedResults = _preCalculationService.PreCalculateAllClusters(clustersByGroup, doc, xmlFilePath, clashZoneDict);
+                        // Convert Dictionary<long, ClashZone> to Dictionary<int, ClashZone> for compatibility
+                        var clashZoneDictInt = clashZoneDict.ToDictionary(kvp => (int)kvp.Key, kvp => kvp.Value);
+                        preCalculatedResults = _preCalculationService.PreCalculateAllClusters(clustersByGroup, doc, xmlFilePath, clashZoneDictInt);
 
                         int validPreCalc = preCalculatedResults.Values.Count(r => r.IsValid);
                         int invalidPreCalc = preCalculatedResults.Values.Count(r => !r.IsValid);
@@ -1209,7 +1189,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                                 var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds\n");
+                                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds\n");
                                             }
                                             catch { }
 
@@ -1225,7 +1205,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId={placementResult.capturedClusterSleeveId.Value}\n");
+                                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId={placementResult.capturedClusterSleeveId.Value}\n");
                                                 }
                                                 catch { }
 
@@ -1262,7 +1242,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Adding {clusterClashZoneIds.Count} ClashZoneIds to _clusterToClashZoneIds[{placementResult.capturedClusterSleeveId.Value}]\n");
+                                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ Adding {clusterClashZoneIds.Count} ClashZoneIds to _clusterToClashZoneIds[{placementResult.capturedClusterSleeveId.Value}]\n");
                                                 }
                                                 catch { }
 
@@ -1275,7 +1255,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ AFTER ADD: _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
+                                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ AFTER ADD: _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
 
                                                     // ✅ PHASE 3 PERISTENCE: Calculate and save cluster corners
                                                     if (placementResult.placedClusterSleeve != null && placementResult.capturedClusterSleeveId.HasValue)
@@ -1315,13 +1295,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                                 }
                                                             }
 
-                                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SAVED CORNERS for Cluster {placementResult.capturedClusterSleeveId.Value}\n");
+                                                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ SAVED CORNERS for Cluster {placementResult.capturedClusterSleeveId.Value}\n");
                                                             */
 
                                                         }
-                                                        catch (Exception cornerEx)
+                                                        catch (Exception) // FIX: CS0168 - 'cornerEx' commented to fix critical warning
                                                         {
-                                                            // File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ FAILED to save corners for Cluster {placementResult.capturedClusterSleeveId.Value}: {cornerEx.Message}\n");
+                                                            // SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ FAILED to save corners for Cluster {placementResult.capturedClusterSleeveId.Value}: {cornerEx.Message}\n");
                                                         }
                                                     }
                                                 }
@@ -1336,7 +1316,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ PLACEMENT SUCCESS but NOT adding to _clusterToClashZoneIds: placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
+                                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ PLACEMENT SUCCESS but NOT adding to _clusterToClashZoneIds: placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
                                                 }
                                                 catch { }
                                             }
@@ -1350,7 +1330,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                                 var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PLACEMENT FAILED: success=false, placedCount={placementResult.placedCount}, deletedCount={placementResult.deletedCount}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}, placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}\n");
+                                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PLACEMENT FAILED: success=false, placedCount={placementResult.placedCount}, deletedCount={placementResult.deletedCount}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}, placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}\n");
                                             }
                                             catch { }
                                         }
@@ -1384,42 +1364,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // This applies to Path 2/3 (main cluster placement loop), Path 1 has its own flush
                     if (placedClusters.Count > 0)
                     {
-                        // Regenerate document to ensure geometry is available for parameter writes
-                        try
-                        {
-                            doc.Regenerate();
-                            System.Threading.Thread.Sleep(100); // Brief pause for regeneration
-                        }
-                        catch (Exception regenEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[RefactoredClusterService] Error regenerating for parameter flush: {regenEx.Message}");
-                        }
-
-                        // Flush all accumulated deferred parameters in batch
-                        // int flushedCount = FlushDeferredClusterParameters();
-                        int flushedCount = 0; // Forced to 0
-
-                        // ✅ CRITICAL FIX: Regenerate AFTER flush to ensure Revit has updated parameters for cleanup
-                        // This ensures cleanup service can read correct dimensions from Revit element if deferred dictionary is empty
-                        if (flushedCount > 0)
-                        {
-                            try
-                            {
-                                doc.Regenerate();
-                                System.Threading.Thread.Sleep(100); // Brief pause for regeneration
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] ✅ POST-FLUSH REGENERATION: Regenerated document after flushing {flushedCount} cluster sleeve parameters\n");
-                                }
-                            }
-                            catch (Exception regenEx)
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[RefactoredClusterService] Error regenerating after parameter flush: {regenEx.Message}");
-                            }
-                        }
+                        // ✅ NOTE: FlushDeferredClusterParameters is disabled (flushedCount forced to 0).
+                        // Pre-regen and post-flush regen were removed — they served no purpose with flush disabled.
+                        int flushedCount = 0; // Forced to 0 — deferred flush disabled
                     }
 
                     // ✅ DIAGNOSTIC: Verify all cluster sleeves exist BEFORE cleanup
@@ -1519,7 +1466,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             var logPath = Path.Combine(logDir, "cluster_debug.log");
 
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔄 REGENERATING document before collecting corners for {_clusterToClashZoneIds.Count} clusters\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 REGENERATING document before collecting corners for {_clusterToClashZoneIds.Count} clusters\n");
                         }
                         catch { }
 
@@ -1532,7 +1479,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             var logPath = Path.Combine(logDir, "cluster_debug.log");
 
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ REGENERATION COMPLETE - Now calling BatchSaveClusterDataToDatabase\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ REGENERATION COMPLETE - Now calling BatchSaveClusterDataToDatabase\n");
                         }
                         catch { }
 
@@ -1547,7 +1494,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var logPath = Path.Combine(logDir, "cluster_debug.log");
                             
                             // Log regarding next step which is actual tracked save
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⏳ Proceeding to tracked Batch Save...\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⏳ Proceeding to tracked Batch Save...\n");
                         }
                         catch { }
                     }
@@ -1568,9 +1515,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SAVING cluster data to database: {_clusterToClashZoneIds.Count} clusters\n");
 
-                            // ✅ USER REQUEST: "Regen one time only" before collecting corners
-                            // This ensures all geometry is valid before we read it for corner calculation
-                            doc.Regenerate();
+                            // ✅ Regen already done above (line ~1499) before entering Save block — no second regen needed here.
 
                             // 🚀 BATCH SAVE: Save all clusters in single transaction (113ms → ~10ms)
                             BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
@@ -1679,8 +1624,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         try
                         {
                             string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ FINAL RESULT: Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ FINAL RESULT: Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
                         }
                         catch { }
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
@@ -2005,7 +1950,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER CalculateRotatedBoundingBox: width={bboxResult.width:F2}, height={bboxResult.height:F2}, depth={bboxResult.depth:F2}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER CalculateRotatedBoundingBox: width={bboxResult.width:F2}, height={bboxResult.height:F2}, depth={bboxResult.depth:F2}\n");
                 }
                 catch { }
 
@@ -2111,7 +2056,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ INVALID BOUNDING BOX: width={bboxResult.width:F2}, height={bboxResult.height:F2} - RETURNING (false, 0, 0, null, null)\n");
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ INVALID BOUNDING BOX: width={bboxResult.width:F2}, height={bboxResult.height:F2} - RETURNING (false, 0, 0, null, null)\n");
                     }
                     catch { }
                     
@@ -2129,10 +2074,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 catch {}
                 
-                // ✅ Step 3: Determine family name before placement
-                // This fulfills the user's requirement to decouple determination from placement
-                // Clusters are ALWAYS rectangular, so we pass isCluster: true to skip complex individual sleeve logic
-                string sleeveFamilyName = ClusterPlacementService.GetFamilyName(groupKey.hostType, groupKey.systemType, Math.Max(bboxResult.width, bboxResult.height), isCluster: true);
+                // ✅ PERF FIX: Extract orientation BEFORE family selection so X-wall clusters get _X family
+                string earlyHostOrientation = null;
+                double earlyMepRotation = 0.0;
+                if (cluster.Count > 0)
+                {
+                    var firstCzEarly = cluster[0].ClashZone as ClashZone;
+                    if (firstCzEarly != null)
+                    {
+                        earlyHostOrientation = firstCzEarly.HostOrientation;
+                        earlyMepRotation = firstCzEarly.MepElementRotationAngle;
+                    }
+                }
+
+                // ✅ Step 3: Determine family name before placement (now with _X support)
+                string sleeveFamilyName = ClusterPlacementService.GetFamilyName(groupKey.hostType, groupKey.systemType, Math.Max(bboxResult.width, bboxResult.height), isCluster: true, earlyHostOrientation);
                 
                 // ✅ USER REQUIREMENT: Persist family name BEFORE placement for robustness
                 try
@@ -2156,18 +2112,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] ✅ FAMILY DETERMINED: Using '{sleeveFamilyName}' for cluster placement\n");
 
-                // ✅ Step 4: Extract orientation data from first ClashZone in cluster
-                string? hostOrientation = null;
-                double mepRotationAngle = 0.0;
-                if (cluster.Count > 0)
-                {
-                    var firstCz = cluster[0].ClashZone as ClashZone;
-                    if (firstCz != null)
-                    {
-                        hostOrientation = firstCz.HostOrientation;
-                        mepRotationAngle = firstCz.MepElementRotationAngle;
-                    }
-                }
+                // ✅ Step 4: Reuse orientation data already extracted above (before family selection)
+                string hostOrientation = earlyHostOrientation;
+                double mepRotationAngle = earlyMepRotation;
 
                 // ✅ Step 5: Place cluster sleeve (Phase 5: Placement Service)
                 // 🔥 CRITICAL: Direct IO logging before placement
@@ -2178,7 +2125,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO CALL PlaceClusterSleeve: placementPoint=({bboxResult.mid.X:F2},{bboxResult.mid.Y:F2},{bboxResult.mid.Z:F2}), W={RevitUnitConversionService.Instance.FromInternalMillimeters(bboxResult.width):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(bboxResult.height):F1}mm, family={sleeveFamilyName}, hostOrientation={hostOrientation ?? "NULL"}, rotation={mepRotationAngle:F2}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO CALL PlaceClusterSleeve: placementPoint=({bboxResult.mid.X:F2},{bboxResult.mid.Y:F2},{bboxResult.mid.Z:F2}), W={RevitUnitConversionService.Instance.FromInternalMillimeters(bboxResult.width):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(bboxResult.height):F1}mm, family={sleeveFamilyName}, hostOrientation={hostOrientation ?? "NULL"}, rotation={mepRotationAngle:F2}\n");
                 }
                 catch { }
                 
@@ -2227,7 +2174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 PlaceClusterSleeve RETURNED: success={placementSuccess}, placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 PlaceClusterSleeve RETURNED: success={placementSuccess}, placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
                 }
                 catch { }
                 
@@ -2241,7 +2188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PLACEMENT FAILED: placementSuccess={placementSuccess}, placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")} - RETURNING (false, 0, 0, null, null)\n");
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PLACEMENT FAILED: placementSuccess={placementSuccess}, placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")} - RETURNING (false, 0, 0, null, null)\n");
                     }
                     catch { }
                     return (false, 0, 0, null, null);
@@ -2324,7 +2271,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     
                                     // Update flags using FlagManager (this will save AfterClusterSleevePlacedSleeveInstanceId to database)
                                     _flagManager.BatchUpdateFlagsForPlacement(
-                                        new List<(ClashZone clashZone, int sleeveId)> { (clashZone, capturedClusterSleeveId.Value) },
+                                        new List<(ClashZone clashZone, long sleeveId)> { (clashZone, (long)capturedClusterSleeveId.Value) },
                                         isCluster: true,
                                         targetCategory,
                                         _filterName,
@@ -2526,8 +2473,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION in PlaceClusterForGroup: {ex.Message}\n");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] StackTrace: {ex.StackTrace}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION in PlaceClusterForGroup: {ex.Message}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] StackTrace: {ex.StackTrace}\n");
                 }
                 catch { }
                 
@@ -2594,7 +2541,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         }
 
                         // ✅ PATH 1a: SMART PLACEMENT - Check if cluster already exists in Revit
-                        if (_existenceChecker.ClusterSleeveExists(clusterData.ClusterInstanceId))
+                        if (_existenceChecker.ClusterSleeveExists((int)clusterData.ClusterInstanceId))
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ PATH 1a: Cluster {clusterData.ClusterInstanceId} already exists in Revit - SKIPPING placement\n");
@@ -2612,10 +2559,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         // ✅ CLUSTER FIX: Use dynamic family selection instead of hardcoded Wall family
                         string hostType = clusterData.HostType ?? "Unknown";
                         string familyName = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementService.GetFamilyName(
-                            hostType, 
-                            targetCategory, 
-                            Math.Max(clusterData.ClusterWidth, clusterData.ClusterHeight), 
-                            true); // isCluster = true
+                            hostType,
+                            targetCategory,
+                            Math.Max(clusterData.ClusterWidth, clusterData.ClusterHeight),
+                            true, // isCluster = true
+                            clusterData.HostOrientation); // PERF FIX: X-wall clusters get _X family
 
                         var universalSymbols = new FilteredElementCollector(doc)
                             .OfClass(typeof(FamilySymbol))
@@ -2741,7 +2689,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     if (clashZones != null && clashZones.Count > 0)
                                     {
                                         // ✅ BATCH UPDATE: Update flags for all clash zones in this cluster at once
-                                        var flagUpdates = clashZones.Select(cz => (cz, capturedClusterSleeveId.Value)).ToList();
+                                        var flagUpdates = clashZones.Select(cz => (cz, (long)capturedClusterSleeveId.Value)).ToList();
                                         
                                         // Get filter name (use empty string if not available)
                                         var categoryName = clashZones.First().MepElementCategory ?? targetCategory;
@@ -3052,7 +3000,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var clustersToSave = new List<ClusterSaveData>();
                     
                     // ✅ Prepare ClashZone updates for batch processing
-                    var clashZoneUpdates = new List<(Guid ClashZoneGuid, int ClusterInstanceId, 
+                    var clashZoneUpdates = new List<(Guid ClashZoneGuid, long ClusterInstanceId,
                         double Width, double Height, double Diameter,
                         double BoundingBoxMinX, double BoundingBoxMinY, double BoundingBoxMinZ,
                         double BoundingBoxMaxX, double BoundingBoxMaxY, double BoundingBoxMaxZ,
@@ -3256,7 +3204,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ CORNER ERROR: {clusterSleeve.Id} -> Error fetching constituents: {cornerEx.Message}\n");
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ CORNER ERROR: {clusterSleeve.Id} -> Error fetching constituents: {cornerEx.Message}\n");
                                 }
                                 catch { }
                                 if (!DeploymentConfiguration.DeploymentMode)

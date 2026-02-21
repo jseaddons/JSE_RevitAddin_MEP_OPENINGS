@@ -68,19 +68,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     Directory.CreateDirectory(logsDir);
                 }
 
-                // Create timestamped log file
+                // Create timestamped log filename
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                LogFilePath = Path.Combine(logsDir, $"StructuralElements_SleeveLog_{timestamp}.log");
+                string logName = $"StructuralElements_SleeveLog_{timestamp}.log";
+                LogFilePath = logName;
 
                 // Write header
                 string header = 
                     $"===== STRUCTURAL ELEMENTS SLEEVE PLACEMENT LOG =====\n" +
                     $"Session Started: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
-                    $"Log File: {Path.GetFileName(LogFilePath)}\n" +
+                    $"Log File: {logName}\n" +
                     $"JSE RevitAddin MEP Openings - Structural Elements Support\n" +
-                    $"====================================================\n\n";
+                    $"====================================================\n";
 
-                File.WriteAllText(LogFilePath, header);
+                SafeFileLogger.SafeAppendTextAlways(logName, header);
                 IsInitialized = true;
 
                 // Also log to main debug logger
@@ -111,11 +112,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     logEntry += $" - {details}";
                 logEntry += "\n";
 
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(LogFilePath, logEntry);
-                }
+                // ✅ PERFORMANCE: Safe logging via SafeFileLogger
+                SafeFileLogger.SafeAppendText(LogFilePath, logEntry);
 
                 // Also log to main debug logger with special prefix
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -202,11 +200,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!IsInitialized)
                     InitializeLogger();
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(LogFilePath, summary);
-                }
+                // ✅ PERFORMANCE: Safe logging via SafeFileLogger
+                SafeFileLogger.SafeAppendText(LogFilePath, summary);
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Log($"[STRUCTURAL] {commandName} summary - Processed: {totalProcessed}, Detected: {structuralDetected}, Placed: {sleevesPlaced}, Failed: {failures}");
             }

@@ -22,13 +22,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly Dictionary<string, double> _clearanceSettings;
         private readonly IInsulationAwareSizingService _sizingService;
         private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveRotationService _rotationService;
+        private readonly Dictionary<string, ElementId> _levelMap; // ✅ Added for level-based placement
 
         public ParallelSleevePlacementPlanner(
             OpeningConditions conditions = null,
             Dictionary<string, double> clearanceSettings = null,
             int minParallelCount = 12,
             int? maxDegree = null,
-            IInsulationAwareSizingService sizingService = null)
+            IInsulationAwareSizingService sizingService = null,
+            Dictionary<string, ElementId> levelMap = null) // ✅ New parameter
         {
             _minParallelCount = minParallelCount < 1 ? 1 : minParallelCount;
             _maxDegree = maxDegree ?? Environment.ProcessorCount;
@@ -37,6 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             // ✅ OOP METHOD: Initialize sizing service (SOLID principles)
             _sizingService = sizingService ?? new InsulationAwareSizingService();
             _rotationService = new JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveRotationService();
+            _levelMap = levelMap ?? new Dictionary<string, ElementId>(StringComparer.OrdinalIgnoreCase);
         }
 
         public SleevePlacementPlanningResult Plan(IEnumerable<ClashZone> clashZones)
@@ -448,8 +451,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
 
                 // 5. Resolve Family Name - CENTRALIZED MAPPING
-                // ✅ REUSE: FamilyManager maps host+shape to the core 4 families
-                string familyName = FamilyManager.SelectUniversalFamily(hostType, resolvedType);
+                // ✅ REUSE: FamilyManager maps host+shape to the core 4 (or 6 with _X) families
+                // ✅ PERF: Pass hostOrientation so X-walls get pre-rotated "_X" family (skips runtime rotation)
+                string familyName = FamilyManager.SelectUniversalFamily(hostType, resolvedType, zone.HostOrientation);
 
                 // 6. Resolve Rotation - CENTRALIZED ROTATION
                 // ✅ REUSE: SleeveRotationService handles X/Y Wall and Floor heuristics
@@ -500,6 +504,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                 string logLine = $"PLAN ClashZone={zone.Id} Host={hostType} Cat={mepCategory} Type={resolvedType} Family={familyName} Skip={shouldSkip}";
 
+                // 10. Resolve Level ID
+                ElementId levelId = null;
+                if (!string.IsNullOrEmpty(zone.MepElementLevelName))
+                {
+                    _levelMap.TryGetValue(zone.MepElementLevelName, out levelId);
+                }
+
                 return new SleevePlacementPlanningDto(
                     zone.Id,
                     hostType,
@@ -516,7 +527,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     logLine,
                     familyName,
                     placementPoint,
-                    isCircular);
+                    isCircular,
+                    levelId); // ✅ Pass resolved LevelId
             }
             catch (Exception ex)
             {

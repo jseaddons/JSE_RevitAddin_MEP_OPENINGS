@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 {
@@ -78,9 +79,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 
             try
             {
-                _statusManager.UpdateStatus($"Updating opening {item.OpeningId.IntegerValue}...", StatusType.Processing);
+                _statusManager.UpdateStatus($"Updating opening {item.OpeningId.GetIntegerValue()}...", StatusType.Processing);
                 _trackingService.UpdateSingleOpening(item.OpeningId, _document);
-                _statusManager.UpdateStatus($"Updated opening {item.OpeningId.IntegerValue}", StatusType.Success);
+                _statusManager.UpdateStatus($"Updated opening {item.OpeningId.GetIntegerValue()}", StatusType.Success);
             }
             catch (Exception ex)
             {

@@ -89,7 +89,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 HostParameters = DeserializeDictionary(SafeGetString(reader, "HostParametersJson")),
                                 SourceDocKeys = DeserializeStringList(SafeGetString(reader, "SourceDocKeysJson")),
                                 HostDocKeys = DeserializeStringList(SafeGetString(reader, "HostDocKeysJson")),
-                                ClashZoneGuid = SafeGetString(reader, "ClashZoneGuid") // ✅ NEW: Load ClashZoneGuid
+                                ClashZoneGuid = SafeGetString(reader, "ClashZoneGuid"), // ✅ NEW: Load ClashZoneGuid
+                                CombinedInstanceId = SafeGetInt(reader, "CombinedInstanceId") // ✅ NEW: Load CombinedInstanceId
                             };
 
                             if (view.SleeveInstanceId.HasValue && view.SleeveInstanceId.Value > 0)
@@ -112,13 +113,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 _logger?.Invoke($"[SQLite] ℹ️ Snapshot {view.SnapshotId} has NULL SleeveInstanceId (checking ClusterInstanceId)");
                             }
 
-                            if (view.ClusterInstanceId.HasValue && view.ClusterInstanceId.Value > 0)
+                             if (view.ClusterInstanceId.HasValue && view.ClusterInstanceId.Value > 0)
                             {
                                 index.ByCluster[view.ClusterInstanceId.Value] = view;
                                 rowsAddedToIndex++;
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     _logger?.Invoke($"[SQLite] ✅ Added to ByCluster: SnapshotId={view.SnapshotId}, ClusterInstanceId={view.ClusterInstanceId.Value}");
+                                }
+                            }
+
+                            if (view.CombinedInstanceId.HasValue && view.CombinedInstanceId.Value > 0)
+                            {
+                                index.ByCombinedSnapshot[view.CombinedInstanceId.Value] = view;
+                                rowsAddedToIndex++;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger?.Invoke($"[SQLite] ✅ Added to ByCombinedSnapshot: SnapshotId={view.SnapshotId}, CombinedInstanceId={view.CombinedInstanceId.Value}");
                                 }
                             }
                             
@@ -211,10 +222,101 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                      }
                  }
                  _logger?.Invoke($"[SQLite] ✅ Loaded {index.ByCombined.Count} combined sleeve definitions for parameter transfer");
+
+                 // ✅ LOAD COMBINED GUID-BASED CONSTITUENTS (For Fallback)
+                 using (var cmd = _context.Connection.CreateCommand())
+                 {
+                     cmd.CommandText = @"
+                        SELECT 
+                            cs.DeterministicGuid,
+                            csc.ConstituentType,
+                            csc.ClashZoneGuid,
+                            csc.ClusterInstanceId
+                        FROM CombinedSleeveConstituents csc
+                        INNER JOIN CombinedSleeves cs ON csc.CombinedSleeveId = cs.CombinedSleeveId
+                        WHERE cs.DeterministicGuid IS NOT NULL AND cs.DeterministicGuid != ''";
+                     
+                     using (var reader = cmd.ExecuteReader())
+                     {
+                         while (reader.Read())
+                         {
+                             var detGuid = reader.GetString(0);
+                             if (!index.ByCombinedGuidConstituents.ContainsKey(detGuid))
+                             {
+                                 index.ByCombinedGuidConstituents[detGuid] = new List<SleeveConstituentSnapshotReference>();
+                             }
+                             
+                             index.ByCombinedGuidConstituents[detGuid].Add(new SleeveConstituentSnapshotReference
+                             {
+                                 SourceType = SafeGetString(reader, "ConstituentType"),
+                                 ClashZoneGuid = SafeGetString(reader, "ClashZoneGuid"),
+                                 ClusterInstanceId = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3)
+                             });
+                         }
+                     }
+                 }
+                 _logger?.Invoke($"[SQLite] ✅ Loaded {index.ByCombinedGuidConstituents.Count} GUID-based combined sleeve definitions");
             }
             catch (Exception ex)
             {
                 _logger?.Invoke($"[SQLite] ⚠️ Failed to load combined sleeve constituents: {ex.Message}");
+            }
+
+            // ✅ LOAD CLUSTER CONSTITUENTS
+            // We need to map ClusterInstanceId (for direct lookup) and ClusterGUID (for fallback) 
+            // to their constituents for parameter aggregation.
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT 
+                            ClusterGUID,
+                            ClusterInstanceId,
+                            ConstituentZoneGuids
+                        FROM ClusterSleeves_v2";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var clusterGuid = SafeGetString(reader, "ClusterGUID");
+                            var clusterInstanceId = reader.IsDBNull(reader.GetOrdinal("ClusterInstanceId")) ? -1 : reader.GetInt32(reader.GetOrdinal("ClusterInstanceId"));
+                            var constituentsCsv = SafeGetString(reader, "ConstituentZoneGuids");
+                            
+                            if (string.IsNullOrEmpty(constituentsCsv)) continue;
+                            
+                            var constituentRefs = new List<SleeveConstituentSnapshotReference>();
+                            var guids = constituentsCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                            foreach (var g in guids)
+                            {
+                                constituentRefs.Add(new SleeveConstituentSnapshotReference
+                                {
+                                    SourceType = "Individual", // Cluster constituents are always individual zones
+                                    ClashZoneGuid = g.Trim()
+                                });
+                            }
+                            
+                            if (constituentRefs.Count > 0)
+                            {
+                                if (!string.IsNullOrEmpty(clusterGuid))
+                                {
+                                    index.ByClusterGuidConstituents[clusterGuid] = constituentRefs;
+                                }
+                                
+                                if (clusterInstanceId > 0)
+                                {
+                                    index.ByClusterConstituents[clusterInstanceId] = constituentRefs;
+                                }
+                            }
+                        }
+                    }
+                }
+                _logger?.Invoke($"[SQLite] ✅ Loaded {index.ByClusterConstituents.Count} cluster instance and {index.ByClusterGuidConstituents.Count} GUID-based constituent definitions");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[SQLite] ⚠️ Failed to load cluster constituents: {ex.Message}");
             }
 
             _logger?.Invoke($"[SQLite] ✅ Loaded {index.BySleeve.Count} individual and {index.ByCluster.Count} cluster snapshots");
@@ -244,6 +346,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             var ordinal = reader.GetOrdinal(column);
             return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+
+        private int? SafeGetInt(SQLiteDataReader reader, string column)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(column);
+                return reader.IsDBNull(ordinal) ? (int?)null : Convert.ToInt32(reader.GetValue(ordinal));
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private Dictionary<string, string> DeserializeDictionary(string json)
@@ -297,8 +412,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
     {
         public Dictionary<int, SleeveSnapshotView> BySleeve { get; } = new Dictionary<int, SleeveSnapshotView>();
         public Dictionary<int, SleeveSnapshotView> ByCluster { get; } = new Dictionary<int, SleeveSnapshotView>();
+        public Dictionary<int, SleeveSnapshotView> ByCombinedSnapshot { get; } = new Dictionary<int, SleeveSnapshotView>();
 
         public Dictionary<int, List<SleeveConstituentSnapshotReference>> ByCombined { get; } = new Dictionary<int, List<SleeveConstituentSnapshotReference>>();
+        
+        // ✅ NEW: Map ClusterInstanceId -> List of constituents for parameter aggregation
+        public Dictionary<int, List<SleeveConstituentSnapshotReference>> ByClusterConstituents { get; } = new Dictionary<int, List<SleeveConstituentSnapshotReference>>();
+        
+        // ✅ NEW: Map ClusterGUID (string) -> List of constituents for fallback aggregation
+        public Dictionary<string, List<SleeveConstituentSnapshotReference>> ByClusterGuidConstituents { get; } = new Dictionary<string, List<SleeveConstituentSnapshotReference>>(StringComparer.OrdinalIgnoreCase);
+
+        // ✅ NEW: Map Combined DeterministicGuid (string) -> List of constituents for fallback aggregation
+        public Dictionary<string, List<SleeveConstituentSnapshotReference>> ByCombinedGuidConstituents { get; } = new Dictionary<string, List<SleeveConstituentSnapshotReference>>(StringComparer.OrdinalIgnoreCase);
+
         public Dictionary<string, SleeveSnapshotView> ByClashZoneGuid { get; } = new Dictionary<string, SleeveSnapshotView>(StringComparer.OrdinalIgnoreCase);
         // ✅ NEW: Map SleeveInstanceId to ClashZoneGuid for fallback lookup
         public Dictionary<int, string> SleeveIdToClashZoneGuid { get; } = new Dictionary<int, string>();
@@ -315,6 +441,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return ByCluster.TryGetValue(clusterInstanceId, out view);
         }
         
+        public bool TryGetByCombinedSnapshot(int combinedInstanceId, out SleeveSnapshotView view)
+        {
+            return ByCombinedSnapshot.TryGetValue(combinedInstanceId, out view);
+        }
+
         public bool TryGetByCombined(int combinedInstanceId, out List<SleeveConstituentSnapshotReference> constituents)
         {
             return ByCombined.TryGetValue(combinedInstanceId, out constituents);
@@ -338,6 +469,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public int SnapshotId { get; set; }
         public int? SleeveInstanceId { get; set; }
         public int? ClusterInstanceId { get; set; }
+        public int? CombinedInstanceId { get; set; }
         public string SourceType { get; set; } = "Individual";
         public int? FilterId { get; set; }
         public int? ComboId { get; set; }

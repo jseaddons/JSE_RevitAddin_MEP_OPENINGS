@@ -43,8 +43,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (enableLogging)
             {
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== ROTATED SLEEVE CLUSTER HELPER ==========\n");
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Input: {sleeveCenters.Count} sleeves, Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°\n");
+                SafeFileLogger.SafeAppendText(logPath, "========== ROTATED SLEEVE CLUSTER HELPER ==========");
+                SafeFileLogger.SafeAppendText(logPath, $"Input: {sleeveCenters.Count} sleeves, Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°");
             }
 
             // Step 1: Choose origin (first sleeve center)
@@ -56,8 +56,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (enableLogging)
             {
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Origin (first sleeve center): ({origin.X:F6}, {origin.Y:F6}, {origin.Z:F6})\n");
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotation Matrix: cos={cosA:F6}, sin={sinA:F6}\n");
+                SafeFileLogger.SafeAppendText(logPath, $"Origin (first sleeve center): ({origin.X:F6}, {origin.Y:F6}, {origin.Z:F6})");
+                SafeFileLogger.SafeAppendText(logPath, $"Rotation Matrix: cos={cosA:F6}, sin={sinA:F6}");
             }
 
             // Step 3: Transform all sleeve centers to rotated coordinate system and calculate corners
@@ -80,9 +80,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (enableLogging)
                 {
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i + 1}: World Center=({center.X:F6}, {center.Y:F6})\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i + 1}: Relative=({relCx:F6}, {relCy:F6}), Rotated Center=({rotCx:F6}, {rotCy:F6})\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i + 1} Dimensions: W={dims.width * 304.8:F1}mm, H={dims.height * 304.8:F1}mm\n");
+                    SafeFileLogger.SafeAppendText(logPath, $"  Sleeve {i + 1}: World Center=({center.X:F6}, {center.Y:F6})");
+                    SafeFileLogger.SafeAppendText(logPath, $"  Sleeve {i + 1}: Relative=({relCx:F6}, {relCy:F6}), Rotated Center=({rotCx:F6}, {rotCy:F6})");
+                    SafeFileLogger.SafeAppendText(logPath, $"  Sleeve {i + 1} Dimensions: W={dims.width * 304.8:F1}mm, H={dims.height * 304.8:F1}mm");
                 }
 
                 // Step 3c: Calculate 4 corners with rotated offsets
@@ -124,7 +124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (enableLogging)
                 {
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}]   Sleeve {i + 1} Corners (in rotated coordinate system): ({corners[0].X:F6}, {corners[0].Y:F6}), ({corners[1].X:F6}, {corners[1].Y:F6}), ({corners[2].X:F6}, {corners[2].Y:F6}), ({corners[3].X:F6}, {corners[3].Y:F6})\n");
+                    SafeFileLogger.SafeAppendText(logPath, $"  Sleeve {i + 1} Corners (in rotated coordinate system): ({corners[0].X:F6}, {corners[0].Y:F6}), ({corners[1].X:F6}, {corners[1].Y:F6}), ({corners[2].X:F6}, {corners[2].Y:F6}), ({corners[3].X:F6}, {corners[3].Y:F6})");
                 }
             }
 
@@ -138,8 +138,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (enableLogging)
             {
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ✅ CORRECT UNION (in rotated coordinate system): MinX={minX:F6}, MinY={minY:F6}, MaxX={maxX:F6}, MaxY={maxY:F6}\n");
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ✅ CLUSTER SIZE (CORRECT TRANSFORM): W={width * 304.8:F1}mm, H={height * 304.8:F1}mm\n");
+                SafeFileLogger.SafeAppendText(logPath, $"✅ CORRECT UNION (in rotated coordinate system): MinX={minX:F6}, MinY={minY:F6}, MaxX={maxX:F6}, MaxY={maxY:F6}");
+                SafeFileLogger.SafeAppendText(logPath, $"✅ CLUSTER SIZE (CORRECT TRANSFORM): W={width * 304.8:F1}mm, H={height * 304.8:F1}mm");
             }
 
             // Step 5: Calculate midpoint in rotated coordinate space
@@ -164,8 +164,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (enableLogging)
                 {
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Midpoint (in rotated space): ({midRotated.X:F6}, {midRotated.Y:F6}, {midRotated.Z:F6})\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Midpoint (in world space): ({midWorld.X:F6}, {midWorld.Y:F6}, {midWorld.Z:F6})\n");
+                    SafeFileLogger.SafeAppendText(logPath, $"Midpoint (in rotated space): ({midRotated.X:F6}, {midRotated.Y:F6}, {midRotated.Z:F6})");
+                    SafeFileLogger.SafeAppendText(logPath, $"Midpoint (in world space): ({midWorld.X:F6}, {midWorld.Y:F6}, {midWorld.Z:F6})");
                 }
             }
             else
@@ -179,13 +179,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (enableLogging)
                 {
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] No rotation - Midpoint (in world space): ({midWorld.X:F6}, {midWorld.Y:F6}, {midWorld.Z:F6})\n");
+                    SafeFileLogger.SafeAppendText(logPath, $"No rotation - Midpoint (in world space): ({midWorld.X:F6}, {midWorld.Y:F6}, {midWorld.Z:F6})");
                 }
             }
 
             if (enableLogging)
             {
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END ROTATED SLEEVE CLUSTER HELPER ==========\n\n");
+                SafeFileLogger.SafeAppendText(logPath, "========== END ROTATED SLEEVE CLUSTER HELPER ==========\n");
             }
 
             return (width, height, minX, minY, maxX, maxY, midRotated, midWorld);
@@ -200,7 +200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (enableLogging)
             {
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== TESTING ROTATED SLEEVE CLUSTER ALGORITHM ==========\n\n");
+                SafeFileLogger.SafeAppendText(logPath, "========== TESTING ROTATED SLEEVE CLUSTER ALGORITHM ==========\n");
             }
 
             // Test Scenario 1: Perpendicular stacking (2 sleeves, 550mm x 200mm each, stacked vertically)
@@ -224,10 +224,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (enableLogging)
                 {
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] TEST 1: Perpendicular Stacking\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Expected: W=550mm, H=400mm\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Actual: W={result.width * 304.8:F1}mm, H={result.height * 304.8:F1}mm\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Result: {(Math.Abs(result.width * 304.8 - 550) < 1 && Math.Abs(result.height * 304.8 - 400) < 1 ? "✅ PASS" : "❌ FAIL")}\n\n");
+                    SafeFileLogger.SafeAppendText(logPath, "TEST 1: Perpendicular Stacking");
+                    SafeFileLogger.SafeAppendText(logPath, "Expected: W=550mm, H=400mm");
+                    SafeFileLogger.SafeAppendText(logPath, $"Actual: W={result.width * 304.8:F1}mm, H={result.height * 304.8:F1}mm");
+                    SafeFileLogger.SafeAppendText(logPath, $"Result: {(Math.Abs(result.width * 304.8 - 550) < 1 && Math.Abs(result.height * 304.8 - 400) < 1 ? "✅ PASS" : "❌ FAIL")}\n");
                 }
             }
 
@@ -251,15 +251,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (enableLogging)
                 {
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] TEST 2: Inline Arrangement\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Expected: W≈1100mm, H=200mm\n");
-                    System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] Actual: W={result.width * 304.8:F1}mm, H={result.height * 304.8:F1}mm\n\n");
+                    SafeFileLogger.SafeAppendText(logPath, "TEST 2: Inline Arrangement");
+                    SafeFileLogger.SafeAppendText(logPath, "Expected: W≈1100mm, H=200mm");
+                    SafeFileLogger.SafeAppendText(logPath, $"Actual: W={result.width * 304.8:F1}mm, H={result.height * 304.8:F1}mm\n");
                 }
             }
 
             if (enableLogging)
             {
-                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END TESTING ==========\n\n");
+                SafeFileLogger.SafeAppendText(logPath, "========== END TESTING ==========\n");
             }
         }
     }

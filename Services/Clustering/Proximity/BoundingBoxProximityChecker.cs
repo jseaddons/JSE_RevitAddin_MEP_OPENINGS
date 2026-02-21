@@ -53,15 +53,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return false;
                 }
 
-                // ✅ DIAGNOSTIC LOGGING: Log distance for Duct Accessories to verify clustering
-                if (sleeve1.Category?.ToString().IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0)
+                // ✅ DIAGNOSTIC LOGGING: Log distance for debug
+                if (OptimizationFlags.EnableProximityDebugLog || sleeve1.Category?.ToString().IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     double distMM = distance.Value * 304.8;
                     double toleranceMM = tolerance * 304.8;
                     bool isInRange = distance.Value <= tolerance;
-                    
+                    string cat = sleeve1.Category?.ToString() ?? "Unknown";
+
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[BBoxChecker] 📏 Duct Accessories Proximity: Dist={distMM:F1}mm vs Tol={toleranceMM:F1}mm. Result: {isInRange} (MinDistFT={distance.Value:F6}ft)");
+                        $"[BBoxChecker] 📏 {cat} Proximity: Dist={distMM:F1}mm vs Tol={toleranceMM:F1}mm. Result: {isInRange} (MinDistFT={distance.Value:F6}ft)");
                     
                     // ✅ DETAILED DEBUG: Log actual bbox values used
                     string hostType = sleeve1.HostType ?? "Unknown";
@@ -134,17 +135,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 {
                     if (orientation == "X")
                     {
-                        // X-oriented walls (Normal=X): Plane is YZ. Calculate 2D distance in Y,Z plane (ignore X/wall depth)
-                        minDistance = DistanceCalculator.CalculateMinimumDistance2D(
-                            bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.Y, bbox1.Max.Z,
-                            bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.Y, bbox2.Max.Z);
-                    }
-                    else if (orientation == "Y")
-                    {
-                        // Y-oriented walls (Normal=Y): Plane is XZ. Calculate 2D distance in X,Z plane (ignore Y/wall depth)
+                        // X-oriented walls: Calculate 2D distance in X,Z plane 
                         minDistance = DistanceCalculator.CalculateMinimumDistance2D(
                             bbox1.Min.X, bbox1.Min.Z, bbox1.Max.X, bbox1.Max.Z,
                             bbox2.Min.X, bbox2.Min.Z, bbox2.Max.X, bbox2.Max.Z);
+                    }
+                    else if (orientation == "Y")
+                    {
+                        // Y-oriented walls: Calculate 2D distance in Y,Z plane 
+                        minDistance = DistanceCalculator.CalculateMinimumDistance2D(
+                            bbox1.Min.Y, bbox1.Min.Z, bbox1.Max.Y, bbox1.Max.Z,
+                            bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.Y, bbox2.Max.Z);
                     }
                     else
                     {

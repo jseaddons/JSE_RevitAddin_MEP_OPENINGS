@@ -39,13 +39,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private Document _document;
         private UIDocument _uiDocument;
         private object _markPrefixes;
-        private string _selectedFilterName; // ✅ NEW: Store the selected filter name // ✅ NEW: Instance variable for mark prefixes
+        private string _selectedFilterName; 
+        private List<Level> _selectedLevels; // ✨ NEW: Multi-floor support
 
         /// <summary>
         /// ✅ NEW: Set context for sleeve placement operation
         /// Pass categories, mark prefixes, AND filter name from UI
         /// </summary>
-        public void SetContext(List<string> categories, object markPrefixes, string filterName)
+        public void SetContext(List<string> categories, object markPrefixes, string filterName, List<Level> levels = null)
         {
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[SleevePlacementExternalEvent] ===== SETCONTEXT METHOD CALLED =====");
@@ -55,13 +56,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[SleevePlacementExternalEvent] MarkPrefixes: {markPrefixes != null}");
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] FilterName: {filterName ?? "NULL"}");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[SleevePlacementExternalEvent] Levels provided: {levels?.Count ?? 0}");
             
             _selectedCategories = categories ?? throw new ArgumentNullException(nameof(categories));
             // _markPrefixes = markPrefixes ?? new MarkPrefixSettings(); // Use defaults if null
             _markPrefixes = markPrefixes;
             _selectedFilterName = filterName ?? throw new ArgumentNullException(nameof(filterName));
+            _selectedLevels = levels; // ✨ Store levels
+            
                         if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}");
+                DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}, Levels: {levels?.Count ?? 0}");
         }
 
         public void Execute(UIApplication app)
@@ -71,17 +76,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string performanceLogName = $"SleevePlacement_Batch_{timestamp}.log";
             var performanceMonitor = new PlacementPerformanceMonitor(performanceLogName);
             
-            // ✅ CRITICAL: Force direct file write to ensure we see this even if logger fails
-            try
-            {
-                var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
-                }
-            }
-            catch { }
+            // ✅ PERFORMANCE: Safe logging via SafeFileLogger (handles DeploymentMode and flags)
+            SafeFileLogger.SafeAppendText("placement_event_trace.log", $"🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥");
 
             try
             {
@@ -96,17 +92,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
 
-                    // ✅ CRITICAL: Log to file immediately to verify Execute() reaches this point
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
-                        }
-                    }
-                    catch { }
+                    // ✅ PERFORMANCE: Safe logging via SafeFileLogger
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log", "STEP 1: Execute method started");
 
                     // ✅ DEBUG: Add immediate logging to confirm Execute is called
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -121,22 +108,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
 
-                    // ✅ CRITICAL: Log to file at each step
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}\n");
-                        }
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: MarkPrefixes null={_markPrefixes == null}\n");
-                        }
-                    }
-                    catch { }
+                    // ✅ PERFORMANCE: Safe logging via SafeFileLogger
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}");
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 3: MarkPrefixes null={_markPrefixes == null}");
 
                     // ✅ CORRECTED: Defensive null check with fallback
                     // Deprecated
@@ -175,64 +149,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
-                            }
-                        }
-                        catch { }
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", "STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY");
                         var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
                                  "Please activate the host document (main project file) and try again.\n" +
                                  "Sleeves must be placed in the host document, not in linked files.";
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Error($"[SleevePlacementExternalEvent] {msg}");
-                        TaskDialog.Show("Wrong Document Active", msg);
+                        Autodesk.Revit.UI.TaskDialog.Show("Wrong Document Active", msg);
                         return;
                     }
 
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
-                        }
-                    }
-                    catch { }
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log", "STEP 9: ✅ Document is not linked, continuing");
 
                     // ✅ CRITICAL FIX: Check for null _selectedCategories
                     if (_selectedCategories == null)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ _selectedCategories is NULL - RETURNING EARLY\n");
-                            }
-                        }
-                        catch { }
-                        TaskDialog.Show("Error", "No categories selected for processing");
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", "❌ _selectedCategories is NULL - RETURNING EARLY");
+                        Autodesk.Revit.UI.TaskDialog.Show("Error", "No categories selected for processing");
                         return;
                     }
 
-                    // ✅ CRITICAL: Log categories count
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9.5: Categories count: {_selectedCategories.Count}, Categories: {string.Join(", ", _selectedCategories)}\n");
-                    }
-                    catch { }
+                    // ✅ PERFORMANCE: Safe logging via SafeFileLogger
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 9.5: Categories count: {_selectedCategories.Count}, Categories: {string.Join(", ", _selectedCategories)}");
 
                     // Log immediate feedback (non-blocking)
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -262,16 +204,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
-                    try
-                    {
-                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
-                        }
-                    }
-                    catch { }
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log", "STEP 10: About to create orchestrator");
 
                     // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -292,31 +225,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
 
                         var clearanceSettings = GetClearanceSettingsFromUI();
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}\n");
-                            }
-                        }
-                        catch { }
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}");
 
                         var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes, forceDetectionMode, performanceMonitor);
 
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
-                            }
-                        }
-                        catch { }
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", "STEP 11: Orchestrator created successfully");
 
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
@@ -327,16 +242,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ Convert categories to filters for orchestrator
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert categories to filters\n");
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert {_selectedCategories.Count} categories to filters\n");
-                            }
-                        }
-                        catch { }
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 12.5: About to convert {_selectedCategories.Count} categories to filters");
 
                         // ✅ PERFORMANCE: Track category to filter conversion
                         List<OpeningFilter> filters;
@@ -349,20 +255,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
-                        try
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 13: Converted to {filters.Count} filters");
+                        if (filters != null && filters.Count > 0)
                         {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            // ✅ DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted to {filters.Count} filters\n");
-                            }
-                            if (filters != null && filters.Count > 0)
-                            {
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13.5: Filter names: {string.Join(", ", filters.Select(f => f.Name))}\n");
-                            }
+                            SafeFileLogger.SafeAppendText("placement_event_trace.log", $"STEP 13.5: Filter names: {string.Join(", ", filters.Select(f => f.Name))}");
                         }
-                        catch { }
 
                         // ✅ Execute through orchestrator (proper architecture)
                         if (!DeploymentConfiguration.DeploymentMode)
@@ -371,13 +268,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
 
-                        // ✅ CRITICAL: Log before and after orchestrator call to see if it completes
-                        try
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", $"🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: {filters?.Count ?? 0}");
+
+                        // ✅ FORCE SECTION BOX COMPLIANCE:
+                        // The user requires "Auto-detect from Section Box".
+                        // ExecuteMultiFloorPlacement (via FloorIsolatedClashDetector) currently IGNORES the section box and processes entire floors.
+                        // ExecuteMultipleFilters (via BulkPlacementService) respects the Section Box because it loads zones from DB 
+                        // where IsCurrentClashFlag is used (which is set based on Section Box during Refresh).
+                        
+                        // Therefore, we ALWAYS use ExecuteMultipleFilters to ensure we only place sleeves within the section box.
+                        if (_selectedLevels != null && _selectedLevels.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                         {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: {filters?.Count ?? 0}\n");
+                            DebugLogger.Info($"[SleevePlacement] Detected {_selectedLevels.Count} levels in Section Box. Using Context Placement to respect box boundaries.");
                         }
-                        catch { }
+
+                        // Standard execution (Context Placement) - Respects Section Box via DB flags
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", $"🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: {filters?.Count ?? 0}");
 
                         // ✅ PERFORMANCE: Track orchestrator execution (this is the main placement work)
                         using (placementWorkflowTracker?.TrackSubOperation("Execute Multiple Filters (Orchestrator)"))
@@ -385,13 +291,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             orchestrator.ExecuteMultipleFilters(filters, showProgress: true);
                         }
 
-                        // ✅ CRITICAL: Log after orchestrator returns to confirm it completed
-                        try
-                        {
-                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully\n");
-                        }
-                        catch { }
+                        SafeFileLogger.SafeAppendText("placement_event_trace.log", "🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully");
 
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
@@ -419,7 +319,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
-                TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
+                Autodesk.Revit.UI.TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
             }
             finally
             {

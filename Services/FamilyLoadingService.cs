@@ -42,12 +42,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // List of required universal opening families (actual file names in Resources folder)
+                // ✅ PERF: _X variants are pre-rotated for X-walls (eliminates per-sleeve rotation API calls)
                 var requiredFamilies = new[]
                 {
                     "RectangularOpeningOnWall.rfa",
-                    "CircularOpeningOnWall.rfa", 
+                    "CircularOpeningOnWall.rfa",
                     "RectangularOpeningOnSlab.rfa",
-                    "CircularOpeningOnSlab.rfa"
+                    "CircularOpeningOnSlab.rfa",
+                    "RectangularOpeningOnWall_X.rfa",
+                    "CircularOpeningOnWall_X.rfa"
                 };
 
                 int loadedCount = 0;
@@ -173,9 +176,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var requiredFamilies = new[]
             {
                 "RectangularOpeningOnWall.rfa",
-                "CircularOpeningOnWall.rfa", 
+                "CircularOpeningOnWall.rfa",
                 "RectangularOpeningOnSlab.rfa",
-                "CircularOpeningOnSlab.rfa"
+                "CircularOpeningOnSlab.rfa",
+                "RectangularOpeningOnWall_X.rfa",
+                "CircularOpeningOnWall_X.rfa"
             };
 
             return requiredFamilies.All(family => File.Exists(Path.Combine(_resourcesPath, family)));
@@ -194,13 +199,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             var missingFamilies = new List<string>();
             
-            // ✅ STRICT: Only these 4 exact family names - NO variations, NO fallbacks
+            // ✅ STRICT: All 6 family names required - _X variants are mandatory for X-wall performance
             var requiredFamilyNames = new[]
             {
                 "RectangularOpeningOnWall",
                 "CircularOpeningOnWall",
                 "RectangularOpeningOnSlab",
-                "CircularOpeningOnSlab"
+                "CircularOpeningOnSlab",
+                "RectangularOpeningOnWall_X",
+                "CircularOpeningOnWall_X"
             };
 
             foreach (var familyName in requiredFamilyNames)

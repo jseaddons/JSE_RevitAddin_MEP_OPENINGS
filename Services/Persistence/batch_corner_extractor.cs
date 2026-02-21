@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 {
@@ -52,7 +53,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 
                 try
                 {
-                    var sleeveId = new ElementId(zone.SleeveInstanceId);
+                    var sleeveId = ElementIdCompat.FromValue(zone.SleeveInstanceId);
                     var sleeve = doc.GetElement(sleeveId) as FamilyInstance;
 
                     if (sleeve == null)

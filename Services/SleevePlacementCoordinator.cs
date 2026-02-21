@@ -165,17 +165,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // Make the chosen path visible in diagnostics.
-            try
-            {
-                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                System.IO.File.AppendAllText(
-                    logPath,
-                    $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-PATH] Selected={request.RequestedPath}, Filter='{request.FilterName}', Category='{request.Category}'\n");
-            }
-            catch
-            {
-                // Swallow logging errors – placement should continue even if diagnostics fail.
-            }
+            SafeFileLogger.SafeAppendText("placement_debug.log", $"[PLACEMENT-PATH] Selected={request.RequestedPath}, Filter='{request.FilterName}', Category='{request.Category}'");
 
             return handler.Execute(request);
         }
@@ -221,17 +211,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (request == null) throw new ArgumentNullException(nameof(request));
 
             // ✅ PATH 2: Full detection/sizing - calculate everything from scratch
-            try
-            {
-                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                System.IO.File.AppendAllText(
-                    logPath,
-                    $"[{DateTime.Now:HH:mm:ss}] [PLACEMENT-PATH] PATH 2 (Sizing) executing: Full detection/sizing for fresh filter+category combo.\n");
-            }
-            catch
-            {
-                // Ignore logging failures
-            }
+            SafeFileLogger.SafeAppendText("placement_debug.log", "[PLACEMENT-PATH] PATH 2 (Sizing) executing: Full detection/sizing for fresh filter+category combo.");
 
             var clearanceSettings = request.ClearanceSettings != null
                 ? request.ClearanceSettings.ToDictionary(kv => kv.Key, kv => kv.Value)

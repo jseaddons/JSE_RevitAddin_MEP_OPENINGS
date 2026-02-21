@@ -46,21 +46,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (sleeves.Count == 0)
                 {
-                    string sleeveCoordinatesLogPath = SafeFileLogger.GetLogFilePath("sleeve_coordinates.log");
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(sleeveCoordinatesLogPath, "No sleeves found in model!\n");
-                    }
+                    SafeFileLogger.SafeAppendText("sleeve_coordinates.log", "No sleeves found in model!");
                     return;
                 }
                 
                 // Log all sleeve coordinates
-                string logPath = SafeFileLogger.GetLogFilePath("all_sleeve_coordinates.log");
-                System.IO.File.WriteAllText(logPath, $"ALL SLEEVE COORDINATES - {DateTime.Now}\n");
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(logPath, $"Found {sleeves.Count} sleeves\n\n");
-                }
+                SafeFileLogger.SafeAppendTextAlways("all_sleeve_coordinates.log", $"========== ALL SLEEVE COORDINATES - {DateTime.Now} ==========");
+                SafeFileLogger.SafeAppendText("all_sleeve_coordinates.log", $"Found {sleeves.Count} sleeves\n");
                 
                 foreach (var sleeve in sleeves)
                 {
@@ -69,25 +61,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var min = bbox.Min;
                         var max = bbox.Max;
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, 
-                            $"SLEEVE {sleeve.Id.GetIntegerValue()}:\n");
-                        }
-                        System.IO.File.AppendAllText(logPath, 
-                            $"  Min: ({min.X:F6}, {min.Y:F6}, {min.Z:F6})\n");
-                        System.IO.File.AppendAllText(logPath, 
-                            $"  Max: ({max.X:F6}, {max.Y:F6}, {max.Z:F6})\n");
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, 
-                            $"  Host: {sleeve.Host?.Id?.GetIntegerValue()}\n");
-                        }
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPath, 
-                            $"  Family: {sleeve.Symbol.FamilyName}\n\n");
-                        }
+                        SafeFileLogger.SafeAppendText("all_sleeve_coordinates.log", $"SLEEVE {sleeve.Id.GetIntegerValue()}:");
+                        SafeFileLogger.SafeAppendText("all_sleeve_coordinates.log", $"  Min: ({min.X:F6}, {min.Y:F6}, {min.Z:F6})");
+                        SafeFileLogger.SafeAppendText("all_sleeve_coordinates.log", $"  Max: ({max.X:F6}, {max.Y:F6}, {max.Z:F6})");
+                        SafeFileLogger.SafeAppendText("all_sleeve_coordinates.log", $"  Host: {sleeve.Host?.Id?.GetIntegerValue()}");
+                        SafeFileLogger.SafeAppendText("all_sleeve_coordinates.log", $"  Family: {sleeve.Symbol.FamilyName}\n");
                     }
                 }
             }
@@ -111,14 +89,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // ✅ Direct file logging to placement_debug.log
-                var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                try {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] CALLED with xmlFilePath: {xmlFilePath ?? "NULL"}\n");
-                    }
-                } catch { }
+                // ✅ PERFORMANCE: Consolidate to SafeFileLogger
+                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] CALLED with xmlFilePath: {xmlFilePath ?? "NULL"}");
                 
                 // Get all sleeves
                 var sleeves = new FilteredElementCollector(_doc)
@@ -127,23 +99,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(s => s.Symbol.FamilyName.Contains("Opening"))
                     .ToList();
                 
-                try {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Found {sleeves.Count} sleeves in Revit model\n");
-                    }
-                } catch { }
+                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] Found {sleeves.Count} sleeves in Revit model");
                 
                 var coordinateUpdater = new SleeveCoordinateUpdater(_doc);
                 
                 // ✅ DATABASE-ONLY: Load clash zones from database (required parameter)
                 if (string.IsNullOrEmpty(category))
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Error($"[SleeveCoordinateService] ❌ Category parameter is required for database-only mode");
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ❌ ERROR: Category parameter is required (database-only mode, XML obsolete)\n");
-                    }
+                    DebugLogger.Error($"[SleeveCoordinateService] ❌ Category parameter is required for database-only mode");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", "[UpdateSleeveCoordinatesInXml] ❌ ERROR: Category parameter is required (database-only mode, XML obsolete)");
                     return;
                 }
                 
@@ -152,20 +116,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ DATABASE-ONLY: Load clash zones from database
                 try
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Loading clash zones from database for category '{category}' (database-only mode)\n");
-                    }
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] 🔍 Loading clash zones from database for category '{category}' (database-only mode)");
                     
                     using (var dbContext = new Data.SleeveDbContext(_doc))
                     {
                         var repository = new Data.Repositories.ClashZoneRepository(dbContext);
                         var dbZones = repository.GetClashZonesByCategory(category);
                         
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] 🔍 Database query returned {dbZones?.Count ?? 0} zones for category '{category}'\n");
-                        }
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] 🔍 Database query returned {dbZones?.Count ?? 0} zones for category '{category}'");
                         
                         if (dbZones != null && dbZones.Count > 0)
                         {
@@ -188,34 +146,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-ONLY: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones, will match by position)");
-                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones)\n");
-                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}, Zones with ClusterSleeveInstanceId>0: {zonesWithClusterId}/{clashZones.Count}\n");
+                                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: Loaded {clashZones.Count} clash zones from database for category '{category}' (all zones)");
+                                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: {zonesWithPlacementPoint}/{clashZones.Count}, Zones with SleeveInstanceId>0: {zonesWithSleeveId}/{clashZones.Count}, Zones with ClusterSleeveInstanceId>0: {zonesWithClusterId}/{clashZones.Count}");
                                 
                                 // Log sample placement points
                                 var sampleZones = clashZones.Where(z => z != null && (z.SleevePlacementPointX != 0 || z.SleevePlacementPointY != 0)).Take(3).ToList();
                                 foreach (var sample in sampleZones)
                                 {
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}, ClusterId={sample.ClusterSleeveInstanceId}\n");
+                                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] SAMPLE: Zone {sample.Id}, SPP=({sample.SleevePlacementPointX:F3}, {sample.SleevePlacementPointY:F3}, {sample.SleevePlacementPointZ:F3}), SleeveId={sample.SleeveInstanceId}, ClusterId={sample.ClusterSleeveInstanceId}");
                                 }
                             }
                         }
                         else
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Database returned 0 zones for category '{category}'");
-                                File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database returned 0 zones for category '{category}'\n");
+                                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] ⚠️ Database returned 0 zones for category '{category}'");
                             }
                         }
                     }
                 }
                 catch (Exception dbEx)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
                     {
                         DebugLogger.Error($"[SleeveCoordinateService] ❌ Database load failed: {dbEx.Message}");
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ❌ Database load failed: {dbEx.Message}\n");
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Stack trace: {dbEx.StackTrace}\n");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] ❌ Database load failed: {dbEx.Message}");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] Stack trace: {dbEx.StackTrace}");
                     }
                     return; // Cannot proceed without database data
                 }
@@ -223,36 +179,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL DEBUG: Log how many have SleeveInstanceId (calculate outside condition for use later)
                 var withSleeveId = clashZones.Count(cz => cz.SleeveInstanceId > 0);
                 
-                try 
-                { 
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Loaded {clashZones.Count} clash zones from database\n");
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] {withSleeveId} out of {clashZones.Count} clash zones have SleeveInstanceId > 0\n");
-                        
-                        // ✅ CRITICAL: Log which sleeve IDs we're looking for
-                        if (withSleeveId > 0)
-                        {
-                            var sleeveIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.SleeveInstanceId).Take(10).ToList();
-                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] Looking for sleeves with IDs: [{string.Join(", ", sleeveIds)}...]\n");
-                        }
-                    }
-                } 
-                catch { }
+                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] Loaded {clashZones.Count} clash zones from database");
+                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] {withSleeveId} out of {clashZones.Count} clash zones have SleeveInstanceId > 0");
+                
+                // ✅ CRITICAL: Log which sleeve IDs we're looking for
+                if (withSleeveId > 0)
+                {
+                    var sleeveIdsArr = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.SleeveInstanceId).Take(10).ToList();
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] Looking for sleeves with IDs: [{string.Join(", ", sleeveIdsArr)}...]");
+                }
                 
                 // Update coordinates
                 coordinateUpdater.UpdateSleeveCoordinates(clashZones);
                 
-                // ✅ CRITICAL DEBUG: Log how many were actually updated after UpdateSleeveCoordinates - Direct file write
                 try
                 {
                     var withBbox = clashZones.Count(cz => cz.SleeveInstanceId > 0 && 
                         !(cz.SleeveBoundingBoxMinX == 0.0 && cz.SleeveBoundingBoxMinY == 0.0 && cz.SleeveBoundingBoxMinZ == 0.0 &&
                           cz.SleeveBoundingBoxMaxX == 0.0 && cz.SleeveBoundingBoxMaxY == 0.0 && cz.SleeveBoundingBoxMaxZ == 0.0));
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] After UpdateSleeveCoordinates: {withBbox} out of {withSleeveId} clash zones with SleeveInstanceId now have bounding boxes\n");
-                    }
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] After UpdateSleeveCoordinates: {withBbox} out of {withSleeveId} clash zones with SleeveInstanceId now have bounding boxes");
                 }
                 catch { }
                 
@@ -352,61 +297,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     isClustered, markedForCluster);
                                 dbClusterUpdatedCount++;
                                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ Saved cluster data for ClashZone {cz.Id}: ClusterId={cz.ClusterSleeveInstanceId}, Placement=({placementX:F6}, {placementY:F6}, {placementZ:F6}), RotatedBbox={rotatedMinX?.ToString("F6") ?? "NULL"}\n");
-                                }
+                                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] ✅ Saved cluster data for ClashZone {cz.Id}: ClusterId={cz.ClusterSleeveInstanceId}, Placement=({placementX:F6}, {placementY:F6}, {placementZ:F6}), RotatedBbox={rotatedMinX?.ToString("F6") ?? "NULL"}");
                             }
                         }
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} clash zones, bounding boxes for {dbUpdatedCount} clash zones, cluster bounding boxes for {dbClusterUpdatedCount} clash zones in database");
-                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} zones, bounding boxes for {dbUpdatedCount} zones, cluster bounding boxes for {dbClusterUpdatedCount} zones\n");
+                            SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for {dbSleeveIdUpdatedCount} zones, bounding boxes for {dbUpdatedCount} zones, cluster bounding boxes for {dbClusterUpdatedCount} zones");
                         }
                     }
                 }
                 catch (Exception dbEx)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
                     {
                         DebugLogger.Warning($"[SleeveCoordinateService] ⚠️ Failed to save SleeveInstanceId/bounding boxes to database: {dbEx.Message}");
-                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Database save failed: {dbEx.Message}\n");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] ⚠️ Database save failed: {dbEx.Message}");
                     }
                 }
                 
                 // ✅ XML OBSOLETE: All data is saved to database only (lines 284-401 above)
                 // No XML saving needed - database is the single source of truth
-                if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[SleeveCoordinateService] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)");
-                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)\n");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", "[UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)");
                 }
                 
                 // ✅ Direct file write
-                try {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] COMPLETED - Updated coordinates for {sleeves.Count} sleeves\n");
-                    }
-                } catch { }
+                SafeFileLogger.SafeAppendText("placement_debug.log", $"[UpdateSleeveCoordinatesInXml] COMPLETED - Updated coordinates for {sleeves.Count} sleeves");
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[UpdateSleeveCoordinatesInXml] EXCEPTION: {ex.Message}\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[UpdateSleeveCoordinatesInXml] Stack trace: {ex.StackTrace}\n");
+                    DebugLogger.Error($"[UpdateSleeveCoordinatesInXml] EXCEPTION: {ex.Message}\n");
+                    DebugLogger.Error($"[UpdateSleeveCoordinatesInXml] Stack trace: {ex.StackTrace}\n");
                 }
             }
         }
         
-        /// <summary>
-        /// ✅ OBSOLETE: XML is no longer used - all data is in database
-        /// This method is kept for backward compatibility but should not be called
-        /// </summary>
         /// <summary>
         /// ✅ OBSOLETE: XML is no longer used - all data is in database
         /// This method is kept for backward compatibility but should not be called
@@ -500,7 +429,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             */
-            return new List<ClashZone>(); // Always return empty - XML obsolete
+            // return new List<ClashZone>(); // FIX: CS0162 - unreachable code commented (return already at line 422)
         }
         /// <summary>
         /// ✅ OBSOLETE: XML is no longer used - all data is saved to database only
@@ -644,22 +573,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             */
         }
         
-        private void UpdateXmlNode(System.Xml.XmlNode parentNode, string nodeName, string value)
-        {
-            var node = parentNode.SelectSingleNode(nodeName);
-            if (node != null)
-            {
-                node.InnerText = value;
-            }
-            else
-            {
-                // Create node if it doesn't exist
-                var newNode = parentNode.OwnerDocument.CreateElement(nodeName);
-                newNode.InnerText = value;
-                parentNode.AppendChild(newNode);
-            }
-        }
-        
         /// <summary>
         /// MASTER DEBUGGER FIX: Regenerate _CLUSTER.xml with actual Revit coordinates after sleeve placement
         /// Waits for Revit to update, then collects real coordinates via API
@@ -670,8 +583,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Starting regeneration after sleeve placement\n");
+                    DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Starting regeneration after sleeve placement\n");
                 }
                 
                 // ✅ CRITICAL: Load clash zone cache first
@@ -1279,49 +1191,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public void UpdateSleeveCoordinates(List<ClashZone> clashZones)
         {
-            // ✅ Declare placementDebugPath once at method start
-            var placementDebugPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+            // ✅ Log filename
+            var placementDebugLogName = "placement_debug.log";
             
             // ✅ DEPLOYMENT: Wrapped in deployment mode check
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[UpdateSleeveCoordinates] ⚠️ CALLED - Processing {clashZones.Count} clash zones for coordinate update\n");
-            }
-            
-            // Get all sleeves in the model for position matching
+            // ✅ PERFORMANCE: Log via SafeFileLogger
+            SafeFileLogger.SafeAppendText(placementDebugLogName, $"[UpdateSleeveCoordinates] ⚠️ CALLED - Processing {clashZones.Count} clash zones for coordinate update");
+
             var allSleeves = new FilteredElementCollector(_doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(s => s.Symbol.FamilyName.Contains("Opening") || s.Symbol.FamilyName.Contains("Damper"))
+                .Where(s => s.Symbol.FamilyName.Contains("Opening"))
                 .ToList();
+
+            SafeFileLogger.SafeAppendText(placementDebugLogName, $"[UpdateSleeveCoordinates] Found {allSleeves.Count} sleeves in model for position matching");
             
-            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-            if (!DeploymentConfiguration.DeploymentMode)
+            if (allSleeves.Count > 0)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[UpdateSleeveCoordinates] Found {allSleeves.Count} sleeves in model for position matching\n");
-                
-                if (allSleeves.Count > 0)
-                {
-                    var firstFewIds = allSleeves.Take(10).Select(s => s.Id.GetIntegerValue()).ToList();
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[UpdateSleeveCoordinates] First 10 sleeve IDs in Revit: [{string.Join(", ", firstFewIds)}]\n");
-                }
+                var firstFewIds = allSleeves.Take(10).Select(s => s.Id.GetIntegerValue()).ToList();
+                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[UpdateSleeveCoordinates] First 10 sleeve IDs in Revit: [{string.Join(", ", firstFewIds)}]");
             }
             
             // ✅ CRITICAL DEBUG: Log sleeve IDs we're looking for vs what we found - Direct file write
             try
             {
                 var clashZoneSleeveIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.SleeveInstanceId).ToList();
-                var revitSleeveIds = allSleeves.Select(s => s.Id.GetIntegerValue()).ToList();
+                var revitSleeveIds = allSleeves.Select(s => (long)s.Id.GetIntegerValue()).ToList();
                 var matchingIds = clashZoneSleeveIds.Intersect(revitSleeveIds).ToList();
-                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATE_COORD_DEBUG] Looking for {clashZoneSleeveIds.Count} sleeve IDs: [{string.Join(", ", clashZoneSleeveIds.Take(10))}...]\n");
-                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATE_COORD_DEBUG] Found {revitSleeveIds.Count} sleeves in Revit: [{string.Join(", ", revitSleeveIds.Take(10))}...]\n");
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATE_COORD_DEBUG] Matching IDs: {matchingIds.Count} out of {clashZoneSleeveIds.Count}\n");
-                }
+                
+                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[UPDATE_COORD_DEBUG] Looking for {clashZoneSleeveIds.Count} sleeve IDs: [{string.Join(", ", clashZoneSleeveIds.Take(10))}...]");
+                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[UPDATE_COORD_DEBUG] Found {revitSleeveIds.Count} sleeves in Revit: [{string.Join(", ", revitSleeveIds.Take(10))}...]");
+                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[UPDATE_COORD_DEBUG] Matching IDs: {matchingIds.Count} out of {clashZoneSleeveIds.Count}");
             }
             catch { }
             
@@ -1341,48 +1241,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ CRITICAL FIX: Try direct ID match first (for individual sleeves OR cluster sleeves)
                     // This MUST succeed if SleeveInstanceId > 0 (individual) or ClusterSleeveInstanceId > 0 (cluster)
                     bool isClusterSleeve = clashZone.ClusterSleeveInstanceId > 0 && clashZone.SleeveInstanceId <= 0;
-                    int targetSleeveId = isClusterSleeve ? clashZone.ClusterSleeveInstanceId : clashZone.SleeveInstanceId;
-                    
+                    long targetSleeveId = isClusterSleeve ? clashZone.ClusterSleeveInstanceId : clashZone.SleeveInstanceId;
+
                     if (targetSleeveId > 0)
                     {
                         try
                         {
-                            var sleeveElement = _doc.GetElement(new ElementId(targetSleeveId));
+                            var sleeveElement = _doc.GetElement(ElementIdCompat.FromLong(targetSleeveId));
                             if (sleeveElement is FamilyInstance sleeve && sleeve.Symbol.FamilyName.Contains("Opening"))
                             {
                                 matchedSleeve = sleeve;
-                                try {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        string sleeveType = isClusterSleeve ? "cluster" : "individual";
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Found {sleeveType} sleeve {targetSleeveId} by ID\n");
-                                    }
-                } catch { }
-                            }
-                            else if (sleeveElement == null)
-                            {
-                                try {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        string sleeveType = isClusterSleeve ? "cluster" : "individual";
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] {sleeveType} sleeve {targetSleeveId} not found in document - may have been deleted\n");
-                                    }
-                } catch { }
-                            }
-                            else
-                            {
-                                try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Element {targetSleeveId} is not a FamilyInstance with Opening name (Type={sleeveElement?.GetType()?.Name})\n"); } catch { }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            try {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [DIRECT-ID-MATCH] Error getting sleeve {targetSleeveId}: {ex.Message}\n");
+                                    string sleeveType = isClusterSleeve ? "cluster" : "individual";
+                                    SafeFileLogger.SafeAppendText(placementDebugLogName, $"[DIRECT-ID-MATCH] Found {sleeveType} sleeve {targetSleeveId} by ID");
                                 }
-                } catch { }
-                        }
+                                else if (sleeveElement == null)
+                                {
+                                    string sleeveType = isClusterSleeve ? "cluster" : "individual";
+                                    SafeFileLogger.SafeAppendText(placementDebugLogName, $"[DIRECT-ID-MATCH] {sleeveType} sleeve {targetSleeveId} not found in document - may have been deleted");
+                                }
+                                else
+                                {
+                                    SafeFileLogger.SafeAppendText(placementDebugLogName, $"[DIRECT-ID-MATCH] Element {targetSleeveId} is not a FamilyInstance with Opening name (Type={sleeveElement?.GetType()?.Name})");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[DIRECT-ID-MATCH] Error getting sleeve {targetSleeveId}: {ex.Message}");
+                            }
                     }
                     
                     // ✅ CRITICAL FIX: If no direct match for cluster sleeve, try position matching
@@ -1428,25 +1313,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     matchedSleeve = sleeve;
                                     clashZone.SleeveInstanceId = sleeve.Id.GetIntegerValue(); // ✅ FIX: Update the instance ID
-                                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH] Found sleeve {sleeve.Id.GetIntegerValue()} by position for zone {clashZone.Id} using {matchPointType}, distance: {distance:F6}ft, MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3}), bbox.Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3})\n");
-                                    }
+                                    SafeFileLogger.SafeAppendText(placementDebugLogName, $"[POSITION-MATCH] Found sleeve {sleeve.Id.GetIntegerValue()} by position for zone {clashZone.Id} using {matchPointType}, distance: {distance:F6}ft, MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3}), bbox.Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3})");
                                     break;
                                 }
                             }
                         }
                         
                         // ✅ DEBUG: Log if no match found but there was a closest sleeve
-                        if (matchedSleeve == null && closestSleeve != null && !DeploymentConfiguration.DeploymentMode)
+                        if (matchedSleeve == null && closestSleeve != null)
                         {
-                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH-FAILED] Zone {clashZone.Id}: No match within 1mm tolerance using {matchPointType}. Closest sleeve {closestSleeve.Id.GetIntegerValue()} at distance {minDistance:F6}ft ({minDistance * 304.8:F2}mm). MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3})\n");
+                            SafeFileLogger.SafeAppendText(placementDebugLogName, $"[POSITION-MATCH-FAILED] Zone {clashZone.Id}: No match within 1mm tolerance using {matchPointType}. Closest sleeve {closestSleeve.Id.GetIntegerValue()} at distance {minDistance:F6}ft ({minDistance * 304.8:F2}mm). MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3})");
                         }
                     }
-                    else if (matchedSleeve == null && matchX == 0 && matchY == 0 && !DeploymentConfiguration.DeploymentMode)
+                    else if (matchedSleeve == null && matchX == 0 && matchY == 0)
                     {
-                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH-SKIP] Zone {clashZone.Id}: Both SleevePlacementPoint and IntersectionPoint are zero, cannot match by position. SPP=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPoint?.X:F3}, {clashZone.IntersectionPoint?.Y:F3}, {clashZone.IntersectionPoint?.Z:F3})\n");
+                        SafeFileLogger.SafeAppendText(placementDebugLogName, $"[POSITION-MATCH-SKIP] Zone {clashZone.Id}: Both SleevePlacementPoint and IntersectionPoint are zero, cannot match by position. SPP=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}), IP=({clashZone.IntersectionPoint?.X:F3}, {clashZone.IntersectionPoint?.Y:F3}, {clashZone.IntersectionPoint?.Z:F3})");
                     }
                     
                     // Update coordinates if sleeve found
@@ -1472,15 +1353,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.ClusterSleeveBoundingBoxMaxY = bbox.Max.Y;
                                 clashZone.ClusterSleeveBoundingBoxMaxZ = bbox.Max.Z;
                                 
-                                try 
-                                { 
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-BBOX-UPDATED] ClashZone {clashZone.Id}, Cluster Sleeve {targetSleeveId}: " +
-                                        $"Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
-                                    }
-                                } 
-                                catch { }
+                                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[CLUSTER-BBOX-UPDATED] ClashZone {clashZone.Id}, Cluster Sleeve {targetSleeveId}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})");
                             }
                             else
                             {
@@ -1518,16 +1391,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     clashZone.SleeveBoundingBoxMaxY = center.Y + halfDiameter;
                                     clashZone.SleeveBoundingBoxMaxZ = center.Z + halfDiameter;
                                     
-                                    try
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CIRCULAR-BBOX-CALCULATED] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
-                                                $"Calculated from Diameter={diameter*304.8:F1}mm, Center=({center.X:F6}, {center.Y:F6}, {center.Z:F6}), " +
-                                                $"BBox Range={(clashZone.SleeveBoundingBoxMaxX - clashZone.SleeveBoundingBoxMinX)*304.8:F1}mm\n");
-                                        }
-                                    }
-                                    catch { }
+                                    SafeFileLogger.SafeAppendText(placementDebugLogName, $"[CIRCULAR-BBOX-CALCULATED] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: Calculated from Diameter={diameter*304.8:F1}mm, Center=({center.X:F6}, {center.Y:F6}, {center.Z:F6}), BBox Range={(clashZone.SleeveBoundingBoxMaxX - clashZone.SleeveBoundingBoxMinX)*304.8:F1}mm");
                                 }
                                 else
                                 {
@@ -1568,10 +1432,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             clashZone.SleeveBoundingBoxMaxY = maxY;
                                             clashZone.SleeveBoundingBoxMaxZ = maxZ;
 
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                 File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BBOX-RECONSTRUCTED] ClashZone {clashZone.Id}: Reconstructed from calculated corners (Zero BBox Fix)\n");
-                                            }
+                                            SafeFileLogger.SafeAppendText(placementDebugLogName, $"[BBOX-RECONSTRUCTED] ClashZone {clashZone.Id}: Reconstructed from calculated corners (Zero BBox Fix)");
                                         }
                                         else
                                         {
@@ -1592,31 +1453,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         else
                         {
-                            // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[NO-BBOX] Sleeve {targetSleeveId} ({(isClusterSleeve ? "cluster" : "individual")}) has no bounding box\n");
-                            }
+                                    SafeFileLogger.SafeAppendText(placementDebugLogName, $"[NO-BBOX] Sleeve {targetSleeveId} ({(isClusterSleeve ? "cluster" : "individual")}) has no bounding box");
                         }
                     }
                     else
                     {
                         // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[NO-MATCH] ClashZone {clashZone.Id} - no matching sleeve found (SleeveInstanceId={clashZone.SleeveInstanceId}, PlacePoint=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}))\n");
-                        }
+                                SafeFileLogger.SafeAppendText(placementDebugLogName, $"[NO-MATCH] ClashZone {clashZone.Id} - no matching sleeve found (SleeveInstanceId={clashZone.SleeveInstanceId}, PlacePoint=({clashZone.SleevePlacementPointX:F3}, {clashZone.SleevePlacementPointY:F3}, {clashZone.SleevePlacementPointZ:F3}))");
                     }
                 }
                 catch (Exception ex)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[ERROR] Clash zone error: {ex.Message}\n");
-                    }
+                            SafeFileLogger.SafeAppendText(placementDebugLogName, $"[ERROR] Clash zone error: {ex.Message}");
                 }
             }
         }

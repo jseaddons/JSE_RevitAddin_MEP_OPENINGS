@@ -6,6 +6,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -37,7 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var allCombos = repo.GetAllCombinedSleeves();
 
                 return allCombos
-                    .Select(c => doc.GetElement(new ElementId(c.CombinedInstanceId)) as FamilyInstance)
+                    .Select(c => doc.GetElement(ElementIdCompat.FromValue(c.CombinedInstanceId)) as FamilyInstance)
                     .Where(fi => fi != null)
                     .ToList();
             }

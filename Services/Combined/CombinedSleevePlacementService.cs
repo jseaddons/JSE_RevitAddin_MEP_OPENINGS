@@ -383,13 +383,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                                 }
                                 else if (pInstanceId.StorageType == StorageType.Integer)
                                 {
-                                    pInstanceId.Set(placedInstance.Id.GetIntegerValue());
+                                    pInstanceId.Set(placedInstance.Id.GetIdValue()); // Use GetIdValue for long, GetIntegerValue for int. Revit 2024 uses long.
+
                                 }
                                 else if (pInstanceId.StorageType == StorageType.String)
                                 {
                                     pInstanceId.Set(placedInstance.Id.GetIntegerValue().ToString());
                                 }
-                                _logger($"[CombinedSleevePlacement] ✅ Set Instance ID parameter '{pInstanceId.Definition.Name}' = {placedInstance.Id.GetIntegerValue()}");
+                                _logger($"[CombinedSleevePlacement] ✅ Set Instance ID parameter '{pInstanceId.Definition.Name}' = {placedInstance.Id.GetIdValue()}");
                             }
                             catch (Exception paramEx)
                             {
@@ -584,7 +585,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             // Create combined sleeve data model
             var combinedSleeve = new CombinedSleeve
             {
-                CombinedInstanceId = placedInstance?.Id.GetIntegerValue() ?? -1, // Use actual ID or -1 if failed
+                CombinedInstanceId = placedInstance?.Id.GetIdValue() ?? -1, 
+
                 ComboId = comboId,
                 FilterId = filterId,
                 Categories = group.Categories,
@@ -657,8 +659,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             }
 
             // Collect all Revit element IDs to delete from constituents
-            var elementIdsToDelete = new HashSet<int>();
-            var individualClashZoneIds = new HashSet<int>();
+            var elementIdsToDelete = new HashSet<long>();
+            var individualClashZoneIds = new HashSet<long>();
 
             foreach (var cs in placedCombinedSleeves)
             {
@@ -727,7 +729,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             {
                                 while (reader.Read())
                                 {
-                                    int sleeveId = reader.GetInt32(reader.GetOrdinal("SleeveInstanceId"));
+                                    long sleeveId = reader.GetInt64(reader.GetOrdinal("SleeveInstanceId"));
                                     if (sleeveId > 0)
                                     {
                                         elementIdsToDelete.Add(sleeveId);
@@ -751,6 +753,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
 
             _logger($"[CombinedSleevePlacement] 🧹 Combined cleanup: deleting {elementIdsToDelete.Count} constituent sleeves");
 
+            // ✅ CRITICAL FIX: Mark constituent zones as IsCombinedResolved=1 BEFORE deleting from Revit
+            // This ensures they won't be processed again in future runs
+            MarkConstituentsAsCombinedResolved(placedCombinedSleeves);
+
             using (var tx = new Transaction(_doc, "Combined Sleeves Cleanup"))
             {
                 tx.Start();
@@ -758,7 +764,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 {
                     var revitIds = elementIdsToDelete
                         .Where(id => id > 0)
-                        .Select(id => new ElementId(id))
+                        .Select(id => ElementIdCompat.FromValue(id)) // long overload for ElementId constructor in Revit 2024+
+
                         .ToList();
 
                     if (revitIds.Count > 0)
@@ -773,6 +780,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     _logger($"[CombinedSleevePlacement] ⚠️ Combined cleanup transaction failed: {ex.Message}");
                     tx.RollBack();
                 }
+            }
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Marks all constituent zones as IsCombinedResolved=1
+        /// This prevents them from being re-processed in future runs
+        /// </summary>
+        private void MarkConstituentsAsCombinedResolved(List<CombinedSleeve> placedCombinedSleeves)
+        {
+            try
+            {
+                using (var context = new SleeveDbContext(_doc))
+                {
+                    int totalUpdated = 0;
+                    
+                    foreach (var combinedSleeve in placedCombinedSleeves)
+                    {
+                        if (combinedSleeve?.Constituents == null || combinedSleeve.Constituents.Count == 0)
+                            continue;
+
+                        // Get all ClashZoneGuids from constituents
+                        var clashZoneGuids = combinedSleeve.Constituents
+                            .Where(c => c.ClashZoneGuid.HasValue && c.ClashZoneGuid.Value != Guid.Empty)
+                            .Select(c => c.ClashZoneGuid.Value.ToString())
+                            .Distinct()
+                            .ToList();
+
+                        if (clashZoneGuids.Count == 0) continue;
+
+                        // Update ClashZones to set IsCombinedResolved=1
+                        foreach (var guid in clashZoneGuids)
+                        {
+                            using (var cmd = context.Connection.CreateCommand())
+                            {
+                                cmd.CommandText = @"
+                                    UPDATE ClashZones 
+                                    SET IsCombinedResolved = 1,
+                                        CombinedSleeveInstanceId = @combinedInstanceId,
+                                        UpdatedAt = CURRENT_TIMESTAMP
+                                    WHERE ClashZoneGuid = @guid
+                                      AND (IsCombinedResolved = 0 OR IsCombinedResolved IS NULL)";
+                                cmd.Parameters.AddWithValue("@combinedInstanceId", combinedSleeve.CombinedInstanceId);
+                                cmd.Parameters.AddWithValue("@guid", guid);
+                                
+                                int rows = cmd.ExecuteNonQuery();
+                                if (rows > 0) totalUpdated++;
+                            }
+                        }
+                    }
+                    
+                    if (totalUpdated > 0)
+                    {
+                        _logger($"[CombinedSleevePlacement] ✅ Marked {totalUpdated} constituent zones as IsCombinedResolved=1");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[CombinedSleevePlacement] ⚠️ Failed to mark constituents as combined resolved: {ex.Message}");
+                // Don't throw - cleanup can continue even if flag update fails
             }
         }
         
@@ -843,7 +910,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             {
                                 // Zone is part of a cluster - delete the CLUSTER sleeve, not the old individual
                                 // Avoid duplicates by checking if we already added this cluster ID
-                                var clusterElementId = new ElementId(cz.ClusterSleeveInstanceId);
+                                var clusterElementId = ElementIdCompat.FromValue(cz.ClusterSleeveInstanceId);
                                 if (!idsToDelete.Contains(clusterElementId))
                                 {
                                     idsToDelete.Add(clusterElementId);
@@ -857,7 +924,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             else if (cz.SleeveInstanceId > 0)
                             {
                                 // Zone is NOT clustered - delete the individual sleeve
-                                idsToDelete.Add(new ElementId(cz.SleeveInstanceId));
+                                idsToDelete.Add(ElementIdCompat.FromValue(cz.SleeveInstanceId));
                                 _logger($"[CombinedSleeveCleanup]   MARKED: Individual Sleeve {cz.SleeveInstanceId} (GUID={cz.Id})");
                             }
                             else
@@ -874,7 +941,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     {
                         // For clusters, Id property holds the Revit Element ID as string
                         // Also check SourceData for robustness
-                        int cid = -1;
+                        long cid = -1;
                         if (sleeve.SourceData is ClusterSleeveData csd && csd.ClusterInstanceId > 0)
                         {
                             cid = csd.ClusterInstanceId;
@@ -885,12 +952,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             cid = cz.ClusterSleeveInstanceId;
                             _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from SourceData ClashZone)");
                         }
-                        else if (int.TryParse(sleeve.Id, out int parsedId) && parsedId > 0)
+                        else if (long.TryParse(sleeve.Id, out long parsedId) && parsedId > 0)
                         {
                             cid = parsedId;
                             _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from ID parsing)");
                         }
-                        else if (sleeve.Id.StartsWith("C_") && int.TryParse(sleeve.Id.Substring(2), out int parsedIdC) && parsedIdC > 0)
+                        else if (sleeve.Id.StartsWith("C_") && long.TryParse(sleeve.Id.Substring(2), out long parsedIdC) && parsedIdC > 0)
                         {
                              cid = parsedIdC;
                              _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from ID parsing C_ prefix)");
@@ -902,7 +969,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                         
                         if (cid > 0)
                         {
-                            idsToDelete.Add(new ElementId(cid));
+                            idsToDelete.Add(ElementIdCompat.FromValue(cid));
                         }
                     }
                 }

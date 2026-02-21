@@ -16,8 +16,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public double IntersectionY { get; set; }
         public double IntersectionZ { get; set; }
         public int SleeveState { get; set; } // 0=Unprocessed, 1=IndividualPlaced, 2=ClusterPlaced, etc.
-        public int? SleeveInstanceId { get; set; }
-        public int? ClusterInstanceId { get; set; }
+        public long? SleeveInstanceId { get; set; }
+        public long? ClusterInstanceId { get; set; }
         public double? SleeveWidth { get; set; }
         public double? SleeveHeight { get; set; }
         public double? SleeveDiameter { get; set; }
@@ -63,7 +63,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public bool IsClusterResolvedFlag { get; set; }
         public bool? IsClusteredFlag { get; set; }
         public bool? MarkedForClusterProcess { get; set; }
-        public int AfterClusterSleeveId { get; set; }
+        public long AfterClusterSleeveId { get; set; }
         public bool HasDamperNearbyFlag { get; set; }
         public bool IsCurrentClashFlag { get; set; }
         // ✅ SLEEVE CORNERS: Pre-calculated 4 corner coordinates in world space (for clustering optimization)

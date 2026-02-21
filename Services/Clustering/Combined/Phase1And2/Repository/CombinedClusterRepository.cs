@@ -197,12 +197,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
             return resolved;
         }
 
-        public Dictionary<int, Dictionary<string, string>> LoadSnapshotParameters(IEnumerable<int> sleeveInstanceIds)
+        public Dictionary<long, Dictionary<string, string>> LoadSnapshotParameters(IEnumerable<long> sleeveInstanceIds)
         {
             var ids = sleeveInstanceIds?.Where(id => id > 0).Distinct().ToList();
             if (ids == null || ids.Count == 0)
             {
-                return new Dictionary<int, Dictionary<string, string>>();
+                return new Dictionary<long, Dictionary<string, string>>();
             }
 
             return _clashZoneRepository.GetSnapshotMepParametersForSleeveIds(ids);

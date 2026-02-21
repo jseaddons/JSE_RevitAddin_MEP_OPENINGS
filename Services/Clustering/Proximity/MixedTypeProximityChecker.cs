@@ -22,10 +22,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 bool result = distance.Value <= tolerance;
 
                 // DIAGNOSTIC LOGGING
-                if (result)
+                if (OptimizationFlags.EnableProximityDebugLog || result)
                 {
+                    string id1 = "unknown";
+                    string id2 = "unknown";
+                    try 
+                    {
+                        var cz1 = sleeve1 as ClashZone;
+                        var cz2 = sleeve2 as ClashZone;
+                        if (cz1 != null) id1 = cz1.SleeveInstanceId.ToString();
+                        else id1 = ((dynamic)sleeve1).SleeveId?.ToString() ?? "dyn";
+                        
+                        if (cz2 != null) id2 = cz2.SleeveInstanceId.ToString();
+                        else id2 = ((dynamic)sleeve2).SleeveId?.ToString() ?? "dyn";
+                    }
+                    catch { }
+
+                    string status = result ? "✅ MATCH" : "❌ FAIL";
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[MixedChecker] ✅ MATCH: Mixed proximity detected. Dist={distance.Value * 304.8:F1}mm vs Tol={tolerance * 304.8:F1}mm\n");
+                        $"[MixedChecker] {status}: IDs={id1}/{id2}, Dist={distance.Value * 304.8:F1}mm vs Tol={tolerance * 304.8:F1}mm\n");
                 }
 
                 return result;
@@ -50,7 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 string hostType = cz1.StructuralElementType ?? "Unknown";
 
                 // CASE 1: Walls or Structural Framing -> Use RCS for robustness if available
-                if (hostType == "Wall" || hostType == "Structural Framing")
+                if (hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 || hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     // Check if BOTH have valid RCS data
                     if (HasValidRcsBoundingBox(cz1) && HasValidRcsBoundingBox(cz2))
@@ -62,52 +77,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                             cz2.SleeveBoundingBoxRCS_MinX, cz2.SleeveBoundingBoxRCS_MinZ,
                             cz2.SleeveBoundingBoxRCS_MaxX, cz2.SleeveBoundingBoxRCS_MaxZ);
                     }
-                    
-                    // Fallback to corners if RCS is missing but corners exist (Corners are more robust than WCS BBox)
-                    var cornerHelper = new SleeveCornerProximityHelper();
-                    if (cornerHelper.HasValidSleeveCorners(cz1) && cornerHelper.HasValidSleeveCorners(cz2))
-                    {
-                        var bbox1 = cornerHelper.GetBoundingBoxFromCorners(cz1);
-                        var bbox2 = cornerHelper.GetBoundingBoxFromCorners(cz2);
-
-                        // Walls/Framing: Determine orientation and calculate 2D distance
-                        string orientation = cz1.HostOrientation ?? "X";
-                        if (orientation == "X")
-                        {
-                            return DistanceCalculator.CalculateMinimumDistance2D(
-                                bbox1.minX, bbox1.minZ, bbox1.maxX, bbox1.maxZ,
-                                bbox2.minX, bbox2.minZ, bbox2.maxX, bbox2.maxZ);
-                        }
-                        else
-                        {
-                            return DistanceCalculator.CalculateMinimumDistance2D(
-                                bbox1.minY, bbox1.minZ, bbox1.maxY, bbox1.maxZ,
-                                bbox2.minY, bbox2.minZ, bbox2.maxY, bbox2.maxZ);
-                        }
-                    }
                 }
 
-                // CASE 2: Floors or Fallback -> Use WCS Bounding Box (axis-aligned on Floors is safe)
-                // Use the BoundingBox property provided by BatchClusterCalculationService wrapper
-                var wcsBbox1 = sleeve1.BoundingBox;
-                var wcsBbox2 = sleeve2.BoundingBox;
-
-                if (wcsBbox1 != null && wcsBbox2 != null)
+                // CASE 2: Mixed type handling (rectangular vs circular) using appropriate geometry
+                var cornerHelper = new SleeveCornerProximityHelper();
+                
+                // Get bounding box for each sleeve (handles both rectangular and circular)
+                var bbox1 = GetBoundingBoxForMixedType(cz1, cornerHelper);
+                var bbox2 = GetBoundingBoxForMixedType(cz2, cornerHelper);
+                
+                if (!bbox1.HasValue || !bbox2.HasValue)
                 {
-                    if (hostType == "Floor")
-                    {
-                        return DistanceCalculator.CalculateMinimumDistance2D(
-                            wcsBbox1.Min.X, wcsBbox1.Min.Y, wcsBbox1.Max.X, wcsBbox1.Max.Y,
-                            wcsBbox2.Min.X, wcsBbox2.Min.Y, wcsBbox2.Max.X, wcsBbox2.Max.Y);
-                    }
-                    
-                    // General 3D fallback
-                    return DistanceCalculator.CalculateMinimumDistance3D(
-                        wcsBbox1.Min.X, wcsBbox1.Min.Y, wcsBbox1.Min.Z, wcsBbox1.Max.X, wcsBbox1.Max.Y, wcsBbox1.Max.Z,
-                        wcsBbox2.Min.X, wcsBbox2.Min.Y, wcsBbox2.Min.Z, wcsBbox2.Max.X, wcsBbox2.Max.Y, wcsBbox2.Max.Z);
+                    return null;
                 }
+                
+                var box1 = bbox1.Value;
+                var box2 = bbox2.Value;
 
-                return null;
+                if (hostType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    // Floor: 2D distance in X,Y plane (ignore Z)
+                    double? dist = DistanceCalculator.CalculateMinimumDistance2D(
+                        box1.minX, box1.minY, box1.maxX, box1.maxY,
+                        box2.minX, box2.minY, box2.maxX, box2.maxY);
+                    if (!dist.HasValue) return null;
+                    SafeFileLogger.SafeAppendText("mixed_type_distances.log",
+                        $"[{DateTime.Now:HH:mm:ss}] FLOOR: {cz1.ClashZoneGuid?.Substring(0,8)} vs {cz2.ClashZoneGuid?.Substring(0,8)}, Dist={dist.Value*304.8:F1}mm, BBox1=({box1.minX:F2},{box1.minY:F2})-({box1.maxX:F2},{box1.maxY:F2}), BBox2=({box2.minX:F2},{box2.minY:F2})-({box2.maxX:F2},{box2.maxY:F2})\n");
+                    return dist.Value;
+                }
+                else if (hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 || hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    string orientation = cz1.HostOrientation ?? "X";
+                    if (orientation == "X")
+                    {
+                        // X-wall: 2D distance in X,Z plane (ignore Y - through wall)
+                        double? dist = DistanceCalculator.CalculateMinimumDistance2D(
+                            box1.minX, box1.minZ, box1.maxX, box1.maxZ,
+                            box2.minX, box2.minZ, box2.maxX, box2.maxZ);
+                        if (!dist.HasValue) return null;
+                        SafeFileLogger.SafeAppendText("mixed_type_distances.log",
+                            $"[{DateTime.Now:HH:mm:ss}] X-WALL: {cz1.ClashZoneGuid?.Substring(0,8)} vs {cz2.ClashZoneGuid?.Substring(0,8)}, Dist={dist.Value*304.8:F1}mm, BBox1_XZ=({box1.minX:F2},{box1.minZ:F2})-({box1.maxX:F2},{box1.maxZ:F2}), BBox2_XZ=({box2.minX:F2},{box2.minZ:F2})-({box2.maxX:F2},{box2.maxZ:F2})\n");
+                        return dist.Value;
+                    }
+                    else
+                    {
+                        // Y-wall: 2D distance in Y,Z plane (ignore X - through wall)
+                        double? dist = DistanceCalculator.CalculateMinimumDistance2D(
+                            box1.minY, box1.minZ, box1.maxY, box1.maxZ,
+                            box2.minY, box2.minZ, box2.maxY, box2.maxZ);
+                        if (!dist.HasValue) return null;
+                        SafeFileLogger.SafeAppendText("mixed_type_distances.log",
+                            $"[{DateTime.Now:HH:mm:ss}] Y-WALL: {cz1.ClashZoneGuid?.Substring(0,8)} vs {cz2.ClashZoneGuid?.Substring(0,8)}, Dist={dist.Value*304.8:F1}mm, BBox1_YZ=({box1.minY:F2},{box1.minZ:F2})-({box1.maxY:F2},{box1.maxZ:F2}), BBox2_YZ=({box2.minY:F2},{box2.minZ:F2})-({box2.maxY:F2},{box2.maxZ:F2})\n");
+                        return dist.Value;
+                    }
+                }
+                else 
+                {
+                    // 3D fallback
+                    return DistanceCalculator.CalculateMinimumDistance3D(
+                        box1.minX, box1.minY, box1.minZ, box1.maxX, box1.maxY, box1.maxZ,
+                        box2.minX, box2.minY, box2.minZ, box2.maxX, box2.maxY, box2.maxZ);
+                }
             }
             catch (Exception ex)
             {
@@ -122,6 +152,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
             // If Max > Min on any axis, it's valid.
             return cz.SleeveBoundingBoxRCS_MaxX > cz.SleeveBoundingBoxRCS_MinX ||
                    cz.SleeveBoundingBoxRCS_MaxZ > cz.SleeveBoundingBoxRCS_MinZ;
+        }
+        
+        /// <summary>
+        /// Gets bounding box for mixed type proximity checking.
+        /// - Rectangular sleeves: use corners from database
+        /// - Circular sleeves: use WCS bounding box (SleeveBoundingBoxMinX/Y/Z, MaxX/Y/Z)
+        /// </summary>
+        private (double minX, double maxX, double minY, double maxY, double minZ, double maxZ)? 
+            GetBoundingBoxForMixedType(ClashZone cz, SleeveCornerProximityHelper cornerHelper)
+        {
+            if (cz == null) return null;
+            
+            // Case 1: Rectangular sleeve - has corners
+            if (cornerHelper.HasValidSleeveCorners(cz))
+            {
+                try
+                {
+                    return cornerHelper.GetBoundingBoxFromCorners(cz);
+                }
+                catch
+                {
+                    // Fall through to WCS bounding box
+                }
+            }
+            
+            // Case 2: Circular sleeve - use WCS bounding box from database
+            if (HasValidWcsBoundingBox(cz))
+            {
+                return (
+                    cz.BoundingBoxMinX, cz.BoundingBoxMaxX,
+                    cz.BoundingBoxMinY, cz.BoundingBoxMaxY,
+                    cz.BoundingBoxMinZ, cz.BoundingBoxMaxZ
+                );
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Checks if ClashZone has valid WCS bounding box data.
+        /// </summary>
+        private bool HasValidWcsBoundingBox(ClashZone cz)
+        {
+            if (cz == null) return false;
+            
+            // Valid if Max > Min on at least one axis
+            return cz.BoundingBoxMaxX > cz.BoundingBoxMinX ||
+                   cz.BoundingBoxMaxY > cz.BoundingBoxMinY ||
+                   cz.BoundingBoxMaxZ > cz.BoundingBoxMinZ;
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Autodesk.Revit.DB;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
 {
@@ -20,19 +21,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.ViewModels
         public ElementId WallId => _status.WallId;
 
         // Opening Details
-        public string OpeningIdText => $"Opening ID: {_status.OpeningId.IntegerValue}";
+        public string OpeningIdText => $"Opening ID: {_status.OpeningId.GetIntegerValue()}";
         public string OpeningDimensions => $"{_status.Width:F1} × {_status.Height:F1} mm";
         public string OpeningLocation => $"X:{_status.CurrentLocation.X:F2}, Y:{_status.CurrentLocation.Y:F2}, Z:{_status.CurrentLocation.Z:F2}";
         public string OpeningFamilyName { get; }
 
         // MEP Element Details
-        public string MepElementIdText => $"MEP ID: {_status.MepElementId.IntegerValue}";
+        public string MepElementIdText => $"MEP ID: {_status.MepElementId.GetIntegerValue()}";
         public string MepElementType => _status.MepType;
         public string MepElementSize { get; }
         public string MepElementLocation { get; }
 
         // Wall Details
-        public string WallIdText => $"Wall ID: {_status.WallId.IntegerValue}";
+        public string WallIdText => $"Wall ID: {_status.WallId.GetIntegerValue()}";
         public string WallType { get; }
 
         // Status Information

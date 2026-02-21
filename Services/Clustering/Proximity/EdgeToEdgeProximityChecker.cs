@@ -35,7 +35,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return false;
                 }
 
-                return distance.Value <= tolerance;
+                bool result = distance.Value <= tolerance;
+
+                // ✅ DIAGNOSTIC LOGGING
+                if (OptimizationFlags.EnableProximityDebugLog)
+                {
+                     string id1 = "unknown";
+                     string id2 = "unknown";
+                     try 
+                     {
+                         var cz1 = sleeve1 as ClashZone;
+                         var cz2 = sleeve2 as ClashZone;
+                         if (cz1 != null) id1 = cz1.SleeveInstanceId.ToString();
+                         else id1 = ((dynamic)sleeve1).SleeveId?.ToString() ?? "dyn";
+                         
+                         if (cz2 != null) id2 = cz2.SleeveInstanceId.ToString();
+                         else id2 = ((dynamic)sleeve2).SleeveId?.ToString() ?? "dyn";
+                     }
+                     catch { }
+
+                     SafeFileLogger.SafeAppendText("cluster_debug.log",
+                         $"[EdgeToEdge] 📏 IDs={id1}/{id2} Dist={distance.Value * 304.8:F1}mm vs Tol={tolerance * 304.8:F1}mm. Result: {result}");
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
@@ -134,22 +157,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 // This is the actual gap between the two sleeves
                 double edgeToEdgeDistance = centerToCenterDistance - (radius1 + radius2);
 
-                // ✅ DIAGNOSTIC LOGGING: Log distance for pipes/ducts to verify clustering
-                string category = (sleeve1 as ClashZone)?.MepElementCategory;
-                if (string.IsNullOrEmpty(category))
-                {
-                    try { category = sleeve1.Category?.ToString(); } catch { }
-                }
 
-                if (!string.IsNullOrEmpty(category) && 
-                   (category.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    category.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0))
-                {
-                    double distMM = edgeToEdgeDistance * 304.8;
-                    double centerDistMM = centerToCenterDistance * 304.8;
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[EdgeToEdge] 📏 {category} Proximity: Dist={distMM:F1}mm (CenterDist={centerDistMM:F1}mm) vs Tol=??mm. Result: {edgeToEdgeDistance <= 0.328}"); // 0.328ft approx 100mm
-                }
 
                 // ✅ Ensure non-negative (sleeves can overlap)
                 return Math.Max(0, edgeToEdgeDistance);

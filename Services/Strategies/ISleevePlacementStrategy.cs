@@ -12,7 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         /// <summary>
         /// Extract size information from MEP element
         /// </summary>
-        MepElementSize GetMepElementSize(Element mepElement);
+        MepElementSize GetMepElementSize(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null);
         
         /// <summary>
         /// Calculate clearance based on MEP size and category-specific rules
@@ -23,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         /// <summary>
         /// Get system abbreviation from MEP element
         /// </summary>
-        string GetSystemAbbreviation(Element mepElement);
+        string GetSystemAbbreviation(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null);
         
         /// <summary>
         /// Get MEP category name

@@ -330,8 +330,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             if (cz1.Id == cz2.Id) return false;
 
             // 1. Check StructuralElementId (Host)
-            int host1 = cz1.StructuralElementIdValue;
-            int host2 = cz2.StructuralElementIdValue;
+            long host1 = cz1.StructuralElementIdValue;
+            long host2 = cz2.StructuralElementIdValue;
             
             if (host1 != host2)
             {
@@ -373,26 +373,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 
             if (!isRotated1 && !isRotated2)  // Both must be straight for AABB fast path
             {
-                // Simple AABB Overlap (Phase 10 Fast Path) - only for axis-aligned sleeves
-                double minX1 = cz1.SleeveBoundingBoxMinX - toleranceDist;
-                double minY1 = cz1.SleeveBoundingBoxMinY - toleranceDist;
-                double minZ1 = cz1.SleeveBoundingBoxMinZ - toleranceDist;
-                double maxX1 = cz1.SleeveBoundingBoxMaxX + toleranceDist;
-                double maxY1 = cz1.SleeveBoundingBoxMaxY + toleranceDist;
-                double maxZ1 = cz1.SleeveBoundingBoxMaxZ + toleranceDist;
+                // ✅ CRITICAL FIX: Use SAME bounding boxes as slow mode (CornerProximityChecker)
+                // Slow mode uses SleeveCorner1-4 via GetBoundingBoxFromCorners(), NOT SleeveBoundingBoxMin/Max
+                // SleeveBoundingBoxMin/Max are AABB and oversized for rotated sleeves!
                 
-                double minX2 = cz2.SleeveBoundingBoxMinX;
-                double minY2 = cz2.SleeveBoundingBoxMinY;
-                double minZ2 = cz2.SleeveBoundingBoxMinZ;
-                double maxX2 = cz2.SleeveBoundingBoxMaxX;
-                double maxY2 = cz2.SleeveBoundingBoxMaxY;
-                double maxZ2 = cz2.SleeveBoundingBoxMaxZ;
+                // Helper to compute 1D gap between two intervals (0 if overlapping)
+                double Gap(double min1, double max1, double min2, double max2)
+                {
+                    if (max1 < min2) return min2 - max1;
+                    if (max2 < min1) return min1 - max2;
+                    return 0.0; // Overlapping
+                }
+
+                // Get bounding boxes from corners (SAME as SleeveCornerProximityHelper)
+                var bbox1 = GetBoundingBoxFromCorners(cz1);
+                var bbox2 = GetBoundingBoxFromCorners(cz2);
                 
-                bool overlapX = maxX2 >= minX1 && minX2 <= maxX1;
-                bool overlapY = maxY2 >= minY1 && minY2 <= maxY1;
-                bool overlapZ = maxZ2 >= minZ1 && minZ2 <= maxZ1;
+                // 🔍 VALIDATION: Check if corners are actually populated
+                bool hasValidCorners1 = (bbox1.maxX - bbox1.minX) > 0.001 && (bbox1.maxY - bbox1.minY) > 0.001;
+                bool hasValidCorners2 = (bbox2.maxX - bbox2.minX) > 0.001 && (bbox2.maxY - bbox2.minY) > 0.001;
                 
-                return overlapX && overlapY && overlapZ;
+                if (!hasValidCorners1 || !hasValidCorners2)
+                {
+                    // FALLBACK: Use SleeveBoundingBoxMin/Max if corners not available
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ CORNER_FALLBACK: Zone1={cz1.ClashZoneGuid?.Substring(0,8)}(corners={hasValidCorners1}), " +
+                        $"Zone2={cz2.ClashZoneGuid?.Substring(0,8)}(corners={hasValidCorners2}) - Using AABB fallback\n");
+                    
+                    if (!hasValidCorners1)
+                    {
+                        bbox1 = (cz1.SleeveBoundingBoxMinX, cz1.SleeveBoundingBoxMaxX, cz1.SleeveBoundingBoxMinY, 
+                                 cz1.SleeveBoundingBoxMaxY, cz1.SleeveBoundingBoxMinZ, cz1.SleeveBoundingBoxMaxZ);
+                    }
+                    if (!hasValidCorners2)
+                    {
+                        bbox2 = (cz2.SleeveBoundingBoxMinX, cz2.SleeveBoundingBoxMaxX, cz2.SleeveBoundingBoxMinY, 
+                                 cz2.SleeveBoundingBoxMaxY, cz2.SleeveBoundingBoxMinZ, cz2.SleeveBoundingBoxMaxZ);
+                    }
+                }
+                
+                // ✅ CRITICAL: Use SAME tolerance adjustment as slow mode (SleeveCornerProximityHelper)
+                double effectiveTolerance = Math.Ceiling(toleranceDist * 304.8) / 304.8;
+
+                string hostType = cz1.StructuralElementType ?? "";
+                string orientation = cz1.HostOrientation ?? "";
+                double distance;
+
+                // Floor: 2D distance in X,Y plane (ignore Z)
+                if (hostType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    double gapX = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);
+                    double gapY = Gap(bbox1.minY, bbox1.maxY, bbox2.minY, bbox2.maxY);
+                    distance = Math.Sqrt(gapX * gapX + gapY * gapY);
+                }
+                // Wall/Framing: Check orientation!
+                // X-wall: distance in X,Z plane (ignore Y - through wall)
+                // Y-wall: distance in Y,Z plane (ignore X - through wall)
+                else if (hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                         hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (orientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // X-wall: 2D distance in X,Z plane
+                        double gapX = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);
+                        double gapZ = Gap(bbox1.minZ, bbox1.maxZ, bbox2.minZ, bbox2.maxZ);
+                        distance = Math.Sqrt(gapX * gapX + gapZ * gapZ);
+                    }
+                    else // Y-wall (or unknown - default to Y,Z)
+                    {
+                        // Y-wall: 2D distance in Y,Z plane
+                        double gapY = Gap(bbox1.minY, bbox1.maxY, bbox2.minY, bbox2.maxY);
+                        double gapZ = Gap(bbox1.minZ, bbox1.maxZ, bbox2.minZ, bbox2.maxZ);
+                        distance = Math.Sqrt(gapY * gapY + gapZ * gapZ);
+                    }
+                }
+                // Default: full 3D distance
+                else
+                {
+                    double gapX = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);
+                    double gapY = Gap(bbox1.minY, bbox1.maxY, bbox2.minY, bbox2.maxY);
+                    double gapZ = Gap(bbox1.minZ, bbox1.maxZ, bbox2.minZ, bbox2.maxZ);
+                    distance = Math.Sqrt(gapX * gapX + gapY * gapY + gapZ * gapZ);
+                }
+
+                bool shouldCluster = distance <= effectiveTolerance;
+                
+                // 🔍 DIAGNOSTIC: Log clustering decision for over-stretch analysis
+                if (shouldCluster) // Log ALL clusters
+                {
+                    string source1 = hasValidCorners1 ? "corners" : "aabb";
+                    string source2 = hasValidCorners2 ? "corners" : "aabb";
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] CLUSTER_DECISION: Zone1={cz1.ClashZoneGuid?.Substring(0,8)}({source1}), Zone2={cz2.ClashZoneGuid?.Substring(0,8)}({source2}), " +
+                        $"Host={hostType}, Orient={orientation}, Distance={distance:F6}ft ({distance*304.8:F1}mm), " +
+                        $"Tolerance={effectiveTolerance:F6}ft ({effectiveTolerance*304.8:F1}mm) [raw={toleranceDist:F6}ft], Result={shouldCluster}\n" +
+                        $"  BBox1: X=[{bbox1.minX:F2},{bbox1.maxX:F2}], Y=[{bbox1.minY:F2},{bbox1.maxY:F2}], Z=[{bbox1.minZ:F2},{bbox1.maxZ:F2}]\n" +
+                        $"  BBox2: X=[{bbox2.minX:F2},{bbox2.maxX:F2}], Y=[{bbox2.minY:F2},{bbox2.maxY:F2}], Z=[{bbox2.minZ:F2},{bbox2.maxZ:F2}]\n");
+                }
+                
+                return shouldCluster;
             }
 
             // Fallback to Rotated Proximity (if either sleeve is rotated)
@@ -459,6 +538,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             bool overlapY = maxY2 >= minY1 && minY2 <= maxY1;
             bool overlapZ = maxZ2 >= minZ1 && minZ2 <= maxZ1;
             return overlapX && overlapY && overlapZ;
+        }
+
+        /// <summary>
+        /// Get bounding box from sleeve corners (SleeveCorner1-4).
+        /// This matches the logic in SleeveCornerProximityHelper.GetBoundingBoxFromCorners()
+        /// and ensures fast path uses the SAME bounding boxes as slow mode.
+        /// </summary>
+        private (double minX, double maxX, double minY, double maxY, double minZ, double maxZ) GetBoundingBoxFromCorners(ClashZone cz)
+        {
+            var minX = Math.Min(Math.Min(cz.SleeveCorner1X ?? 0, cz.SleeveCorner2X ?? 0),
+                               Math.Min(cz.SleeveCorner3X ?? 0, cz.SleeveCorner4X ?? 0));
+            var maxX = Math.Max(Math.Max(cz.SleeveCorner1X ?? 0, cz.SleeveCorner2X ?? 0),
+                               Math.Max(cz.SleeveCorner3X ?? 0, cz.SleeveCorner4X ?? 0));
+
+            var minY = Math.Min(Math.Min(cz.SleeveCorner1Y ?? 0, cz.SleeveCorner2Y ?? 0),
+                               Math.Min(cz.SleeveCorner3Y ?? 0, cz.SleeveCorner4Y ?? 0));
+            var maxY = Math.Max(Math.Max(cz.SleeveCorner1Y ?? 0, cz.SleeveCorner2Y ?? 0),
+                               Math.Max(cz.SleeveCorner3Y ?? 0, cz.SleeveCorner4Y ?? 0));
+
+            var minZ = Math.Min(Math.Min(cz.SleeveCorner1Z ?? 0, cz.SleeveCorner2Z ?? 0),
+                               Math.Min(cz.SleeveCorner3Z ?? 0, cz.SleeveCorner4Z ?? 0));
+            var maxZ = Math.Max(Math.Max(cz.SleeveCorner1Z ?? 0, cz.SleeveCorner2Z ?? 0),
+                               Math.Max(cz.SleeveCorner3Z ?? 0, cz.SleeveCorner4Z ?? 0));
+
+            // ✅ SAFETY CHECK: Ensure minimum thickness (e.g. 1mm ~ 0.0033 ft) to prevent 2D boxes
+            const double minThickness = 0.0033; // ~1mm
+            if (maxX - minX < minThickness) { minX -= minThickness/2; maxX += minThickness/2; }
+            if (maxY - minY < minThickness) { minY -= minThickness/2; maxY += minThickness/2; }
+            if (maxZ - minZ < minThickness) { minZ -= minThickness/2; maxZ += minThickness/2; }
+
+            return (minX, maxX, minY, maxY, minZ, maxZ);
         }
 
         private List<FamilyInstance> GetCandidatesFromGrid(

@@ -24,7 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             }
             catch (Exception ex)
             {
-                TaskDialog.Show("Logging Error", $"Failed to initialize logger: {ex.Message}");
+                Autodesk.Revit.UI.TaskDialog.Show("Logging Error", $"Failed to initialize logger: {ex.Message}");
                 return Result.Failed;
             }
 
@@ -40,7 +40,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (selectedIds.Count < 2)
                 {
                     message = "Please select at least two cluster elements to merge.";
-                    TaskDialog.Show("Selection Error", message);
+                    Autodesk.Revit.UI.TaskDialog.Show("Selection Error", message);
                     DebugLogger.Log($"Error: Not enough elements selected. Aborting. Message: {message}");
                     return Result.Failed;
                 }
@@ -56,7 +56,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (selectedInstances.Count < 2)
                 {
                     message = "The selection must contain at least two cluster family instances.";
-                    TaskDialog.Show("Selection Error", message);
+                    Autodesk.Revit.UI.TaskDialog.Show("Selection Error", message);
                     DebugLogger.Log($"Error: Not enough FamilyInstances in selection. Aborting. Message: {message}");
                     return Result.Failed;
                 }
@@ -86,7 +86,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (combinedBbox == null)
                 {
                     message = "Could not determine the combined boundaries of the selected elements.";
-                    TaskDialog.Show("Error", message);
+                    Autodesk.Revit.UI.TaskDialog.Show("Error", message);
                     DebugLogger.Log($"FATAL: Could not calculate a combined bounding box. Aborting.");
                     return Result.Failed;
                 }
@@ -138,7 +138,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 {
                     DebugLogger.Log($"FATAL: No family symbol found with a family name starting with '{replacementFamilyPrefix}'. Please ensure the family is loaded.");
                     message = $"Could not find a replacement family. Please load a family whose name starts with '{replacementFamilyPrefix}'.";
-                    TaskDialog.Show("Error", message);
+                    Autodesk.Revit.UI.TaskDialog.Show("Error", message);
                     return Result.Failed;
                 }
 
@@ -164,7 +164,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (level == null)
                 {
                     message = "Could not determine a valid level for the new cluster.";
-                    TaskDialog.Show("Error", message);
+                    Autodesk.Revit.UI.TaskDialog.Show("Error", message);
                     DebugLogger.Log($"FATAL: Could not find a level for placement. Aborting.");
                     return Result.Failed;
                 }
@@ -257,7 +257,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     DebugLogger.Log("Transaction committed successfully.");
                 }
 
-                TaskDialog.Show("Success", "Cluster has been replaced successfully.");
+                Autodesk.Revit.UI.TaskDialog.Show("Success", "Cluster has been replaced successfully.");
                 DebugLogger.Log("=== ClusterMergeCommand END ===");
                 return Result.Succeeded;
             }

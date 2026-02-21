@@ -32,7 +32,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                     _action(app);
                 }
             }
-            catch (Exception ex)
+            catch (Exception) // FIX: CS0168 - 'ex' commented to fix critical warning
             {
                 // Basic logging if DebugLogger is available, otherwise silent
                 // DebugLogger.Error("External Event Error: " + ex.Message);

@@ -858,8 +858,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 var existingZone = existingClashZones.FirstOrDefault(cz =>
                 {
                     if (cz == null) return false;
-                    int czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
-                    int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
+                    long czMepId = (long)(cz.MepElementId?.GetIntegerValue() ?? (int)cz.MepElementIdValue);
+                    long czStructuralId = (long)(cz.StructuralElementId?.GetIntegerValue() ?? (int)cz.StructuralElementIdValue);
                     return czMepId == mepIdValue && czStructuralId == structuralIdValue;
                 });
 
@@ -895,7 +895,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 var existingZoneByLocation = currentResults.FirstOrDefault(cz =>
                 {
                     if (cz == null) return false;
-                    int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
+                    long czStructuralId = (long)(cz.StructuralElementId?.GetIntegerValue() ?? (int)cz.StructuralElementIdValue);
                     if (czStructuralId != structuralIdValue) return false;
 
                     // Check if placement points are within tolerance
@@ -2098,16 +2098,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
     /// </summary>
     internal class ElementIdComparer : IEqualityComparer<Element>
     {
+        // ✅ CRITICAL FIX: Include document path in comparison for linked file support
+        // ElementIds are only unique within a document - same ID in different linked files = different elements
         public bool Equals(Element x, Element y)
         {
             if (x == null && y == null) return true;
             if (x == null || y == null) return false;
-            return x.Id.GetIntegerValue() == y.Id.GetIntegerValue();
+            // Compare both ElementId AND Document path (for linked files)
+            return x.Id.GetIntegerValue() == y.Id.GetIntegerValue() 
+                && string.Equals(x.Document?.PathName, y.Document?.PathName, StringComparison.OrdinalIgnoreCase);
         }
 
         public int GetHashCode(Element obj)
         {
-            return obj?.Id?.GetIntegerValue().GetHashCode() ?? 0;
+            if (obj == null) return 0;
+            // Combine ElementId hash with Document path hash
+            int idHash = obj.Id?.GetIntegerValue().GetHashCode() ?? 0;
+            string docPath = obj.Document?.PathName ?? string.Empty;
+            int docHash = docPath.ToUpperInvariant().GetHashCode();
+            return idHash ^ (docHash * 397); // XOR with shifted doc hash
         }
     }
 }

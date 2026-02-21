@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Utils;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -44,8 +45,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (cz != null && (cz.IsResolved || cz.IsClusterResolved))
                         {
-                            int mepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
-                            int structuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
+                            int mepId = (int)(cz.MepElementId?.ToLong() ?? cz.MepElementIdValue);
+                            int structuralId = (int)(cz.StructuralElementId?.ToLong() ?? cz.StructuralElementIdValue);
 
                             if (mepId > 0 && structuralId > 0)
                             {

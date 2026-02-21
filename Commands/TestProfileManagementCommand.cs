@@ -77,7 +77,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 {
                     File.AppendAllText(logPath, $"[{DateTime.Now}] About to call UpdateForCurrentDocument\n");
                 }
-                appProfileService.UpdateForCurrentDocument(doc.PathName);
+                // ✅ FIX: Use Document overload which internally resolves standardized AppData path via ProjectPathService
+                // doc.PathName returns raw file path (empty for cloud models) - this caused profiles to save to Default folder
+                appProfileService.UpdateForCurrentDocument(doc);
                 System.Diagnostics.Debug.WriteLine("UpdateForCurrentDocument call completed");
                 // ✅ DEPLOYMENT MODE: Skip log writes if deployment mode is enabled
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -330,7 +332,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     errorDialog.CommonButtons = TaskDialogCommonButtons.Ok;
                     errorDialog.Show();
                 }
-                catch (Exception tde)
+                catch (Exception) // FIX: CS0168 - 'tde' commented to fix critical warning
                 {
                     // TaskDialog failed, fall back to basic message
                     System.Windows.Forms.MessageBox.Show($"Main Dialog Error: {ex.Message}", "Error", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);

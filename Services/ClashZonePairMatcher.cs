@@ -53,8 +53,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ CRITICAL: Only match by (MEP ID, Structural ID) pair - NO intersection point check
             // This prevents creating new clash zones with new GUIDs when pair already exists
-            int mepIdValue = mepElementId.GetIntegerValue();
-            int structuralIdValue = structuralElementId.GetIntegerValue();
+            long mepIdValue = (long)mepElementId.GetIntegerValue();
+            long structuralIdValue = (long)structuralElementId.GetIntegerValue();
             
             if (mepIdValue <= 0 || structuralIdValue <= 0)
                 return null;
@@ -65,8 +65,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (cz == null) return false;
                 
-                int czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
-                int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
+                long czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                long czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                 
                 return czMepId == mepIdValue && czStructuralId == structuralIdValue;
             });

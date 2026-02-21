@@ -6,7 +6,6 @@ using System.Data.SQLite;
 using System.Linq;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
-using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
@@ -14,9 +13,11 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
     /// <summary>
@@ -33,19 +34,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor _performanceMonitor;
         private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveParameterService _parameterService;
         private readonly IClusterCleanupService _cleanupService;
+        private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IParameterSnapshotTransferService _snapshotTransferService;
 
         public BatchClusterPlacementService(
             string databasePath, 
             IClashZoneRepository repository,
             JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveParameterService parameterService,
             IClusterCleanupService cleanupService = null,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null)
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IParameterSnapshotTransferService snapshotTransferService = null)
         {
             _databasePath = databasePath;
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _parameterService = parameterService ?? throw new ArgumentNullException(nameof(parameterService));
             _cleanupService = cleanupService ?? new ClusterCleanupService(); // Default if not injected
             _performanceMonitor = performanceMonitor;
+            _snapshotTransferService = snapshotTransferService;
         }
 
         /// <summary>
@@ -232,6 +236,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         foreach (var z in fetchedZones) zoneCache[z.Id] = z;
                     }
                 }
+
+                // ✅ RESOLVE LEVELS: Populate MepElementLevelName for each cluster from its constituent zones
+                foreach (var cluster in pendingClusters)
+                {
+                    if (!string.IsNullOrEmpty(cluster.ConstituentZoneGuids))
+                    {
+                        var firstGuidStr = cluster.ConstituentZoneGuids.Split(',').FirstOrDefault()?.Trim();
+                        if (!string.IsNullOrEmpty(firstGuidStr) && Guid.TryParse(firstGuidStr, out Guid g))
+                        {
+                            if (zoneCache.TryGetValue(g, out var z))
+                            {
+                                cluster.MepElementLevelName = z.MepElementLevelName;
+                            }
+                        }
+                    }
+                }
+
+                // ✅ LEVEL CACHING: Pre-fetch all Level objects to avoid slow spatial lookups during placement
+                var levelMap = new Dictionary<string, ElementId>(StringComparer.OrdinalIgnoreCase);
+                using (_performanceMonitor?.TrackOperation("Step 1c: CACHE LEVELS"))
+                {
+                    var distinctLevelNames = pendingClusters
+                        .Select(c => c.MepElementLevelName)
+                        .Where(l => !string.IsNullOrEmpty(l))
+                        .Distinct()
+                        .ToList();
+
+                    if (distinctLevelNames.Any())
+                    {
+                        var levels = new FilteredElementCollector(doc)
+                            .OfClass(typeof(Level))
+                            .Cast<Level>()
+                            .Where(l => distinctLevelNames.Contains(l.Name, StringComparer.OrdinalIgnoreCase))
+                            .ToList();
+
+                        foreach (var l in levels) levelMap[l.Name] = l.Id;
+                    }
+                }
                 
                 // ✅ CLUSTER OPTIMIZATION START (SINGLE TRANSACTION FLOW)
                 // We manage the transaction if one doesn't exist.
@@ -243,43 +285,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 bool transactionCommitted = false;
                 ClusterPersistenceData clusterPersistenceData = null;
 
-                try 
+                try
                 {
-                    if (manageTransaction) 
+                    // PERF DIAGNOSTIC: Tick-precision timing for cluster transaction phases
+                    var clusterSubSw = new System.Diagnostics.Stopwatch();
+                    double clusterTicksPerMs = System.Diagnostics.Stopwatch.Frequency / 1000.0;
+                    long bulkPlaceTicks = 0, snapshotTransferTicks = 0, paramFlushTicks = 0;
+
+                    SwallowWarningsPreprocessor clusterWarningHandler = null;
+
+                    // 1. PRE-PROCESS: Prepare data and identify sleeves to delete
+                    PreparedPlacementData preparedData = null;
+                    using (var prepTracker = _performanceMonitor?.TrackOperation("Step 2a: PREPARE BULK PLACEMENT DATA"))
+                    {
+                        preparedData = PrepareBulkPlacementData(doc, pendingClusters, symbolCache, zoneCache, prepTracker, levelMap);
+                    }
+
+                    // 2. PREPARED DATA (Identify sleeves to delete later)
+                    // We no longer delete here. We delete after the main placement transaction commits.
+                    if (preparedData != null && preparedData.IndividualSleevesToDelete.Count > 0)
+                    {
+                        // Store these for deletion later
+                    }
+
+                    // 3. START MAIN PLACEMENT TRANSACTION
+                    if (manageTransaction)
                     {
                         mainTransaction = new Transaction(doc, "Place Batch Clusters V2 (Unified)");
+                        clusterWarningHandler = new SwallowWarningsPreprocessor();
+                        var options = mainTransaction.GetFailureHandlingOptions();
+                        options.SetFailuresPreprocessor(clusterWarningHandler);
+                        mainTransaction.SetFailureHandlingOptions(options);
+
                         mainTransaction.Start();
                     }
 
-                    // 1. PLACE CLUSTERS (NewFamilyInstances2)
+                    // 4. PLACE CLUSTERS (NewFamilyInstances2)
                     using (var placementTracker = _performanceMonitor?.TrackOperation("Step 2b: EXECUTE BULK CLUSTER PLACEMENT"))
                     {
-                        // 🔍 DIAGNOSTIC 1: Log which code path is chosen
-                        SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC 1: UseBulkClusterSleevePlacement = {OptimizationFlags.UseBulkClusterSleevePlacement}\n");
-                        
-                        if (OptimizationFlags.UseBulkClusterSleevePlacement)
+                        if (OptimizationFlags.UseBulkClusterSleevePlacement && preparedData != null)
                         {
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ USING BULK PLACEMENT PATH (calling PlaceBulkClusters)\n");
-                            // Always use bulk placement logic, even inside an existing transaction
-                            // NewFamilyInstances2 works fine inside existing transactions
-                            // ✅ PERF: DB persistence is now deferred — returned via persistenceData for post-commit execution
-                            var (actualPlaced, persistData) = PlaceBulkClusters(doc, pendingClusters, symbolCache, zoneCache, placementTracker, placedInstances);
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                SafeFileLogger.SafeAppendText("batch_v2.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] USING BULK PLACEMENT PATH (calling PlaceBulkClusters)\n");
+                            clusterSubSw.Restart();
+                            var (actualPlaced, persistData) = PlaceBulkClusters(doc, preparedData, zoneCache, placementTracker, placedInstances);
+                            bulkPlaceTicks = clusterSubSw.ElapsedTicks;
                             placedCount = actualPlaced;
                             clusterPersistenceData = persistData;
                             placementTracker?.SetItemCount(actualPlaced);
                         }
-                        else
+                        else if (preparedData != null)
                         {
                             // Fallback to sequential Loop (only if flag is specifically disabled)
                             // This path should ideally be deprecated
-                            const int batchLogIntervalSeq = 20;
+                            const int batchLogIntervalSeq = 100;
                             int idx = 0;
                             foreach (var cluster in pendingClusters)
                             {
                                 bool logDetail = (idx % batchLogIntervalSeq == 0 || idx == 0);
-                                if (PlaceSingleCluster(doc, cluster, symbolCache, zoneCache, placementTracker, placedInstances, logDetail)) placedCount++;
+                                if (PlaceSingleCluster(doc, cluster, symbolCache, zoneCache, placementTracker, placedInstances, logDetail, levelMap)) placedCount++;
                                 else failedCount++;
                                 idx++;
                             }
@@ -288,21 +353,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         }
                     }
 
-                    // 2. FLUSH PARAMETERS (Inside the transaction!)
-                    // ✅ NOTE: For Bulk placement, this is now handled INSIDE PlaceBulkClusters 
+                    // 2. SNAPSHOT PARAMETER TRANSFER + FLUSH PARAMETERS (Inside the transaction!)
+                    // ✅ NOTE: For Bulk placement, parameter handling is now handled INSIDE PlaceBulkClusters 
                     // to ensure dimensions are current for the persistence phase.
                     // This call remains as a safety for the sequential path or missed flushes.
                     if (OptimizationFlags.UseBatchedParameterWrites && placedCount > 0)
                     {
+                        // ✅ SNAPSHOT PARAMETER TRANSFER: Transfer MEP parameters from snapshots to placed cluster sleeves
+                        if (OptimizationFlags.EnableSnapshotParameterTransfer && _snapshotTransferService != null && placedInstances.Count > 0)
+                        {
+                            try
+                            {
+                                using (var snapTracker = _performanceMonitor?.TrackOperation("Step 3b: SNAPSHOT PARAMETER TRANSFER"))
+                                {
+                                    var clusterElementIds = placedInstances.Select(fi => fi.Id).ToList();
+                                    clusterSubSw.Restart();
+                                    int deferredCount = _snapshotTransferService.TransferSnapshotParameters(doc, clusterElementIds, _repository, _parameterService);
+                                    snapshotTransferTicks = clusterSubSw.ElapsedTicks;
+                                    snapTracker?.SetItemCount(deferredCount);
+                                }
+                            }
+                            catch (Exception snapEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] SNAPSHOT TRANSFER FAILED: {snapEx.Message}\n");
+                            }
+                        }
+                        
                         using (var flushTracker = _performanceMonitor?.TrackOperation("Step 4: FLUSH CLUSTER PARAMETERS (Safety)"))
                         {
+                            clusterSubSw.Restart();
                             int flushedCount = _parameterService.FlushDeferredParameters(clearList: true, context: "Cluster-Safety");
-                            if (flushedCount > 0)
-                            {
-                                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ SAFETY FLUSH: Applied {flushedCount} remaining parameters.\n");
-                            }
-                            SafeFileLogger.SafeAppendText("performance.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER-FLUSH] Clusters={placedCount}, Parameters={flushedCount}, InExistingTx={!manageTransaction}\n");
+                            paramFlushTicks += clusterSubSw.ElapsedTicks;
                             flushTracker?.SetItemCount(flushedCount);
                         }
                     }
@@ -327,13 +409,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         });
                     }
 
+                    // PERF DIAGNOSTIC: Log pre-commit timing summary
+                    _performanceMonitor?.LogMetric("CLUSTER PRE-COMMIT TIMING",
+                        $"BulkPlace(total)={bulkPlaceTicks / clusterTicksPerMs:F1}ms, " +
+                        $"SnapshotTransfer={snapshotTransferTicks / clusterTicksPerMs:F1}ms, " +
+                        $"SafetyFlush={paramFlushTicks / clusterTicksPerMs:F1}ms, " +
+                        $"Clusters={placedCount}");
+
                     if (manageTransaction)
                     {
+                        // 🔬 DIAGNOSTIC: Split commit cost into (a) Regeneration vs (b) Undo-buffer write
+                        // doc.Regenerate() inside the TX forces Revit to compute geometry NOW.
+                        // If commit is fast after this, regen was the dominant cost.
+                        // If commit is still slow, undo-buffer write / constraint resolution is the cost.
+                        using (_performanceMonitor?.TrackOperation("Revit API: Global Refresh (Regenerate)"))
+                        {
+                            var regenSw = System.Diagnostics.Stopwatch.StartNew();
+                            doc.Regenerate();
+                            regenSw.Stop();
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔬 PRE-COMMIT REGEN: {regenSw.ElapsedMilliseconds}ms (clusters={placedCount})\n");
+                        }
+
                         using (var commitTracker = _performanceMonitor?.TrackOperation("Transaction Commit (Cluster)"))
                         {
                             mainTransaction.Commit();
                         }
                         transactionCommitted = true;
+                        if (clusterWarningHandler != null)
+                            _performanceMonitor?.LogMetric("CLUSTER TX WARNINGS",
+                                $"Deleted={clusterWarningHandler.WarningsDeleted}, Errors={clusterWarningHandler.ErrorsFound}");
                     }
 
                     // 3. UPDATE BOUNDING BOXES (After commit — Revit auto-regens on commit; then we read bbox)
@@ -346,6 +451,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         }
                     }
 
+                    // 4. STAGE 1 DELETE & STAGE 2 CLEANUP (Single post-placement transaction)
+                    // Now that clusters are placed and committed, we can delete the individual sleeves
+                    if (preparedData != null && preparedData.IndividualSleevesToDelete.Count > 0)
+                    {
+                        using (var delTracker = _performanceMonitor?.TrackOperation("Step 6: DELETE INDIVIDUAL SLEEVES"))
+                        {
+                            ExecuteStage1PreDelete(doc, preparedData.IndividualSleevesToDelete);
+                            delTracker?.SetItemCount(preparedData.IndividualSleevesToDelete.Count);
+                        }
+                    }
+
                     // 4. Wait for background DB task to complete (needed before cleanup reads DB)
                     if (dbTask != null)
                     {
@@ -355,6 +471,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             waitTracker?.SetItemCount(clusterPersistenceData?.PlacedIdInts?.Count ?? 0);
                         }
                     }
+
 
                 }
                 catch (Exception ex)
@@ -625,7 +742,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             // ✅ FIX: Declare local lists used for batch operations
             var toDeleteIds = new List<ElementId>();
-            var databaseUpdates = new List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)>();
+            var databaseUpdates = new List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)>();
 
             // ✅ CRITICAL FIX: Use TryParse instead of Parse to handle invalid GUIDs gracefully
             var guids = new List<Guid>();
@@ -658,7 +775,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // ✅ CRITICAL FIX: Identify and delete OLD cluster data from ClusterSleeves table
             // If these zones were previously part of a cluster, that cluster is now being replaced/invalidated.
             // We must remove the old rows to prevent duplicates and stale data.
-            var oldClusterInstanceIds = new List<int>();
+            var oldClusterInstanceIds = new List<long>();
 
             foreach (var z in zones)
             {
@@ -673,7 +790,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     string guidToSearch = !string.IsNullOrEmpty(z.ClashZoneGuid) ? z.ClashZoneGuid : z.Id.ToString();
                     if (Guid.TryParse(guidToSearch, out Guid parsedGuid))
                     {
-                        int recoveredId = GetParentClusterIdFromV2(parsedGuid);
+                        long recoveredId = GetParentClusterIdFromV2(parsedGuid);
                         if (recoveredId > 0 && recoveredId != clusterElementId)
                         {
                             oldClusterInstanceIds.Add(recoveredId);
@@ -688,7 +805,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             if (oldClusterInstanceIds.Any())
             {
-                DeleteOldClusterSleeves(oldClusterInstanceIds);
+                DeleteOldClusterSleeves(oldClusterInstanceIds.Select(x => (int)x).ToList());
             }
 
             SafeFileLogger.SafeAppendText("batch_v2.log", 
@@ -700,7 +817,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // ✅ ROBUST PERSISTENCE: ALWAYS try to recover from snapshot first
                 // This decouples "History" (AfterClusterSleeveId) from "Current State" (SleeveInstanceId)
                 // If snapshot exists, it is the undeniable truth of what was there.
-                int effectiveSleeveId = _repository.TryGetSleeveInstanceIdFromSnapshot(z.Id);
+                long effectiveSleeveId = _repository.TryGetSleeveInstanceIdFromSnapshot(z.Id);
                 
                 // Fallback to current state if snapshot missing (e.g. first run)
                 if (effectiveSleeveId <= 0)
@@ -719,7 +836,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // Delete from Revit
                 if (effectiveSleeveId > 0)
                 {
-                    toDeleteIds.Add(new ElementId(effectiveSleeveId));
+                    toDeleteIds.Add(ElementIdCompat.FromValue(effectiveSleeveId));
                 }
 
                 // ✅ FIX: Update DB with FULL cluster data (flags + calculated columns)
@@ -789,7 +906,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             if (!skipPlacementPointUpdate)
             {
                 // Use actual Revit instance if available for final accuracy
-                var element = doc.GetElement(new ElementId(clusterElementId)) as FamilyInstance;
+                var element = doc.GetElement(ElementIdCompat.FromValue(clusterElementId)) as FamilyInstance;
                 UpdateClashZonesCalculatedColumns(guids, cluster, clusterElementId, element);
             }
             else
@@ -806,7 +923,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// ✅ RECOVERY: Find parent cluster ID from V2 table using ConstituentZoneGuids
         /// Needed when ClashZone.ClusterInstanceId is lost/reset but V2 record persists
         /// </summary>
-        private int GetParentClusterIdFromV2(Guid zoneGuid)
+        private long GetParentClusterIdFromV2(Guid zoneGuid)
         {
             try
             {
@@ -827,7 +944,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         cmd.Parameters.AddWithValue("@guidPattern", $"%{zoneGuid}%");
                         
                         var result = cmd.ExecuteScalar();
-                        if (result != null && int.TryParse(result.ToString(), out int id))
+                        if (result != null && long.TryParse(result.ToString(), out long id))
                         {
                             return id;
                         }
@@ -904,11 +1021,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             var allOldIds = new HashSet<int>();
             foreach (var z in allZones)
             {
-                if (z.ClusterInstanceId > 0 && !currentClusterIds.Contains(z.ClusterInstanceId))
-                    allOldIds.Add(z.ClusterInstanceId);
+                if (z.ClusterInstanceId > 0 && !currentClusterIds.Contains((int)z.ClusterInstanceId))
+                    allOldIds.Add((int)z.ClusterInstanceId);
                 else if (z.ClusterInstanceId <= 0)
                 {
-                    int recovered = GetParentClusterIdFromV2(z.Id);
+                    int recovered = (int)GetParentClusterIdFromV2(z.Id);
                     if (recovered > 0 && !currentClusterIds.Contains(recovered))
                         allOldIds.Add(recovered);
                 }
@@ -961,15 +1078,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
             }
 
-            var allDatabaseUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)>();
+            var allDatabaseUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)>();
             for (int i = 0; i < placedIdInts.Count; i++)
             {
                 if (!zonesByClusterIndex.TryGetValue(i, out var zones) || zones.Count == 0) continue;
-                int clusterInstanceId = placedIdInts[i];
+                long clusterInstanceId = placedIdInts[i];
                 foreach (var z in zones)
                 {
                     // ✅ PERF: Use batch-fetched snapshot map instead of per-zone DB query
-                    int effectiveSleeveId = snapshotSleeveIdMap.TryGetValue(z.Id, out int snapId) ? snapId : -1;
+                    long effectiveSleeveId = snapshotSleeveIdMap.TryGetValue(z.Id, out int snapId) ? snapId : -1;
                     if (effectiveSleeveId <= 0)
                         effectiveSleeveId = z.SleeveInstanceId;
                     allDatabaseUpdates.Add((z.Id, true, true, false, -1, clusterInstanceId, true, true, effectiveSleeveId, true, 0.0, 0.0, 0.0, 0.0, null, null, null, null, null, null, null, null, null, null));
@@ -1002,7 +1119,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 {
                     try
                     {
-                        Element elem = doc.GetElement(new ElementId(clusterInstanceId));
+                        Element elem = doc.GetElement(ElementIdCompat.FromValue(clusterInstanceId));
                         if (elem is FamilyInstance instance)
                         {
                             var extractedCorners = cornerService.CalculateCornersFromInstance(instance, hostOrientation, category);
@@ -1300,7 +1417,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// ✅ FIX: Save cluster to ClusterSleeves (legacy) table for PATH 1 compatibility
         /// This enables cluster replay from database
         /// </summary>
-        private void SaveToClusterSleevesLegacy(Document doc, BatchClusterData cluster, int clusterInstanceId, FamilyInstance actualInstance = null)
+        private void SaveToClusterSleevesLegacy(Document doc, BatchClusterData cluster, long clusterInstanceId, FamilyInstance actualInstance = null)
         {
             // ✅ DIAGNOSTIC: Log method entry
             SafeFileLogger.SafeAppendText("batch_v2.log",
@@ -1327,7 +1444,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var firstZone = zones.FirstOrDefault();
                         if (firstZone != null)
                         {
-                            comboId = firstZone.ComboId;
+                            comboId = (int)firstZone.ComboId;
                             category = firstZone.MepElementCategory ?? "";
                             hostType = firstZone.StructuralElementType ?? "";
                             hostOrientation = firstZone.HostOrientation ?? "";
@@ -1422,7 +1539,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             Dictionary<Guid, ClashZone> zoneCache = null,
             JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker parentTracker = null,
             List<FamilyInstance> placedInstances = null,
-            bool logDetail = true)
+            bool logDetail = true,
+            Dictionary<string, ElementId> levelMap = null)
         {
             // ✅ BATCH LOGGING: Only log every 20th cluster in sequential path
             if (logDetail)
@@ -1519,7 +1637,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                 using (parentTracker != null ? parentTracker.TrackSubOperation("Revit Create Cluster Instance") : _performanceMonitor?.TrackOperation("Revit Create Cluster Instance"))
                 {
-                    instance = doc.Create.NewFamilyInstance(location, symbol, structuralType);
+                    // ✅ PERF: Use explicit level placement to skip spatial search
+                    ElementId levelId = null;
+                    if (levelMap != null && !string.IsNullOrEmpty(cluster.MepElementLevelName) && levelMap.TryGetValue(cluster.MepElementLevelName, out var id))
+                    {
+                        levelId = id;
+                    }
+
+                    if (levelId != null)
+                    {
+                        var targetLevel = doc.GetElement(levelId) as Level;
+                        if (targetLevel != null)
+                        {
+                            instance = doc.Create.NewFamilyInstance(location, symbol, targetLevel, structuralType);
+                        }
+                        else
+                        {
+                            instance = doc.Create.NewFamilyInstance(location, symbol, structuralType);
+                        }
+                    }
+                    else
+                    {
+                        instance = doc.Create.NewFamilyInstance(location, symbol, structuralType);
+                    }
                 }
 
                 if (instance != null)
@@ -1597,8 +1737,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         }
                     }
 
-                    // E. Physical Rotation 
-                    if (Math.Abs(cluster.RotationAngleRad) > 1e-6)
+                    // E. Physical Rotation
+                    // ✅ PERF: Skip rotation if family is pre-rotated (_X variant)
+                    bool isPreRotatedClusterFamily = (cluster.FamilyName ?? "").EndsWith("_X", StringComparison.OrdinalIgnoreCase);
+                    if (Math.Abs(cluster.RotationAngleRad) > 1e-6 && !isPreRotatedClusterFamily)
                     {
                         using (parentTracker != null ? parentTracker.TrackSubOperation("Revit Rotate Cluster") : _performanceMonitor?.TrackOperation("Revit Rotate Cluster"))
                         {
@@ -1767,88 +1909,85 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             /// <summary>Placed element IDs as plain ints (avoids ElementId on background thread)</summary>
             public List<int> PlacedIdInts;
             public List<BatchClusterData> ClusterMap;
+            public Dictionary<int, List<int>> ClusterToSleeveIdsMap;
             public Dictionary<Guid, ClashZone> ZoneCache;
             public Dictionary<int, (int comboId, int filterId, string category, string hostType, string hostOrientation)> ComboIdMap;
             /// <summary>Pre-read Revit params per cluster index: (width, height, depth, rotation)</summary>
             public Dictionary<int, (double w, double h, double d, double rot)> PreReadRevitParams;
         }
 
-        /// <summary>
-        /// ✅ NEW: High-performance Bulk Placement for Clusters
-        /// Uses doc.Create.NewFamilyInstances2 to place all clusters in 1-2 API calls.
-        /// DB persistence is deferred — returned via ClusterPersistenceData for post-commit execution.
-        /// </summary>
-        private (int totalPlaced, ClusterPersistenceData persistenceData) PlaceBulkClusters(
+        private class PreparedPlacementData
+        {
+            public List<Autodesk.Revit.Creation.FamilyInstanceCreationData> CreationDataList = new List<Autodesk.Revit.Creation.FamilyInstanceCreationData>();
+            public List<BatchClusterData> ClusterMap = new List<BatchClusterData>();
+            public List<ElementId> IndividualSleevesToDelete = new List<ElementId>();
+            public Dictionary<int, List<ElementId>> ClusterToSleeveIdsMap = new Dictionary<int, List<ElementId>>();
+            public int SkippedDuplicateCount;
+        }
+
+        private PreparedPlacementData PrepareBulkPlacementData(
             Document doc,
             List<BatchClusterData> clusters,
             Dictionary<string, FamilySymbol> symbolCache,
             Dictionary<Guid, ClashZone> zoneCache,
             JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker placementTracker,
-            List<FamilyInstance> placedInstances)
+            Dictionary<string, ElementId> levelMap = null)
         {
-            var buildTimestamp = "2026-02-11 11:30:00"; // Updated after rebuild
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🏗️ BUILD TIMESTAMP: {buildTimestamp}\n");
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC 2: PlaceBulkClusters method ENTERED\n");
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 TRUE BULK PLACEMENT START: {clusters.Count} clusters\n");
-    placementTracker?.SetItemCount(clusters.Count);
-            
-            int totalPlaced = 0;
-            var creationDataList = new List<Autodesk.Revit.Creation.FamilyInstanceCreationData>();
-            var clusterMap = new List<BatchClusterData>();
-            // ✅ OPTIMIZATION: Cache instances to avoid repeated GetElement calls across different steps
-            var instanceLookup = new Dictionary<int, FamilyInstance>();
-            
-            // ✅ DEDUPLICATION: Track placement locations to prevent duplicates within this batch
-            var placedLocations = new HashSet<string>(); // Key: "{X:F6}_{Y:F6}_{Z:F6}"
-            double tolerance = 0.1; // 0.1 feet tolerance for location matching
+            var data = new PreparedPlacementData();
+            var placedLocations = new HashSet<string>();
             int skippedDuplicateCount = 0;
-            int skippedExistingCount = 0;
 
-            // 1. Prepare Creation Data (symbols already activated in Step 1a — no per-cluster Activate())
+            // 1. Prepare Creation Data & Deduplication
             using (placementTracker?.TrackSubOperation("Prepare Creation Data & Deduplication"))
             {
                 foreach (var cluster in clusters)
-            {
-                if (!symbolCache.TryGetValue(cluster.FamilyName, out var symbol)) continue;
-
-                XYZ location = new XYZ(cluster.PlacementX, cluster.PlacementY, cluster.PlacementZ);
-                
-                // ✅ DEDUPLICATION: Check for duplicate placement points within this batch
-                string locationKey = $"{cluster.PlacementX:F6}_{cluster.PlacementY:F6}_{cluster.PlacementZ:F6}";
-                if (placedLocations.Contains(locationKey))
                 {
-                    skippedDuplicateCount++;
-                    // ✅ BATCH LOGGING: No per-duplicate log; summary at end includes Skipped duplicates count
-                    continue;
-                }
-                
-                // Note: NewFamilyInstances2 doesn't always handle hosts perfectly for all family types,
-                // but we'll try to use the host and level if available.
-                Autodesk.Revit.Creation.FamilyInstanceCreationData data = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, StructuralType.NonStructural);
+                    if (!symbolCache.TryGetValue(cluster.FamilyName, out var symbol)) continue;
 
-                    creationDataList.Add(data);
-                    clusterMap.Add(cluster);
-                    placedLocations.Add(locationKey); // Mark this location as used
+                    XYZ location = new XYZ(cluster.PlacementX, cluster.PlacementY, cluster.PlacementZ);
+                    string locationKey = $"{cluster.PlacementX:F6}_{cluster.PlacementY:F6}_{cluster.PlacementZ:F6}";
+                    
+                    if (placedLocations.Contains(locationKey))
+                    {
+                        skippedDuplicateCount++;
+                        continue;
+                    }
+
+                    // ✅ PERF: Use explicit LevelId if available to skip nearest-neighbor search
+                    ElementId levelId = null;
+                    if (levelMap != null && !string.IsNullOrEmpty(cluster.MepElementLevelName) && levelMap.TryGetValue(cluster.MepElementLevelName, out var id))
+                    {
+                        levelId = id;
+                    }
+
+                    Autodesk.Revit.Creation.FamilyInstanceCreationData creationData;
+                    if (levelId != null)
+                    {
+                        var level = doc.GetElement(levelId) as Level;
+                        if (level != null)
+                        {
+                            creationData = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, level, StructuralType.NonStructural);
+                        }
+                        else
+                        {
+                            creationData = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, StructuralType.NonStructural);
+                        }
+                    }
+                    else
+                    {
+                        creationData = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, StructuralType.NonStructural);
+                    }
+
+                    data.CreationDataList.Add(creationData);
+                    data.ClusterMap.Add(cluster);
+                    placedLocations.Add(locationKey);
                 }
             }
 
-            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 📊 BULK PLACEMENT SUMMARY: Input={clusters.Count}, Added to creation list={creationDataList.Count}, Skipped duplicates={skippedDuplicateCount}, Skipped existing={skippedExistingCount}\n");
-            
-            if (creationDataList.Count == 0)
+            // 2. Collect Individual Sleeves to Delete (Stage 1)
+            using (placementTracker?.TrackSubOperation("Collect Individual Sleeves to Delete (Stage 1)"))
             {
-                SafeFileLogger.SafeAppendText("batch_v2.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ No clusters to place after deduplication\n");
-                return (0, null);
-            }
-
-            // ✅ Collect Stage 1 & 2 sleeves to delete later (after place, params, regen, save to DB)
-            var allIndividualSleevesToDelete = new List<ElementId>();
-            var clusterToSleeveIdsMap = new Dictionary<int, List<ElementId>>(); // Track which sleeves belong to which cluster
-            
-            using (placementTracker?.TrackSubOperation("Collect Individual Sleeves to Delete (Stage 1 & 2)"))
-            {
-                foreach (var cluster in clusterMap)
+                foreach (var cluster in data.ClusterMap)
                 {
                     if (string.IsNullOrEmpty(cluster.ConstituentZoneGuids)) continue;
                     
@@ -1859,239 +1998,169 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         .Select(g => Guid.Parse(g))
                         .ToList();
                     
-                    if (!guids.Any()) continue;
-                    
                     var sleeveIdsForThisCluster = new List<ElementId>();
-                    
                     foreach (var guid in guids)
                     {
-                        // ✅ PHASE 8: Use zoneCache instead of DB query
                         if (zoneCache.TryGetValue(guid, out var z))
                         {
-                            // ✅ ROBUST PERSISTENCE: ALWAYS try to recover from snapshot first
-                            int effectiveSleeveId = _repository.TryGetSleeveInstanceIdFromSnapshot(z.Id);
-                            if (effectiveSleeveId <= 0)
-                            {
-                                effectiveSleeveId = z.SleeveInstanceId;
-                            }
+                            int effectiveSleeveId = (int)_repository.TryGetSleeveInstanceIdFromSnapshot(z.Id);
+                            if (effectiveSleeveId <= 0) effectiveSleeveId = (int)z.SleeveInstanceId;
                             
                             if (effectiveSleeveId > 0)
                             {
-                                var elementId = new ElementId(effectiveSleeveId);
-                                // Verify element exists before adding to delete list
-                                if (doc.GetElement(elementId) != null)
+                                var eid = ElementIdCompat.FromInt(effectiveSleeveId);
+                                if (doc.GetElement(eid) != null)
                                 {
-                                    allIndividualSleevesToDelete.Add(elementId);
-                                    sleeveIdsForThisCluster.Add(elementId);
+                                    data.IndividualSleevesToDelete.Add(eid);
+                                    sleeveIdsForThisCluster.Add(eid);
                                 }
                             }
                         }
                     }
-                    
-                    // Store mapping for later use
                     if (sleeveIdsForThisCluster.Any())
                     {
-                        clusterToSleeveIdsMap[clusterMap.IndexOf(cluster)] = sleeveIdsForThisCluster;
+                        data.ClusterToSleeveIdsMap[data.ClusterMap.IndexOf(cluster)] = sleeveIdsForThisCluster;
                     }
                 }
+                data.IndividualSleevesToDelete = data.IndividualSleevesToDelete.Distinct().ToList();
             }
 
-            // 1. Execute Bulk Placement (place cluster sleeves first; deletion after save to DB)
+            data.SkippedDuplicateCount = skippedDuplicateCount;
+            return data;
+        }
+
+        private void ExecuteStage1PreDelete(Document doc, List<ElementId> deleteIds)
+        {
+            if (deleteIds == null || deleteIds.Count == 0) return;
+
+            using (var tx = new Transaction(doc, "Pre-Delete Clustered Individuals (Stage 1)"))
+            {
+                tx.Start();
+                try
+                {
+                    doc.Delete(deleteIds);
+                    tx.Commit();
+                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🗑️ PRE-DELETE: Deleted {deleteIds.Count} Stage 1 individual sleeves\n");
+                }
+                catch (Exception ex)
+                {
+                    tx.RollBack();
+                    SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ PRE-DELETE FAILED: {ex.Message}\n");
+                }
+            }
+        }
+
+        private (int totalPlaced, ClusterPersistenceData persistenceData) PlaceBulkClusters(
+            Document doc,
+            PreparedPlacementData preparedData,
+            Dictionary<Guid, ClashZone> zoneCache,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker placementTracker,
+            List<FamilyInstance> placedInstances)
+        {
+            int totalPlaced = 0;
             ICollection<ElementId> placedIds;
+
+            // 1. Execute Bulk Placement
             using (var step2aTracker = placementTracker?.TrackSubOperation("Step 2a: Revit NewFamilyInstances2"))
             {
-                placedIds = doc.Create.NewFamilyInstances2(creationDataList);
+                placedIds = doc.Create.NewFamilyInstances2(preparedData.CreationDataList);
                 step2aTracker?.SetItemCount(placedIds.Count);
             }
 
             var placedIdList = placedIds.ToList();
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🏗️ Bulk Placement Result: {placedIdList.Count} instances created (Requested: {creationDataList.Count})\n");
-
-            // ✅ CRITICAL SAFETY CHECK: Ensure 1-to-1 mapping
-            if (placedIdList.Count != creationDataList.Count)
+            if (placedIdList.Count != preparedData.CreationDataList.Count)
             {
-                 SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ❌ CRITICAL: Batch Placement Mismatch! Requested {creationDataList.Count} but got {placedIdList.Count} IDs. Data correlation may be broken.\n");
-                 // We could throw here, but for now let's just log heavily. The loop below relies on indices.
-                 // If the API drops failed items, the indices WILL be shifted and metadata will be applied to the wrong elements.
-                 // This perfectly explains "random" or "outlier" behavior if one fails.
-                 throw new InvalidOperationException($"CRITICAL: Revit Batch Placement returned {placedIdList.Count} IDs for {creationDataList.Count} requests. This causes index misalignment.");
+                throw new InvalidOperationException($"CRITICAL: Revit Batch Placement returned {placedIdList.Count} IDs for {preparedData.CreationDataList.Count} requests.");
             }
 
-            // 3. Post-Placement Logic (Rotation, Parameters, Cleanup)
-            // ✅ CLUSTER OPTIMIZATION: Same as individual — batch queue (Width, HT, Depth only; no Diameter), then flush with definition cache + group-by-size.
-            const int batchLogInterval = 20;
-            int processed = 0;
+            // 2. Post-Placement Logic (Rotation, Parameters)
+            var instanceLookup = new Dictionary<int, FamilyInstance>();
+            int rotatedCount = 0;
             using (placementTracker?.TrackSubOperation("Step 3: APPLY ROTATION & PARAMS"))
             {
-                // ✅ Group by size (W, H, D) so we process same-sized clusters together; cluster sleeves are rectangular only.
-                var sizeKeyToIndices = new Dictionary<string, List<int>>();
                 for (int i = 0; i < placedIdList.Count; i++)
                 {
-                    var cluster = clusterMap[i];
-                    string sizeKey = $"{cluster.ClusterWidth:R}_{cluster.ClusterHeight:R}_{cluster.ClusterDepth:R}";
-                    if (!sizeKeyToIndices.ContainsKey(sizeKey))
-                        sizeKeyToIndices[sizeKey] = new List<int>();
-                    sizeKeyToIndices[sizeKey].Add(i);
-                }
+                    var instance = doc.GetElement(placedIdList[i]) as FamilyInstance;
+                    if (instance == null) continue;
 
-                foreach (var group in sizeKeyToIndices)
-                {
-                    var indices = group.Value;
-                    if (indices.Count == 0) continue;
-                    var firstCluster = clusterMap[indices[0]];
-                    double w = firstCluster.ClusterWidth;
-                    double h = firstCluster.ClusterHeight;
-                    double d = firstCluster.ClusterDepth;
+                    instanceLookup[i] = instance;
+                    placedInstances.Add(instance);
+                    var cluster = preparedData.ClusterMap[i];
 
-                    foreach (int i in indices)
+                    // A. Rotation
+                    bool isPreRotated = (cluster.FamilyName ?? "").EndsWith("_X", StringComparison.OrdinalIgnoreCase);
+                    if (Math.Abs(cluster.RotationAngleRad) > 1e-6 && !isPreRotated)
                     {
-                        var eid = placedIdList[i];
-                        var cluster = clusterMap[i];
-                        
-                        // ✅ OPTIMIZATION: Use instances that were already retrieved if possible, 
-                        // though NewFamilyInstances2 returns IDs, so we usually need to GetElement once.
-                        var instance = doc.GetElement(eid) as FamilyInstance;
+                        XYZ location = new XYZ(cluster.PlacementX, cluster.PlacementY, cluster.PlacementZ);
+                        Line axis = Line.CreateBound(location, location + XYZ.BasisZ);
+                        ElementTransformUtils.RotateElement(doc, instance.Id, axis, cluster.RotationAngleRad);
+                        rotatedCount++;
+                    }
 
-                        if (instance == null) continue;
-
-                        int clusterInstanceId = instance.Id.GetIntegerValue();
-                        placedInstances.Add(instance);
-                        
-                        // Cache instance for subsequent steps (DB persistence)
-                        instanceLookup[i] = instance;
-
-                        // A. Rotation
-                        if (Math.Abs(cluster.RotationAngleRad) > 1e-6)
+                    // B. Parameters
+                    ClashZone templateZone = null;
+                    if (!string.IsNullOrEmpty(cluster.ConstituentZoneGuids))
+                    {
+                        var firstGuidStr = cluster.ConstituentZoneGuids.Split(',').FirstOrDefault()?.Trim();
+                        if (!string.IsNullOrEmpty(firstGuidStr) && Guid.TryParse(firstGuidStr, out Guid g))
                         {
-                            XYZ location = new XYZ(cluster.PlacementX, cluster.PlacementY, cluster.PlacementZ);
-                            Line axis = Line.CreateBound(location, location + XYZ.BasisZ);
-                            ElementTransformUtils.RotateElement(doc, instance.Id, axis, cluster.RotationAngleRad);
-                        }
-
-                        // B. Parameters: batch queue (rectangular only — Width, HT, Depth; no Diameter)
-                        ClashZone templateZone = null;
-                        if (!string.IsNullOrEmpty(cluster.ConstituentZoneGuids))
-                        {
-                            var firstGuidStr = cluster.ConstituentZoneGuids.Split(',').FirstOrDefault()?.Trim();
-                            if (!string.IsNullOrEmpty(firstGuidStr) && Guid.TryParse(firstGuidStr, out Guid g))
-                            {
-                                zoneCache.TryGetValue(g, out templateZone);
-                            }
-                        }
-                        if (templateZone == null) templateZone = new ClashZone();
-
-                        try
-                        {
-                            _parameterService.QueueRectangularClusterParameters(
-                                instance.Id,
-                                cluster.ClusterWidth,
-                                cluster.ClusterHeight,
-                                cluster.ClusterDepth,
-                                clusterInstanceId,
-                                templateZone);
-                        }
-                        catch (Exception ex)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Bulk Param Setting failed: {ex.Message}\n");
-                        }
-
-                        processed++;
-                        if (processed % batchLogInterval == 0)
-                        {
-                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Apply Rotation & Parameters: processed {processed}/{placedIdList.Count} clusters\n");
+                            zoneCache.TryGetValue(g, out templateZone);
                         }
                     }
+                    if (templateZone == null) templateZone = new ClashZone();
+
+                    _parameterService.QueueRectangularClusterParameters(instance.Id, cluster.ClusterWidth, cluster.ClusterHeight, cluster.ClusterDepth, instance.Id.GetIntegerValue(), templateZone);
                 }
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ Set parameters for all {processed} cluster instances (rectangular: Width, HT, Depth only)\n");
             }
-            
-            // ✅ FIX: Flush deferred parameters BEFORE saving to DB/reading BBoxes.
-            // This ensures that when we read parameters back from Revit (for ClashZones table),
-            // we get the correct values we just set, not the family defaults.
-            if (OptimizationFlags.UseBatchedParameterWrites && processed > 0)
+
+            if (OptimizationFlags.UseBatchedParameterWrites && placedIdList.Count > 0)
             {
-                using (placementTracker?.TrackSubOperation("Flush Cluster Parameters"))
-                {
-                    int flushedCount = _parameterService.FlushDeferredParameters(clearList: true, context: "Cluster-Bulk");
-                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚿 FLUSH: Applied {flushedCount} parameters to {processed} clusters BEFORE persistence phase.\n");
-                }
+                _parameterService.FlushDeferredParameters(true, "Cluster-Bulk");
             }
 
-            // ✅ PERF: Regen is skipped — persistence runs AFTER Revit tx commit (post-regen) so values are accurate.
-
-            // ✅ PERF: Build comboIdMap from zoneCache (no DB query needed — all data already in memory)
+            // 3. Prepare Persistence Data
             var comboIdMap = new Dictionary<int, (int comboId, int filterId, string category, string hostType, string hostOrientation)>();
+            var preReadParams = new Dictionary<int, (double w, double h, double d, double rot)>();
+            var clusterSleeveIdsMap = new Dictionary<int, List<int>>();
+
             for (int i = 0; i < placedIdList.Count; i++)
             {
-                var cluster = clusterMap[i];
+                var cluster = preparedData.ClusterMap[i];
+                preReadParams[i] = (cluster.ClusterWidth, cluster.ClusterHeight, cluster.ClusterDepth, cluster.RotationAngleRad);
+
+                // Build Cluster-to-Sleeve mapping for DB
+                if (preparedData.ClusterToSleeveIdsMap.TryGetValue(i, out var sIds))
+                {
+                    clusterSleeveIdsMap[i] = sIds.Select(eid => eid.GetIntegerValue()).ToList();
+                }
+
+                // Optimal ComboId lookup using the first constituent zone GUID
                 if (!string.IsNullOrEmpty(cluster.ConstituentZoneGuids))
                 {
                     var firstGuidStr = cluster.ConstituentZoneGuids.Split(',').FirstOrDefault()?.Trim();
                     if (!string.IsNullOrEmpty(firstGuidStr) && Guid.TryParse(firstGuidStr, out Guid firstGuid))
                     {
-                        if (zoneCache.TryGetValue(firstGuid, out var firstZone) && firstZone.ComboId > 0)
+                        if (zoneCache.TryGetValue(firstGuid, out var fz) && fz.ComboId > 0)
                         {
-                            comboIdMap[i] = (
-                                firstZone.ComboId,
-                                -1, // FilterId fetched in persistence phase
-                                firstZone.MepElementCategory ?? "",
-                                firstZone.StructuralElementType ?? "",
-                                firstZone.HostOrientation ?? ""
-                            );
+                            comboIdMap[i] = ((int)fz.ComboId, -1, fz.MepElementCategory ?? "", fz.StructuralElementType ?? "", fz.HostOrientation ?? "");
                         }
                     }
                 }
             }
 
-            totalPlaced = placedIdList.Count;
-
-            // Find out Stage 1 & 2 sleeves to delete (re-validate which elements still exist)
-            var sleevesToDeleteNow = new List<ElementId>();
-            using (placementTracker?.TrackSubOperation("Find sleeves to delete (Stage 1 & 2)"))
-            {
-                foreach (var eid in allIndividualSleevesToDelete.Distinct())
-                {
-                    if (doc.GetElement(eid) != null)
-                        sleevesToDeleteNow.Add(eid);
-                }
-            }
-
-            // Delete individual sleeves after cluster placement; commit happens in caller
-            if (sleevesToDeleteNow.Any())
-            {
-                using (placementTracker?.TrackSubOperation($"Step 7: DELETE {sleevesToDeleteNow.Count} INDIVIDUAL SLEEVES"))
-                {
-                    doc.Delete(sleevesToDeleteNow);
-                }
-            }
-
-            // ✅ PERF: Pre-read Revit params on main thread (so background thread doesn't need Revit API)
-            var preReadParams = new Dictionary<int, (double w, double h, double d, double rot)>();
-            foreach (var kvp in instanceLookup)
-            {
-                var inst = kvp.Value;
-                if (inst != null && inst.IsValidObject)
-                {
-                    double w = (inst.LookupParameter("Width") ?? inst.LookupParameter("Element Width"))?.AsDouble() ?? clusterMap[kvp.Key].ClusterWidth;
-                    double h = (inst.LookupParameter("Height") ?? inst.LookupParameter("Element Height"))?.AsDouble() ?? clusterMap[kvp.Key].ClusterHeight;
-                    double d = (inst.LookupParameter("Depth") ?? inst.LookupParameter("Element Depth") ?? inst.LookupParameter("Wall Width"))?.AsDouble() ?? clusterMap[kvp.Key].ClusterDepth;
-                    double rot = (inst.Location as LocationPoint)?.Rotation ?? clusterMap[kvp.Key].RotationAngleRad;
-                    preReadParams[kvp.Key] = (w, h, d, rot);
-                }
-            }
-
-            // ✅ PERF: Return persistence data for deferred DB work (runs on background thread)
             var persistenceData = new ClusterPersistenceData
             {
-                PlacedIdInts = placedIdList.Select(id => id.GetIntegerValue()).ToList(),
-                ClusterMap = clusterMap,
+                PlacedIdInts = placedIdList.Select(eid => eid.GetIntegerValue()).ToList(),
+                ClusterMap = preparedData.ClusterMap,
+                ClusterToSleeveIdsMap = clusterSleeveIdsMap,
                 ZoneCache = zoneCache,
                 ComboIdMap = comboIdMap,
-                PreReadRevitParams = preReadParams,
+                PreReadRevitParams = preReadParams
             };
 
-            return (totalPlaced, persistenceData);
+            return (placedIdList.Count, persistenceData);
         }
+
 
         /// <summary>
         /// ✅ PERF: Deferred DB persistence — fully Revit-API-free, safe for background thread.
@@ -2215,6 +2284,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             }
                         }
 
+                        // ✅ CRITICAL FIX: Update SleeveSnapshots with ClusterInstanceId for all constituent zones
+                        // This ensures snapshots are linked to the placed cluster sleeves
+                        UpdateSleeveSnapshotsWithClusterId(data, conn, trans);
+
                         trans.Commit();
                     }
                     catch (Exception ex)
@@ -2230,6 +2303,117 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             sw.Stop();
             SafeFileLogger.SafeAppendText("batch_v2.log",
                 $"[{DateTime.Now:HH:mm:ss}] ✅ DEFERRED PERSISTENCE COMPLETE: {data.PlacedIdInts.Count} clusters persisted in {sw.ElapsedMilliseconds}ms (background thread)\n");
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL FIX: Update SleeveSnapshots table with ClusterInstanceId for all constituent zones.
+        /// This links the GUID-based refresh snapshots to the placed cluster sleeves.
+        /// Called during PersistClusterPlacementToDb transaction.
+        /// </summary>
+        private void UpdateSleeveSnapshotsWithClusterId(
+            ClusterPersistenceData data, 
+            SQLiteConnection conn, 
+            SQLiteTransaction trans)
+        {
+            if (data?.PlacedIdInts == null || data.PlacedIdInts.Count == 0 || 
+                data?.ClusterMap == null || data.ClusterMap.Count == 0)
+                return;
+
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss}] 📸 SNAPSHOT UPDATE: Updating SleeveSnapshots with ClusterInstanceId for {data.PlacedIdInts.Count} clusters\n");
+
+            int updatedCount = 0;
+            int skippedCount = 0;
+
+            var snapshotUpdates = new List<(string CleanGuid, int ClusterId)>();
+
+            for (int i = 0; i < data.PlacedIdInts.Count; i++)
+            {
+                int clusterInstanceId = data.PlacedIdInts[i];
+                var cluster = data.ClusterMap[i];
+
+                if (string.IsNullOrEmpty(cluster.ConstituentZoneGuids))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                // Parse constituent zone GUIDs
+                var parts = cluster.ConstituentZoneGuids.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                bool hasValid = false;
+                foreach (var part in parts)
+                {
+                    var trimmed = part.Trim();
+                    if (Guid.TryParse(trimmed, out Guid g))
+                    {
+                        // Normalize to uppercase with hyphens, no braces
+                        snapshotUpdates.Add((g.ToString().ToUpperInvariant(), clusterInstanceId));
+                        hasValid = true;
+                    }
+                }
+                if (!hasValid) skippedCount++;
+            }
+
+            if (snapshotUpdates.Count == 0) return;
+
+            // Batch Update (Chunk size 40 to stay safe with complex query parameters)
+            const int batchSize = 40;
+            for (int i = 0; i < snapshotUpdates.Count; i += batchSize)
+            {
+                var batch = snapshotUpdates.Skip(i).Take(batchSize).ToList();
+                try
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = trans;
+                        
+                        var caseBuilder = new System.Text.StringBuilder();
+                        var inClauseBuilder = new System.Text.StringBuilder();
+                        
+                        caseBuilder.Append("CASE ");
+                        
+                        // Use normalized matching in SQL: UPPER(REPLACE(..., '{', ''), '}', ''))
+                        string cleanCol = "UPPER(REPLACE(REPLACE(ClashZoneGuid, '{', ''), '}', ''))";
+
+                        for (int j = 0; j < batch.Count; j++)
+                        {
+                            string pGuid = $"@g{j}";
+                            string pId = $"@id{j}";
+                            
+                            // WHEN Clean(Col) = @g THEN @id
+                            caseBuilder.Append($"WHEN {cleanCol} = {pGuid} THEN {pId} ");
+                            
+                            inClauseBuilder.Append(j == 0 ? pGuid : $", {pGuid}");
+                            
+                            cmd.Parameters.AddWithValue(pGuid, batch[j].CleanGuid);
+                            cmd.Parameters.AddWithValue(pId, batch[j].ClusterId);
+                        }
+                        
+                        caseBuilder.Append("END");
+
+                        cmd.CommandText = $@"
+                            UPDATE SleeveSnapshots 
+                            SET ClusterInstanceId = {caseBuilder},
+                                SourceType = 'Cluster',
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE {cleanCol} IN ({inClauseBuilder})";
+                        
+                        int rows = cmd.ExecuteNonQuery();
+                        updatedCount += rows;
+                        
+                        SafeFileLogger.SafeAppendText("placement_performance.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ✅ Updated {rows} snapshots in batch (targets: {batch.Count})\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to update snapshot batch: {ex.Message}\n");
+                }
+            }
+
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss}] 📸 SNAPSHOT UPDATE COMPLETE: {updatedCount} snapshots updated, {skippedCount} skipped\n");
         }
 
         /// <summary>
@@ -2348,6 +2532,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         public long HostElementId { get; set; }
         public string? HostType { get; set; }
         public string? HostOrientation { get; set; }
+        public string? MepElementLevelName { get; set; } // ✅ Added for level-based placement
         public string FamilyName { get; set; } = string.Empty;
         public string ConstituentZoneGuids { get; set; } = string.Empty;
     }

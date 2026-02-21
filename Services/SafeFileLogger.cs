@@ -343,6 +343,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private static bool ShouldSuppress(string fileName)
         {
+            // ✅ GLOBAL VERBOSE LOGGING CHECK
+            // If DisableVerboseLogging is ON, suppress ALL logs except critical ones (like placement_performance.log)
+            if (OptimizationFlags.DisableVerboseLogging)
+            {
+                // Allow specific critical logs even when verbose logging is disabled
+                if (string.Equals(fileName, "placement_performance.log", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                
+                // ✅ PERFORMANCE REPORTS: Allow performance logs for all operations (low volume, critical for diagnostics)
+                if (fileName != null && fileName.StartsWith("performance_", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                // Allow error logs
+                if (string.Equals(fileName, "safefilelogger_errors.log", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(fileName, "safefilelogger_diagnostic.log", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                // Suppress everything else
+                return true;
+            }
+
             if (string.Equals(fileName, "placement_debug.log", StringComparison.OrdinalIgnoreCase)
                 && !OptimizationFlags.EnablePlacementDebugLog)
                 return true;
@@ -385,7 +406,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return;
 
             string logPathFinal = null;
-            bool writeSuccess = false;
+            // bool writeSuccess = false; // FIX: CS0219 - commented to fix critical warning
                 
             try
             {
@@ -421,7 +442,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 lock (_lock)
                 {
                     File.AppendAllText(logPathFinal, logEntry);
-                    writeSuccess = true;
+                    // writeSuccess = true; // FIX: CS0219 - commented to fix critical warning
                 }
             }
             catch (UnauthorizedAccessException)
@@ -444,7 +465,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Directory.CreateDirectory(directory);
                         WriteDiagnosticLog(fileName, $"Recreated directory: {directory}", logPathFinal, true);
                         File.AppendAllText(logPathFinal, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
-                        writeSuccess = true;
+                        // writeSuccess = true; // FIX: CS0219 - commented to fix critical warning
                         WriteDiagnosticLog(fileName, $"SUCCESS after retry: Written to {logPathFinal}", logPathFinal, true); // Log success after retry
                     }
                 }

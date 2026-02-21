@@ -1,4 +1,12 @@
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -112,7 +120,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (result.FailedFloors.Any())
                 {
-                    TaskDialog.Show("Warning", 
+                    Autodesk.Revit.UI.TaskDialog.Show("Warning", 
                         $"Some floors failed:\n{string.Join("\n", result.FailedFloors)}");
                 }
             }

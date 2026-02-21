@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
@@ -13,6 +14,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
     /// <summary>
     /// Orchestrates multi-floor clash detection and sleeve placement
     /// Handles chunking, memory management, and parallel execution
+    /// 
+    /// 🚀 BIM360 OPTIMIZATION: Uses MultiFloorBatchPlacementService for single-transaction placement
     /// </summary>
     public class FloorBatchProcessor
     {
@@ -34,14 +37,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
         
         /// <summary>
         /// Main entry point: Process multiple floors with automatic chunking
+        /// 
+        /// 🚀 OPTIMIZED for BIM360: Uses single transaction for placement (reduces cloud sync round-trips)
         /// </summary>
         /// <param name="levels">Levels to process</param>
         /// <param name="filter">Opening filter configuration</param>
         /// <param name="chunkSize">Floors per chunk (default: 5 for memory safety)</param>
+        /// <param name="useOptimizedBatchMode">Use single-transaction batch mode (recommended for BIM360)</param>
         public MultiFloorResult ProcessFloors(
             List<Level> levels, 
             OpeningFilter filter,
-            int chunkSize = 5)
+            int chunkSize = 5,
+            bool useOptimizedBatchMode = true)
         {
             // Pre-flight validation
             var validation = ValidateBeforeProcessing(levels);
@@ -70,6 +77,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
                 cache.Initialize();
                 cacheTracker?.SetItemCount(cache.Symbols.Count);
             }
+
+            // 🚀 USE OPTIMIZED BATCH MODE (Single Transaction for BIM360)
+            if (useOptimizedBatchMode)
+            {
+                SafeFileLogger.SafeAppendText("multifloor.log",
+                    $"[{DateTime.Now}] 🚀 Using OPTIMIZED BATCH MODE for {levels.Count} floors\n");
+                
+                var optimizedService = new MultiFloorBatchPlacementService(
+                    _doc,
+                    contextFactory: () => new SleeveDbContext(_doc),
+                    monitor: _monitor,
+                    logger: msg => SafeFileLogger.SafeAppendText("multifloor.log", msg + "\n"));
+                
+                totalResult = optimizedService.ProcessFloorsOptimized(levels, filter, cache, 
+                    enableGlobalClustering: OptimizationFlags.EnableClusteringWorkflow);
+                
+                // Clear checkpoint on success
+                _checkpointMgr.ClearCheckpoint();
+                
+                return totalResult;
+            }
+            
+            // LEGACY MODE: One transaction per floor (keep for fallback/compatibility)
+            SafeFileLogger.SafeAppendText("multifloor.log",
+                $"[{DateTime.Now}] ⚠️ Using LEGACY MODE (one transaction per floor)\n");
             
             // Process in chunks for memory safety
             int chunkIndex = 0;
@@ -109,7 +141,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
         }
         
         /// <summary>
-        /// Process a chunk of floors.
+        /// Process a chunk of floors (LEGACY MODE - One Transaction Per Floor)
         /// Sequential Revit work + Parallel Post-processing
         /// </summary>
         private MultiFloorResult ProcessFloorChunk(

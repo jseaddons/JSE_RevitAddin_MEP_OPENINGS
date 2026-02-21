@@ -29,6 +29,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static string SelectUniversalFamily(string hostType, string mepShape)
         {
+            return SelectUniversalFamily(hostType, mepShape, hostOrientation: null);
+        }
+
+        /// <summary>
+        /// Gets the appropriate family name for a clash zone based on host type, shape, and orientation.
+        /// When hostOrientation is "X" for wall/framing hosts, returns pre-rotated "_X" family variant
+        /// to eliminate per-sleeve rotation API calls (2-3 Revit API calls saved per sleeve).
+        /// </summary>
+        public static string SelectUniversalFamily(string hostType, string mepShape, string hostOrientation)
+        {
             // Treat Structural Framing the same as Walls for opening families.
             // For both Walls and Structural Framing we want vertical-host openings (OnWall),
             // and only use slab openings for floors/slabs.
@@ -36,12 +46,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            bool isRound = mepShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || 
+            bool isRound = mepShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 ||
                           mepShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // ✅ PERF: For X-wall/framing, use pre-rotated "_X" family variant to skip runtime rotation
+            bool isXOriented = isWallLikeHost &&
+                string.Equals(hostOrientation?.Trim(), "X", StringComparison.OrdinalIgnoreCase);
 
             if (isWallLikeHost)
             {
-                return isRound ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
+                if (isXOriented)
+                    return isRound ? "CircularOpeningOnWall_X" : "RectangularOpeningOnWall_X";
+                else
+                    return isRound ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
             }
             else // Slab/Floor
             {
@@ -54,7 +71,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public string GetFamilyNameForClashZone(string hostType, string mepShape)
         {
-            return SelectUniversalFamily(hostType, mepShape);
+            return SelectUniversalFamily(hostType, mepShape, hostOrientation: null);
+        }
+
+        public string GetFamilyNameForClashZone(string hostType, string mepShape, string hostOrientation)
+        {
+            return SelectUniversalFamily(hostType, mepShape, hostOrientation);
         }
 
         /// <summary>

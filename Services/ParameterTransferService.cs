@@ -458,9 +458,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var result = new ParameterTransferResult();
             var errors = new List<string>();
             var warnings = new List<string>();
-            int transferred = 0;
-            int failed = 0;
-            
+            // int transferred = 0; // FIX: CS0219 - commented to fix critical warning
+            // int failed = 0; // FIX: CS0219 - commented to fix critical warning
+
             // Wrapper
             using (var t = new Transaction(doc, "Transfer Standard Parameters from Reference Elements (wrapper)"))
             {
@@ -769,8 +769,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 SnapshotId = -1,
                                 SleeveInstanceId = openingId.GetIntegerValue(),
                                 SourceType = "Combined",
-                                MepParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: false),
-                                HostParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: true)
+                                MepParameters = AggregateConstituentParameters(combinedConstituents, snapshotIndex, useHost: false),
+                                HostParameters = AggregateConstituentParameters(combinedConstituents, snapshotIndex, useHost: true)
                             };
                         }
                         // 2. STANDARD LOOKUP (Using Sleeve/Cluster IDs parameters)
@@ -1501,67 +1501,106 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
 
                     SleeveSnapshotView snapshot = null;
+                    string matchMethod = "None";
 
-                    // ✅ COMBINED SLEEVE HANDLING (Aggregated Parameters)
+                    // 1. TRY COMBINED (Aggregated by ElementId or direct Snapshot)
                     if (snapshotIndex.TryGetByCombined(openingId.GetIntegerValue(), out var combinedConstituents))
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("transfer_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched Combined Sleeve {openingId.GetIntegerValue()}. Aggregating parameters from {combinedConstituents.Count} constituents...\n");
-                        }
-
                         snapshot = new SleeveSnapshotView
                         {
                             SnapshotId = -1,
                             SleeveInstanceId = openingId.GetIntegerValue(),
                             SourceType = "Combined",
-                            MepParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: false),
-                            HostParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: true)
+                            MepParameters = AggregateConstituentParameters(combinedConstituents, snapshotIndex, useHost: false),
+                            HostParameters = AggregateConstituentParameters(combinedConstituents, snapshotIndex, useHost: true)
                         };
-
-                         if (!DeploymentConfiguration.DeploymentMode)
-                         {
-                             SafeFileLogger.SafeAppendText("transfer_debug.log",
-                                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Aggregated {snapshot.MepParameters.Count} MEP params and {snapshot.HostParameters.Count} Host params.\n");
-                         }
+                        matchMethod = "CombinedIdContents";
                     }
-                    else if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
+                    else if (snapshotIndex.TryGetByCombinedSnapshot(openingId.GetIntegerValue(), out var directCombinedView))
                     {
-                        // ✅ PROTECTION 14: Validate cluster snapshot is not null
-                        if (clusterView == null)
+                        snapshot = directCombinedView;
+                        matchMethod = "CombinedIdDirect";
+                    }
+                    // 2. TRY CLUSTER CONSTITUENTS (Aggregated by ClusterInstanceId)
+                    else if (clusterInstanceId > 0 && snapshotIndex.ByClusterConstituents.TryGetValue(clusterInstanceId, out var clusterConstituents))
+                    {
+                        snapshot = new SleeveSnapshotView
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            SnapshotId = -1,
+                            ClusterInstanceId = clusterInstanceId,
+                            SourceType = "Cluster",
+                            MepParameters = AggregateConstituentParameters(clusterConstituents, snapshotIndex, useHost: false),
+                            HostParameters = AggregateConstituentParameters(clusterConstituents, snapshotIndex, useHost: true)
+                        };
+                        matchMethod = "ClusterId";
+                    }
+                    // 3. TRY GUID FALLBACK (Aggregated by UniqueId)
+                    else 
+                    {
+                        string uniqueId = opening.UniqueId;
+                        
+                        // Fallback A: Combined GUID
+                        if (snapshotIndex.ByCombinedGuidConstituents.TryGetValue(uniqueId, out var combGuidRefs))
+                        {
+                            snapshot = new SleeveSnapshotView
                             {
-                                SafeFileLogger.SafeAppendText("transfer_debug.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Cluster snapshot is NULL for ClusterInstanceId={clusterInstanceId}, sleeve {openingId.GetIntegerValue()}\n");
-                            }
+                                SnapshotId = -1,
+                                SourceType = "CombinedGuid",
+                                MepParameters = AggregateConstituentParameters(combGuidRefs, snapshotIndex, useHost: false),
+                                HostParameters = AggregateConstituentParameters(combGuidRefs, snapshotIndex, useHost: true)
+                            };
+                            matchMethod = "CombinedGuidFallback";
                         }
-                        else
+                        // Fallback B: Cluster GUID
+                        else if (snapshotIndex.ByClusterGuidConstituents.TryGetValue(uniqueId, out var clusGuidRefs))
+                        {
+                            snapshot = new SleeveSnapshotView
+                            {
+                                SnapshotId = -1,
+                                SourceType = "ClusterGuid",
+                                MepParameters = AggregateConstituentParameters(clusGuidRefs, snapshotIndex, useHost: false),
+                                HostParameters = AggregateConstituentParameters(clusGuidRefs, snapshotIndex, useHost: true)
+                            };
+                            matchMethod = "ClusterGuidFallback";
+                        }
+                        // Fallback C: Individual Sleeve GUID
+                        else if (snapshotIndex.ByClashZoneGuid.TryGetValue(uniqueId, out var guidView))
+                        {
+                            snapshot = guidView;
+                            matchMethod = "IndividualGuidFallback";
+                        }
+                    }
+
+                    // 4. TRY DIRECT SNAPSHOT (Backward compatibility / Single Zone Clusters)
+                    if (snapshot == null)
+                    {
+                        if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
                         {
                             snapshot = clusterView;
+                            matchMethod = "ClusterIdDirect";
                         }
-                        SafeFileLogger.SafeAppendText("transfer_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by ClusterInstanceId={clusterInstanceId}\n");
-                    }
-                    else if (sleeveInstanceId > 0 && snapshotIndex.TryGetBySleeve(sleeveInstanceId, out var sleeveView))
-                    {
-                        snapshot = sleeveView;
-                        SafeFileLogger.SafeAppendText("transfer_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by SleeveInstanceId={sleeveInstanceId}\n");
+                        else if (sleeveInstanceId > 0 && snapshotIndex.TryGetBySleeve(sleeveInstanceId, out var sleeveView))
+                        {
+                            snapshot = sleeveView;
+                            matchMethod = "SleeveIdDirect";
+                        }
                     }
 
-                    // ✅ FALLBACK: If direct sleeve lookup failed, try finding via ClashZone GUID
-                    // This handles cases where SleeveSnapshots table has stale SleeveInstanceIds but ClashZones table is correct
+                    // 5. TRY STALE ID FALLBACK
                     if (snapshot == null && sleeveInstanceId > 0 && 
                         snapshotIndex.SleeveIdToClashZoneGuid.TryGetValue(sleeveInstanceId, out var clashZoneGuid))
                     {
                         if (snapshotIndex.TryGetByClashZoneGuid(clashZoneGuid, out var guidSnapshot))
                         {
                             snapshot = guidSnapshot;
-                            SafeFileLogger.SafeAppendText("transfer_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by ClashZone GUID Fallback! SleeveId={sleeveInstanceId} -> Guid={clashZoneGuid}\n");
+                            matchMethod = "StaleIdFallback";
                         }
+                    }
+
+                    if (snapshot != null)
+                    {
+                         SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched via {matchMethod} for opening {openingId.GetIntegerValue()}\n");
                     }
 
                     dbMatchStartTime.Stop();
@@ -3149,7 +3188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     var hostParams = zone.HostParameterValues?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, string>();
                                     
-                                    filterData[zone.SleeveInstanceId] = (mepParams, hostParams);
+                                    filterData[(int)zone.SleeveInstanceId] = (mepParams, hostParams);
                                                                         if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[PARAM_TRANSFER] Added individual sleeve {zone.SleeveInstanceId} to index");
                                 }
@@ -3314,7 +3353,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                 }
                                 
-                                filterData[clusterSleeveId] = (aggregatedMepParams, aggregatedHostParams);
+                                filterData[(int)clusterSleeveId] = (aggregatedMepParams, aggregatedHostParams);
                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[PARAM_TRANSFER] Added aggregated cluster sleeve {clusterSleeveId} with {aggregatedMepParams.Count} MEP params and {aggregatedHostParams.Count} host params");
                             }
@@ -4103,10 +4142,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         /// <summary>
-        /// Aggregates parameters from multiple constituent snapshots for a combined sleeve.
+        /// Aggregates parameters from multiple constituent snapshots.
         /// Values are joined with commas/semicolons and deduped.
         /// </summary>
-        private Dictionary<string, string> AggregateCombinedParameters(
+        private Dictionary<string, string> AggregateConstituentParameters(
             List<SleeveConstituentSnapshotReference> constituents, 
             SleeveSnapshotIndex snapshotIndex,
             bool useHost)

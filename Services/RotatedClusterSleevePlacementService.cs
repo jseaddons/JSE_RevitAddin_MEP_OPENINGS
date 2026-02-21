@@ -309,22 +309,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 string clusterDebugLogPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                bool shouldLog = !DeploymentConfiguration.DeploymentMode;
-
-                if (shouldLog)
-                {
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== CHECK ROTATED SLEEVE PROXIMITY ==========\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeve1.SleeveInstanceId} vs Sleeve {sleeve2.SleeveInstanceId}\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Tolerance: {toleranceDist * 304.8:F1}mm\n");
-                }
+                SafeFileLogger.SafeAppendText("cluster_debug.log", "========== CHECK ROTATED SLEEVE PROXIMITY ==========");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Sleeve {sleeve1.SleeveInstanceId} vs Sleeve {sleeve2.SleeveInstanceId}");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Rotation Angle: {rotationAngle * 180.0 / Math.PI:F2}°");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Tolerance: {toleranceDist * 304.8:F1}mm");
 
                 if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
                 {
-                    if (shouldLog)
-                    {
-                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ❌ ClashZone is null - returning false\n\n");
-                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", "❌ ClashZone is null - returning false\n");
                     return false;
                 }
 
@@ -333,10 +325,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (cz1 == null || cz2 == null)
                 {
-                    if (shouldLog)
-                    {
-                        System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ❌ ClashZone cast failed - returning false\n\n");
-                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", "❌ ClashZone cast failed - returning false\n");
                     return false;
                 }
 
@@ -351,13 +340,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     (cz2.SleeveBoundingBoxMinY + cz2.SleeveBoundingBoxMaxY) / 2.0,
                     (cz2.SleeveBoundingBoxMinZ + cz2.SleeveBoundingBoxMaxZ) / 2.0);
 
-                if (shouldLog)
-                {
-                    bool hasPlacementPoint1 = cz1.SleevePlacementPoint != null;
-                    bool hasPlacementPoint2 = cz2.SleevePlacementPoint != null;
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeve1.SleeveInstanceId} Center: ({center1.X:F6}, {center1.Y:F6}, {center1.Z:F6}) [{(hasPlacementPoint1 ? "from PlacementPoint" : "from BBox center")}]\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve {sleeve2.SleeveInstanceId} Center: ({center2.X:F6}, {center2.Y:F6}, {center2.Z:F6}) [{(hasPlacementPoint2 ? "from PlacementPoint" : "from BBox center")}]\n");
-                }
+                bool hasPlacementPoint1 = cz1.SleevePlacementPoint != null;
+                bool hasPlacementPoint2 = cz2.SleevePlacementPoint != null;
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Sleeve {sleeve1.SleeveInstanceId} Center: ({center1.X:F6}, {center1.Y:F6}, {center1.Z:F6}) [{(hasPlacementPoint1 ? "from PlacementPoint" : "from BBox center")}]");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Sleeve {sleeve2.SleeveInstanceId} Center: ({center2.X:F6}, {center2.Y:F6}, {center2.Z:F6}) [{(hasPlacementPoint2 ? "from PlacementPoint" : "from BBox center")}]");
 
                 // Calculate shared rotated axis direction (unit vector along rotated X-axis)
                 XYZ rotatedAxisDirection = new XYZ(Math.Cos(rotationAngle), Math.Sin(rotationAngle), 0).Normalize();
@@ -408,13 +394,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double halfHeight1 = sleeve1Height / 2.0;
                 double halfHeight2 = sleeve2Height / 2.0;
 
-                if (shouldLog)
-                {
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Rotated Axis Direction: ({rotatedAxisDirection.X:F6}, {rotatedAxisDirection.Y:F6}, {rotatedAxisDirection.Z:F6})\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] World Vector (center1 to center2): ({worldVector.X:F6}, {worldVector.Y:F6}, {worldVector.Z:F6})\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve 1 Size: W={sleeve1Width * 304.8:F1}mm, H={sleeve1Height * 304.8:F1}mm\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Sleeve 2 Size: W={sleeve2Width * 304.8:F1}mm, H={sleeve2Height * 304.8:F1}mm\n");
-                }
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Rotated Axis Direction: ({rotatedAxisDirection.X:F6}, {rotatedAxisDirection.Y:F6}, {rotatedAxisDirection.Z:F6})");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"World Vector (center1 to center2): ({worldVector.X:F6}, {worldVector.Y:F6}, {worldVector.Z:F6})");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Sleeve 1 Size: W={sleeve1Width * 304.8:F1}mm, H={sleeve1Height * 304.8:F1}mm");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Sleeve 2 Size: W={sleeve2Width * 304.8:F1}mm, H={sleeve2Height * 304.8:F1}mm");
 
                 // Check if sleeves are close enough along the rotated axis
                 double maxDistanceAlongAxis = halfWidth1 + halfWidth2 + toleranceDist;
@@ -427,13 +410,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Cluster if both conditions are met
                 bool shouldCluster = closeAlongAxis && closePerpendicular;
 
-                if (shouldLog)
-                {
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Distance Along Axis: {distanceAlongAxis * 304.8:F1}mm (max allowed: {maxDistanceAlongAxis * 304.8:F1}mm) - {(closeAlongAxis ? "✅ PASS" : "❌ FAIL")}\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Perpendicular Distance: {perpendicularDistance * 304.8:F1}mm (max allowed: {maxPerpendicularDistance * 304.8:F1}mm) - {(closePerpendicular ? "✅ PASS" : "❌ FAIL")}\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Final Result: {(shouldCluster ? "✅ CLUSTER" : "❌ NO CLUSTER")}\n");
-                    System.IO.File.AppendAllText(clusterDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ========== END CHECK ROTATED SLEEVE PROXIMITY ==========\n\n");
-                }
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Distance Along Axis: {distanceAlongAxis * 304.8:F1}mm (max allowed: {maxDistanceAlongAxis * 304.8:F1}mm) - {(closeAlongAxis ? "✅ PASS" : "❌ FAIL")}");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Perpendicular Distance: {perpendicularDistance * 304.8:F1}mm (max allowed: {maxPerpendicularDistance * 304.8:F1}mm) - {(closePerpendicular ? "✅ PASS" : "❌ FAIL")}");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"Final Result: {(shouldCluster ? "✅ CLUSTER" : "❌ NO CLUSTER")}");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", "========== END CHECK ROTATED SLEEVE PROXIMITY ==========\n");
 
                 if (!DeploymentConfiguration.DeploymentMode && shouldCluster)
                 {
@@ -497,7 +477,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 sizeLogBuilder.AppendLine($"  ========== END CLUSTER SIZE APPLICATION ==========");
                 sizeLogBuilder.AppendLine();
 
-                System.IO.File.AppendAllText(clusterSizeLogPath, sizeLogBuilder.ToString());
+                SafeFileLogger.SafeAppendTextAlways("cluster_size_application.log", sizeLogBuilder.ToString());
             }
             catch { }
         }

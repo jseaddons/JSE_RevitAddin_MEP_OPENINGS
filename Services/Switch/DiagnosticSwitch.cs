@@ -39,6 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Switch
             DeploymentConfiguration.DeploymentMode = false;  // Enable full logging
             OptimizationFlags.UseDiagnosticMode = true;      // Enable diagnostic mode
             OptimizationFlags.LogPerformanceMetrics = true;  // Enable performance metrics
+            OptimizationFlags.DisableVerboseLogging = false; // ✅ ENABLE VERBOSE LOGGING
             
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -54,6 +55,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Switch
             DeploymentConfiguration.DeploymentMode = true;   // Disable full logging
             OptimizationFlags.UseDiagnosticMode = false;     // Disable diagnostic mode
             OptimizationFlags.LogPerformanceMetrics = false; // Disable performance metrics
+            OptimizationFlags.DisableVerboseLogging = true;  // ✅ DISABLE VERBOSE LOGGING
             
             // Note: Can't use DebugLogger here since DeploymentMode is now true
             System.Diagnostics.Debug.WriteLine("[DiagnosticSwitch] ⚠️ Diagnostic mode DISABLED - Deployment mode active (minimal logging)");

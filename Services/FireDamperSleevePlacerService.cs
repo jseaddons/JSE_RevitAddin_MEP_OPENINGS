@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 
@@ -201,7 +202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (damperBBox == null || wallBBox == null)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[PlaceFireDamperSleeve] Bounding box unavailable. damperId={accessory?.Id.IntegerValue ?? -1}, damperBBoxNull={(damperBBox==null)}, wallId={linkedWall?.Id.IntegerValue ?? -1}, wallBBoxNull={(wallBBox==null)}");
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] Bounding box unavailable. damperId={accessory?.Id.GetIntegerValue() ?? -1}, damperBBoxNull={(damperBBox==null)}, wallId={linkedWall?.Id.GetIntegerValue() ?? -1}, wallBBoxNull={(wallBBox==null)}");
                     Log("Bounding box unavailable for damper or wall. Skipping placement.");
                     return false;
                 }
@@ -210,7 +211,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!BoundingBoxService.BoundingBoxesIntersect(damperBBox, wallBBox))
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[PlaceFireDamperSleeve] BBox intersection test failed for damperId={accessory.Id.IntegerValue}, wallId={linkedWall.Id.IntegerValue}. damperMin={damperBBox.Min}, damperMax={damperBBox.Max}, wallMin={wallBBox.Min}, wallMax={wallBBox.Max}");
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] BBox intersection test failed for damperId={accessory.Id.GetIntegerValue()}, wallId={linkedWall.Id.GetIntegerValue()}. damperMin={damperBBox.Min}, damperMax={damperBBox.Max}, wallMin={wallBBox.Min}, wallMax={wallBBox.Max}");
                     Log("Damper bounding box does not intersect wall bounding box. Skipping placement.");
                     return false;
                 }
@@ -222,7 +223,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (widthParam == null || heightParam == null)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[PlaceFireDamperSleeve] Missing damper params for damperId={accessory.Id.IntegerValue}: widthParamNull={(widthParam==null)}, heightParamNull={(heightParam==null)}");
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] Missing damper params for damperId={accessory.Id.GetIntegerValue()}: widthParamNull={(widthParam==null)}, heightParamNull={(heightParam==null)}");
                     Log("Damper parameters 'Damper Width' or 'Damper Height' not found. Skipping placement.");
                     return false;
                 }
@@ -232,7 +233,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 Log($"Retrieved damper dimensions: Width={damperWidth}, Height={damperHeight}");
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Damper dims internal: damperId={accessory.Id.IntegerValue}, Width={damperWidth}, Height={damperHeight}");
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Damper dims internal: damperId={accessory.Id.GetIntegerValue()}, Width={damperWidth}, Height={damperHeight}");
                 Log($"Damper dimensions (mm): Width={RevitUnitConversionService.Instance.FromInternalMillimeters(damperWidth)}, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(damperHeight)}");
 
                 // Get symbol type name and determine damper type (null-safe)
@@ -269,7 +270,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var connDir = conn.CoordinateSystem.BasisX;
                         Log($"[DEBUG] Connector BasisX direction: ({connDir.X:F3}, {connDir.Y:F3}, {connDir.Z:F3})");
-                        Log($"[DEBUG] Damper ID: {accessory.Id.IntegerValue}");
+                        Log($"[DEBUG] Damper ID: {accessory.Id.GetIntegerValue()}");
                     }
                 }
                 else
@@ -328,7 +329,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (level == null)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[PlaceFireDamperSleeve] No Level found for damperId={accessory.Id.IntegerValue}. Aborting placement.");
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] No Level found for damperId={accessory.Id.GetIntegerValue()}. Aborting placement.");
                     Log("No Level found; aborting placement.");
                     return false;
                 }
@@ -346,7 +347,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 safeCenter = rawCenter ?? new XYZ(0, 0, 0);
                 Log($"Raw damper center before projection: {safeCenter}");
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Raw center damperId={accessory.Id.IntegerValue}: {safeCenter}");
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Raw center damperId={accessory.Id.GetIntegerValue()}: {safeCenter}");
 
                 // Project raw center onto wall plane (wall face intersection)
                 XYZ wallFaceOrigin;
@@ -371,7 +372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 XYZ projectedCenter = safeCenter - wallNormal.Multiply(distance);
                 Log($"Projected damper-wall intersection center: {projectedCenter}");
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Projected center damperId={accessory.Id.IntegerValue}: {projectedCenter}, wallNormal={wallNormal}");
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Projected center damperId={accessory.Id.GetIntegerValue()}: {projectedCenter}, wallNormal={wallNormal}");
 
                 // Calculate offset for families needing MEP side clearance (MSFD, MSD, MOTORIZED, MD) - 25mm toward connector direction
                 XYZ offset = XYZ.Zero;
@@ -407,7 +408,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (duplicateExists)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[PlaceFireDamperSleeve] Duplicate detected at center for damperId={accessory.Id.IntegerValue}, center={sleeveCenter}");
+                        DebugLogger.Info($"[PlaceFireDamperSleeve] Duplicate detected at center for damperId={accessory.Id.GetIntegerValue()}, center={sleeveCenter}");
                     Log("Duplicate damper sleeve detected at this location. Skipping placement.");
                     return false;
                 }
@@ -424,7 +425,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (instance == null)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[PlaceFireDamperSleeve] Created instance is null for damperId={accessory.Id.IntegerValue}");
+                        DebugLogger.Error($"[PlaceFireDamperSleeve] Created instance is null for damperId={accessory.Id.GetIntegerValue()}");
                     Log("Failed to create sleeve instance; skipping placement.");
                     return false;
                 }
@@ -443,7 +444,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 Log("Created sleeve at computed center.");
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Created sleeve instanceId={(instance.Id.IntegerValue)} for damperId={accessory.Id.IntegerValue} at {sleeveCenter}");
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Created sleeve instanceId={(instance.Id.GetIntegerValue())} for damperId={accessory.Id.GetIntegerValue()} at {sleeveCenter}");
 
                 // Set sleeve dimensions and depth (null-safe since instance is non-null)
                 instance.LookupParameter("Width")?.Set(sleeveWidth);
@@ -499,13 +500,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
                     {
                         schedLevelParam.Set(refLevel.Id);
-                        Log($"[FireDamperSleevePlacerService] Set Schedule Level to {refLevel.Name} for damper {accessory.Id.IntegerValue}");
+                        Log($"[FireDamperSleevePlacerService] Set Schedule Level to {refLevel.Name} for damper {accessory.Id.GetIntegerValue()}");
                     }
                 }
 
                 Log("Set sleeve dimensions and completed placement.");
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PlaceFireDamperSleeve] Placement completed for damperId={accessory.Id.IntegerValue}");
+                    DebugLogger.Info($"[PlaceFireDamperSleeve] Placement completed for damperId={accessory.Id.GetIntegerValue()}");
                 return true;
             }
             catch (Exception ex)
@@ -565,7 +566,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try { bbox = w?.get_BoundingBox(null); } catch { }
                     string bboxText = bbox != null ? $"Min={bbox.Min},Max={bbox.Max}" : "<no-bbox>";
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[ProcessDamperBatch] WALL SAMPLE {sampleIndex++}: id={(w?.Id.IntegerValue.ToString() ?? "<null>")}, transformProvided={(wtr!=null)}, bbox={bboxText}");
+                        DebugLogger.Log($"[ProcessDamperBatch] WALL SAMPLE {sampleIndex++}: id={(w?.Id.GetIntegerValue().ToString() ?? "<null>")}, transformProvided={(wtr!=null)}, bbox={bboxText}");
                 }
             }
             catch { }
@@ -631,7 +632,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Log($"[ProcessDamperBatch] No wall found by bbox for damper {damper.Id.IntegerValue}, attempting intersection fallback.");
+                                DebugLogger.Log($"[ProcessDamperBatch] No wall found by bbox for damper {damper.Id.GetIntegerValue()}, attempting intersection fallback.");
                             // Construct a short test line through the sleevePos in world Z to probe nearby walls
                             var p1 = sleevePos + new Autodesk.Revit.DB.XYZ(0, 0, -5.0);
                             var p2 = sleevePos + new Autodesk.Revit.DB.XYZ(0, 0, 5.0);
@@ -663,7 +664,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (targetWall != null)
                                 {
                                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Log($"[ProcessDamperBatch] Intersection fallback found wall {targetWall.Id.IntegerValue} for damper {damper.Id.IntegerValue}.");
+                                        DebugLogger.Log($"[ProcessDamperBatch] Intersection fallback found wall {targetWall.Id.GetIntegerValue()} for damper {damper.Id.GetIntegerValue()}.");
                                 }
                             }
                         }

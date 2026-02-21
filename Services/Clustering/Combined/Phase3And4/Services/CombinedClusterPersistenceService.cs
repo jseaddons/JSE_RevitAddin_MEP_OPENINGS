@@ -23,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             _document = document ?? throw new ArgumentNullException(nameof(document));
         }
 
-        public List<ClashZone> QueueDatabaseUpdates(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
+        public List<ClashZone> QueueDatabaseUpdates(CombinedClusterCandidate combinedCluster, long combinedSleeveInstanceId)
         {
              // 2025-12-18: REFACTORED
              // This method previously queued updates for the background worker.
@@ -34,13 +34,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
              return new List<ClashZone>();
         }
 
-        public void UpdateXmlWithCombinedClusterInfo(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
+        public void UpdateXmlWithCombinedClusterInfo(CombinedClusterCandidate combinedCluster, long combinedSleeveInstanceId)
         {
             // Stub: Implement XML update logic as needed for your application
             // This is a placeholder to satisfy the interface
         }
 
-        public void PersistCombinedCluster(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
+        public void PersistCombinedCluster(CombinedClusterCandidate combinedCluster, long combinedSleeveInstanceId)
         {
             if (combinedCluster == null) return;
             if (combinedCluster.MemberClusters.Count == 0) return;
@@ -51,7 +51,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             // 2. Update flags for Cluster Constituents (by ClusterInstanceId - robust against missing JSON linkage)
 
             var individualZoneGuids = new List<Guid>();
-            var clusterInstanceIds = new List<int>();
+            var clusterInstanceIds = new List<long>();
             var allZoneGuids = new List<Guid>(); // Still collect for potential downstream logic
 
             foreach (var cluster in combinedCluster.MemberClusters)
@@ -142,7 +142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                                     if (z.SleeveDepth > 0.01) return z.SleeveDepth;
                                     
                                     // Otherwise fallback to querying the element from Document
-                                    var structId = new ElementId(z.StructuralElementIdValue);
+                                    var structId = ElementIdCompat.FromValue(z.StructuralElementIdValue);
                                     var structElem = _document.GetElement(structId);
                                     if (structElem != null)
                                     {
@@ -197,8 +197,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                             Category = zone.MepElementCategory ?? "Unknown",
                             ClashZoneId = 0, // ✅ Fixed: ClashZone model doesn't have int ID exposed
                             ClashZoneGuid = zone.Id,
-                            ClusterSleeveId = zone.ClusterSleeveInstanceId > 0 ? zone.ClusterSleeveInstanceId : (int?)null,
-                            ClusterInstanceId = zone.ClusterSleeveInstanceId > 0 ? zone.ClusterSleeveInstanceId : (int?)null
+                            ClusterSleeveId = zone.ClusterSleeveInstanceId > 0 ? (int?)zone.ClusterSleeveInstanceId : null,
+                            ClusterInstanceId = zone.ClusterSleeveInstanceId > 0 ? (int?)zone.ClusterSleeveInstanceId : null
                         });
                     }
 

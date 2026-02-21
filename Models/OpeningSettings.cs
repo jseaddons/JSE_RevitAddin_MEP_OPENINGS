@@ -21,7 +21,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// <summary>
         /// Clearance settings for different MEP types
         /// </summary>
+        /// <summary>
+        /// Clearance settings for different MEP types
+        /// </summary>
+        [System.Xml.Serialization.XmlIgnore]
         public Dictionary<string, double> ClearanceSettings { get; set; } = new Dictionary<string, double>();
+
+        /// <summary>
+        /// Surrogate property for XML serialization of ClearanceSettings
+        /// </summary>
+        [System.Xml.Serialization.XmlArray("ClearanceSettings")]
+        [System.Xml.Serialization.XmlArrayItem("ClearanceSetting")]
+        public List<ClearanceSettingItem> ClearanceSettingsList
+        {
+            get
+            {
+                var list = new List<ClearanceSettingItem>();
+                if (ClearanceSettings != null)
+                {
+                    foreach (var kvp in ClearanceSettings)
+                    {
+                        list.Add(new ClearanceSettingItem { Key = kvp.Key, Value = kvp.Value });
+                    }
+                }
+                return list;
+            }
+            set
+            {
+                ClearanceSettings = new Dictionary<string, double>();
+                if (value != null)
+                {
+                    foreach (var item in value)
+                    {
+                        if (!ClearanceSettings.ContainsKey(item.Key))
+                        {
+                            ClearanceSettings.Add(item.Key, item.Value);
+                        }
+                    }
+                }
+            }
+        }
         
         /// <summary>
         /// Default clearance value
@@ -67,5 +106,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Prefix for sleeve parameter naming (used in parameter marking)
         /// </summary>
         public string SleeveParameterPrefix { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Helper class for XML serialization of dictionary items
+    /// </summary>
+    public class ClearanceSettingItem
+    {
+        [System.Xml.Serialization.XmlAttribute]
+        public string Key { get; set; } = string.Empty;
+
+        [System.Xml.Serialization.XmlAttribute]
+        public double Value { get; set; }
     }
 }

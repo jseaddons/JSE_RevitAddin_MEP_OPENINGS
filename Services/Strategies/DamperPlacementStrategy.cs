@@ -2,7 +2,6 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
-using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
@@ -39,7 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             _damperTypeDetector = typeDetector ?? throw new ArgumentNullException(nameof(typeDetector));
             _sizingService = sizingService ?? throw new ArgumentNullException(nameof(sizingService));
         }
-        public MepElementSize GetMepElementSize(Element mepElement)
+        public MepElementSize GetMepElementSize(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
             var damper = mepElement as FamilyInstance;
             if (damper == null || damper.Category?.Id.GetIntegerValue() != (int)BuiltInCategory.OST_DuctAccessory)
@@ -53,26 +52,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             // Get size from damper-specific parameters (not generic Width/Height)
             // Fire dampers use "Damper Width" and "Damper Height" parameters
             // User Request (2025-12-31): Add "Dimensions Width" / "Dimension Width" / "Dimensions_Width" support
-            var widthParam = damper.LookupParameter("Damper Width") ?? 
-                            damper.LookupParameter("Width") ?? 
-                            damper.LookupParameter("width") ??
-                            damper.LookupParameter("Dimensions_Width") ??
-                            damper.LookupParameter("Dimensions Width") ??
-                            damper.LookupParameter("Dimension Width") ??
-                            damper.LookupParameter("dimensions width") ??
-                            damper.LookupParameter("dimension width");
-                            
-            var heightParam = damper.LookupParameter("Damper Height") ?? 
-                             damper.LookupParameter("Height") ?? 
-                             damper.LookupParameter("height") ??
-                             damper.LookupParameter("Dimensions_Height") ??
-                             damper.LookupParameter("Dimensions Height") ??
-                             damper.LookupParameter("Dimension Height") ??
-                             damper.LookupParameter("dimensions height") ??
-                             damper.LookupParameter("dimension height");
             
-            size.Width = widthParam?.AsDouble() ?? 0.0;
-            size.Height = heightParam?.AsDouble() ?? 0.0;
+            bool foundWidth = TryGetDoubleParameter(damper, parameters, "Damper Width", out double w) ||
+                              TryGetDoubleParameter(damper, parameters, "Width", out w) ||
+                              TryGetDoubleParameter(damper, parameters, "width", out w) ||
+                              TryGetDoubleParameter(damper, parameters, "Dimensions_Width", out w) ||
+                              TryGetDoubleParameter(damper, parameters, "Dimensions Width", out w) ||
+                              TryGetDoubleParameter(damper, parameters, "Dimension Width", out w) ||
+                              TryGetDoubleParameter(damper, parameters, "dimensions width", out w) ||
+                              TryGetDoubleParameter(damper, parameters, "dimension width", out w);
+
+            bool foundHeight = TryGetDoubleParameter(damper, parameters, "Damper Height", out double h) ||
+                               TryGetDoubleParameter(damper, parameters, "Height", out h) ||
+                               TryGetDoubleParameter(damper, parameters, "height", out h) ||
+                               TryGetDoubleParameter(damper, parameters, "Dimensions_Height", out h) ||
+                               TryGetDoubleParameter(damper, parameters, "Dimensions Height", out h) ||
+                               TryGetDoubleParameter(damper, parameters, "Dimension Height", out h) ||
+                               TryGetDoubleParameter(damper, parameters, "dimensions height", out h) ||
+                               TryGetDoubleParameter(damper, parameters, "dimension height", out h);
+
+            size.Width = foundWidth ? w : 0.0;
+            size.Height = foundHeight ? h : 0.0;
             
             // ✅ R2024 FIX: If parameters fail (0.0), use Geometry Bounding Box
             if (size.Width <= 0.001 || size.Height <= 0.001)
@@ -94,12 +94,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     // If host is null (e.g. invalid) check if it's face hosted or try to find intersecting wall? 
                     // For now, assume Max lateral dimension is Width (Safest default for square/rectangular dampers)
                     // If we want to be smarter:
-                    string orientation = "Unknown";
+                    // string orientation = "Unknown"; // FIX: CS0219 - commented to fix critical warning
                     if (host is Wall wall)
                     {
                          // Basic orientation check
                          XYZ normal = wall.Orientation;
-                         if (Math.Abs(normal.X) > Math.Abs(normal.Y)) orientation = "X"; // Normal X -> Wall runs Y -> Width is Y? No.
+                         // if (Math.Abs(normal.X) > Math.Abs(normal.Y)) orientation = "X"; // FIX: CS0219 - commented to fix critical warning // Normal X -> Wall runs Y -> Width is Y? No.
                          // Wall runs PERPENDICULAR to Normal.
                          // If Normal is X, Wall runs along Y. Width is along Y.
                          // If Normal is Y, Wall runs along X. Width is along X.
@@ -125,7 +125,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 }
             }
             
-            DebugLogger.Info($"[DamperStrategy] Damper {damper.Id}: Width={size.Width} ft, Height={size.Height} ft (from '{widthParam?.Definition.Name}' and '{heightParam?.Definition.Name}' parameters)");
+            DebugLogger.Info($"[DamperStrategy] Damper {damper.Id}: Width={size.Width} ft, Height={size.Height} ft");
             
             // Dampers don't have insulation
             size.IsInsulated = false;
@@ -137,6 +137,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             DebugLogger.Info($"[DamperStrategy] Detected damper type: '{size.DamperType}' from family: '{familyTypeName}'");
             
             return size;
+        }
+
+        private bool TryGetDoubleParameter(Element element, System.Collections.Generic.Dictionary<string, string>? parameters, string name, out double value)
+        {
+            value = 0;
+            if (parameters != null && parameters.TryGetValue(name, out var strVal) && !string.IsNullOrEmpty(strVal))
+            {
+                if (double.TryParse(strVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value))
+                    return true;
+            }
+            
+            var p = element.LookupParameter(name);
+            if (p != null && p.HasValue)
+            {
+                value = p.AsDouble();
+                return true;
+            }
+            return false;
         }
         
         public double GetClearance(MepElementSize mepSize, OpeningConditions conditions)
@@ -165,8 +183,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             return clearanceInFeet;
         }
         
-        public string GetSystemAbbreviation(Element mepElement)
+        public string GetSystemAbbreviation(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
+            if (parameters != null && parameters.TryGetValue("System Abbreviation", out var abbr) && !string.IsNullOrEmpty(abbr))
+            {
+                return abbr;
+            }
             var damper = mepElement as FamilyInstance;
             if (damper != null)
             {

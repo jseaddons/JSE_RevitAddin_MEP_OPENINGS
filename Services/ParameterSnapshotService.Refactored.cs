@@ -166,9 +166,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private static partial HashSet<string> BuildWhitelistLegacy();
         private static partial List<SerializableKeyValue> CaptureParamsLegacy(
-            Element element, HashSet<string> whitelist, Document doc, string docKey);
-        private static partial string ConvertParameterToStringLegacy(Element element, Parameter param);
-        private static partial Parameter LookupParamLegacy(Element element, string paramName);
+            Element element, HashSet<string> whitelist, Document doc, string docKey, Dictionary<ElementId, string> elementCache = null, Dictionary<ElementId, Element> typeElementCache = null, Dictionary<ElementId, Dictionary<string, Parameter>> typeParamCache = null, int? preCategoryId = null, string preCategoryName = null, string preLevelName = null, double? preLevelElevation = null, Dictionary<ElementId, HashSet<string>> missingTypeKeysCache = null);
+        private static partial string ConvertParameterToStringLegacy(Element element, Parameter param, Dictionary<ElementId, string> elementCache = null);
+        private static partial Parameter LookupParamLegacy(Element element, string paramName, Dictionary<ElementId, Element> typeElementCache = null, Dictionary<ElementId, Dictionary<string, Parameter>> typeParamCache = null, ElementId optionalTypeId = null);
         private static partial void AddLearnedKeyLegacy(string key);
     }
 }

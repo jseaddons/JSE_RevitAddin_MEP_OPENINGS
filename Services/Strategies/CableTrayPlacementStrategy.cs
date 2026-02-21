@@ -27,7 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         {
             _sizingService = sizingService ?? throw new ArgumentNullException(nameof(sizingService));
         }
-        public MepElementSize GetMepElementSize(Element mepElement)
+        public MepElementSize GetMepElementSize(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
             var cableTray = mepElement as CableTray;
             if (cableTray == null)
@@ -38,16 +38,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             
             var size = new MepElementSize { Shape = "Rectangular" }; // Cable trays are always rectangular
             
-            var widthParam = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM);
-            var heightParam = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM);
+            TryGetDoubleParameter(cableTray, parameters, "Width", out double w);
+            TryGetDoubleParameter(cableTray, parameters, "Height", out double h);
             
-            size.Width = widthParam?.AsDouble() ?? 0.0;
-            size.Height = heightParam?.AsDouble() ?? 0.0;
+            size.Width = w;
+            size.Height = h;
             
             // Cable trays typically don't have insulation
             size.IsInsulated = false;
             
             return size;
+        }
+
+        private bool TryGetDoubleParameter(Element element, System.Collections.Generic.Dictionary<string, string>? parameters, string name, out double value)
+        {
+            value = 0;
+            if (parameters != null && parameters.TryGetValue(name, out var strVal) && !string.IsNullOrEmpty(strVal))
+            {
+                if (double.TryParse(strVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value))
+                    return true;
+            }
+            
+            var p = element.LookupParameter(name);
+            if (p != null && p.HasValue)
+            {
+                value = p.AsDouble();
+                return true;
+            }
+            return false;
         }
         
         public double GetClearance(MepElementSize mepSize, OpeningConditions conditions)
@@ -61,8 +79,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             return 0.0;  // No clearance addition for cable trays
         }
         
-        public string GetSystemAbbreviation(Element mepElement)
+        public string GetSystemAbbreviation(Element mepElement, System.Collections.Generic.Dictionary<string, string>? parameters = null)
         {
+            if (parameters != null && parameters.TryGetValue("System Abbreviation", out var abbr) && !string.IsNullOrEmpty(abbr))
+            {
+                return abbr;
+            }
+            
+            if (parameters != null && parameters.TryGetValue("Service Type", out var service) && !string.IsNullOrEmpty(service))
+            {
+                return service;
+            }
             // Cable trays don't have MEPSystem like ducts/pipes
             // Default to electrical
             return "ELEC";
@@ -201,18 +228,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             try
             {
                 // 🔥 DEBUG: Log that we're entering the cable tray strategy method
-                if (!DeploymentConfiguration.DeploymentMode)
+                var cabletrayLogName = "cabletray_clearance_debug.log";
+                SafeFileLogger.SafeAppendText(cabletrayLogName, $"GetCableTrayPlacementAdjustment START for ClashZone {clashZone.Id}");
+                SafeFileLogger.SafeAppendText(cabletrayLogName, $"clearanceSettings.Count = {uiClearanceSettings?.Count ?? 0}");
+                
+                if (uiClearanceSettings != null)
                 {
-                    string cabletrayClearanceDebugLogPath = SafeFileLogger.GetLogFilePath("cabletray_clearance_debug.log");
-                    System.IO.File.AppendAllText(cabletrayClearanceDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] GetCableTrayPlacementAdjustment START for ClashZone {clashZone.Id}\n");
-                    System.IO.File.AppendAllText(cabletrayClearanceDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] clearanceSettings.Count = {uiClearanceSettings?.Count ?? 0}\n");
-                    
-                    if (uiClearanceSettings != null)
+                    foreach (var kvp in uiClearanceSettings)
                     {
-                        foreach (var kvp in uiClearanceSettings)
-                        {
-                            System.IO.File.AppendAllText(cabletrayClearanceDebugLogPath, $"[{DateTime.Now:HH:mm:ss}]   Key='{kvp.Key}', Value={kvp.Value}mm\n");
-                        }
+                        SafeFileLogger.SafeAppendText(cabletrayLogName, $"   Key='{kvp.Key}', Value={kvp.Value}mm");
                     }
                 }
                 

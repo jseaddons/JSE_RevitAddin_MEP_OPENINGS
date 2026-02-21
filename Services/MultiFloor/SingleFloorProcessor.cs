@@ -5,7 +5,11 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
 {
@@ -63,17 +67,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
                     }
                     
                     // Step 2: Place individual sleeves
-                    // TODO: Integrate with BulkPlacementService or NewSleevePlacerService
                     int placedCount = 0;
                     var placedElements = new List<int>();
                     
+                    if (clashes.Count > 0)
+                    {
+                        using (var placementTracker = _monitor?.TrackOperation($"Place Sleeves - {level.Name}"))
+                        {
+                            // A. Load Planning Conditions
+                            var conditionsService = new ConditionsService(_doc);
+                            var categories = GetSelectedCategories(filter);
+                            
+                            var plannedItems = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
+                            
+                            foreach (var category in categories)
+                            {
+                                var categoryZones = clashes.Where(cz => cz.MepElementCategory == category).ToList();
+                                if (categoryZones.Count == 0) continue;
+                                
+                                var categoryConditions = conditionsService.LoadConditions(category);
+                                var planner = new Services.Placement.ParallelSleevePlacementPlanner(categoryConditions);
+                                var planningResult = planner.Plan(categoryZones);
+                                
+                                var plannedMap = planningResult.Items.ToDictionary(i => i.ClashZoneId);
+                                foreach (var zone in categoryZones)
+                                {
+                                    if (plannedMap.TryGetValue(zone.Id, out var plan))
+                                    {
+                                        if (plan.ShouldSkip) continue;
+                                        
+                                        // Ensure IsCurrentClash is true for placement to pass Context Flag check
+                                        zone.IsCurrentClash = true;
+                                        plannedItems.Add((zone, plan));
+                                    }
+                                }
+                            }
+                            
+                            if (plannedItems.Count > 0)
+                            {
+                                // B. Execute Placement
+                                // Instantiate BulkPlacementService (Autonomous placement without DB factory for floor-isolated run)
+                                var placementService = new BulkPlacementService(
+                                    _doc,
+                                    contextFactory: () => new SleeveDbContext(_doc),
+                                    logger: msg => SafeFileLogger.SafeAppendText("multifloor.log", $"[{DateTime.Now}] [PLACEMENT] {msg}\n"),
+                                    performanceMonitor: _monitor);
+                                
+                                // ✅ PRIMARY CONSTRAINT: Respect spatial filtering (Section Box) as requested.
+                                // If a section box is active, only items within it will be placed across all floors.
+                                var placementResult = placementService.ExecuteBulkPlacement(_doc, plannedItems, skipSpatialFiltering: false);
+                                
+                                placedCount = placementResult.PlacedCount;
+                                placedElements = placementResult.PlacedItems.Select(p => p.ElementId.GetIntegerValue()).ToList();
+                                
+                                SafeFileLogger.SafeAppendText("multifloor.log",
+                                    $"[{DateTime.Now}] ✅ Level {level.Name}: Placed {placedCount} sleeves from {plannedItems.Count} planned items.\n");
+                            }
+                            
+                            placementTracker?.SetItemCount(placedCount);
+                        }
+                    }
+                    
                     // Step 3: Cluster analysis (optional)
                     int clusterCount = 0;
-                    if (OptimizationFlags.EnableClusteringWorkflow)
+                    if (OptimizationFlags.EnableClusteringWorkflow && placedCount > 0)
                     {
                         using (var clusterTracker = _monitor?.TrackOperation($"Cluster Analysis - {level.Name}"))
                         {
-                            // Clustering logic here
+                            // TODO: Add clustering logic if needed for multi-floor
                             clusterTracker?.SetItemCount(clusterCount);
                         }
                     }

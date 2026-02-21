@@ -11,7 +11,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
     /// </summary>
     public class CombinedClusterCandidate
     {
-        public CombinedClusterCandidate(int combinedClusterInstanceId, IEnumerable<ClusterSleeveInfo> members)
+        public CombinedClusterCandidate(long combinedClusterInstanceId, IEnumerable<ClusterSleeveInfo> members)
         {
             CombinedClusterInstanceId = combinedClusterInstanceId;
             MemberClusters = new List<ClusterSleeveInfo>();
@@ -24,7 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
             }
         }
 
-        public int CombinedClusterInstanceId { get; }
+        public long CombinedClusterInstanceId { get; }
         public List<ClusterSleeveInfo> MemberClusters { get; }
         public List<string> CategoriesInvolved { get; }
         public List<ClashZone> IncorporatedIndividualSleeves { get; set; }

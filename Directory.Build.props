@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!-- 
+    ===========================================
+    MULTI-TARGETING BUILD FIX
+    ===========================================
+    
+    This file is loaded BEFORE the .csproj file and BEFORE NuGet restore.
+    It ensures each configuration uses its own obj folder, preventing
+    project.assets.json conflicts between net48 and net8.0-windows.
+    
+    Without this, switching between R23/R24 (net48) and R25/R26 (net8.0)
+    causes NETSDK1005 errors because the project.assets.json gets overwritten.
+  -->
+  
+  <PropertyGroup>
+    <!-- 
+      Default intermediate output path - uses configuration subfolder.
+      This ensures obj\Debug R23\, obj\Debug R24\, obj\Debug R25\, etc.
+    -->
+    <BaseIntermediateOutputPath>obj\$(Configuration)\</BaseIntermediateOutputPath>
+    
+    <!-- 
+      Also set MSBuildProjectExtensionsPath to match.
+      This is where NuGet writes the project.assets.json file.
+    -->
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+  
+  <!-- 
+    For non-configuration-specific operations (like design-time builds),
+    use a neutral folder to avoid conflicts.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == ''">
+    <BaseIntermediateOutputPath>obj\neutral\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>

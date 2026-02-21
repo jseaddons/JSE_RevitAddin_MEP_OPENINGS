@@ -72,7 +72,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// Delegates to refactored service.
         /// </summary>
         public void UpdateFlagsAfterPlacement(
-            List<(Guid clashZoneId, int sleeveInstanceId, bool isCluster)> placedSleeves)
+            List<(Guid clashZoneId, long sleeveInstanceId, bool isCluster)> placedSleeves)
         {
             if (_refactoredService != null)
             {
@@ -85,7 +85,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// Delegates to refactored service.
         /// </summary>
         public void BatchUpdateFlagsForPlacement(
-            List<(ClashZone clashZone, int sleeveId)> clashZones, 
+            List<(ClashZone clashZone, long sleeveId)> clashZones, 
             bool isCluster, 
             string category, 
             string filterName = null,

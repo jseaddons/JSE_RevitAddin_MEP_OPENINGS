@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
 {
@@ -10,6 +11,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
         public List<string> FailedFloors { get; set; } = new List<string>();
         public int TotalSleevesPlaced { get; set; }
         public int TotalClustersFormed { get; set; }
+        public int TotalClusteredZones { get; set; }
         public TimeSpan TotalDuration { get; set; }
         
         public MultiFloorResult() { }

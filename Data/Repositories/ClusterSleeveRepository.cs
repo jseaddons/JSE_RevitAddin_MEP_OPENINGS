@@ -104,8 +104,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var cluster = new ClusterSleeveData
                         {
-                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
-                            ComboId = GetInt(reader, "ComboId", -1),
+                            ClusterInstanceId = GetLong(reader, "ClusterInstanceId", -1),
+                            ComboId = GetLong(reader, "ComboId", -1),
                             FilterId = GetInt(reader, "FilterId", -1),
                             Category = GetString(reader, "Category"),
                             BoundingBoxMinX = GetDouble(reader, "BoundingBoxMinX", 0.0),
@@ -167,7 +167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Retrieves cluster sleeves associated with the given instance IDs.
         /// </summary>
-        public List<ClusterSleeveData> GetClusterSleevesByInstanceIds(IEnumerable<int> instanceIds)
+        public List<ClusterSleeveData> GetClusterSleevesByInstanceIds(IEnumerable<long> instanceIds)
         {
             var clusters = new List<ClusterSleeveData>();
             var ids = instanceIds?.ToList();
@@ -199,8 +199,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var cluster = new ClusterSleeveData
                         {
-                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
-                            ComboId = GetInt(reader, "ComboId", -1),
+                            ClusterInstanceId = GetLong(reader, "ClusterInstanceId", -1),
+                            ComboId = GetLong(reader, "ComboId", -1),
                             FilterId = GetInt(reader, "FilterId", -1),
                             Category = GetString(reader, "Category"),
                             BoundingBoxMinX = GetDouble(reader, "BoundingBoxMinX", 0.0),
@@ -260,7 +260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ MIXED-TYPE FIX: Fallback to ClusterSleeves_v2 for any instance IDs not found in ClusterSleeves.
             // When clusters are saved only to v2 (e.g. bulk path), combined discovery needs their corners for
             // individual+cluster proximity groups; otherwise cluster corners are missing and combined dimensions fail.
-            var foundIds = new HashSet<int>(clusters.Select(c => c.ClusterInstanceId));
+            var foundIds = new HashSet<long>(clusters.Select(c => c.ClusterInstanceId));
             var missingIds = ids.Where(id => !foundIds.Contains(id)).ToList();
             if (missingIds.Count > 0)
             {
@@ -282,7 +282,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Load cluster sleeve data by ClusterInstanceId from ClusterSleeves_v2 (for corner merge when not in legacy table).
         /// </summary>
-        private List<ClusterSleeveData> GetClusterSleevesByInstanceIdsFromV2(List<int> instanceIds)
+        private List<ClusterSleeveData> GetClusterSleevesByInstanceIdsFromV2(List<long> instanceIds)
         {
             var clusters = new List<ClusterSleeveData>();
             if (instanceIds == null || instanceIds.Count == 0) return clusters;
@@ -313,8 +313,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                         var cluster = new ClusterSleeveData
                         {
-                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
-                            ComboId = GetInt(reader, "ComboId", -1),
+                            ClusterInstanceId = GetLong(reader, "ClusterInstanceId", -1),
+                            ComboId = GetLong(reader, "ComboId", -1),
                             FilterId = GetInt(reader, "FilterId", -1),
                             Category = GetString(reader, "Category"),
                             BoundingBoxMinX = Math.Min(Math.Min(c1x, c2x), Math.Min(c3x, c4x)),
@@ -350,7 +350,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Retrieves a single cluster sleeve by its instance ID.
         /// </summary>
-        public ClusterSleeveData GetClusterSleeveById(int clusterInstanceId)
+        public ClusterSleeveData GetClusterSleeveById(long clusterInstanceId)
         {
             var result = GetClusterSleevesByInstanceIds(new[] { clusterInstanceId });
             return result.FirstOrDefault();
@@ -365,8 +365,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         /// <param name="rotationAngleRadOverride">When set, use this angle for DB (same as used for placement). Stops overwriting with instance rotation which can be 0 before commit.</param>
         public void SaveClusterSleeve(
-            int clusterInstanceId,
-            int comboId,
+            long clusterInstanceId,
+            long comboId,
             int filterId,
             string category,
             string sleeveFamilyName,
@@ -441,8 +441,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Called after cluster calculation completes in PATH 2/3
         /// </summary>
         public void SaveClusterSleeve(
-            int clusterInstanceId,
-            int comboId,
+            long clusterInstanceId,
+            long comboId,
             int filterId,
             string category,
             double boundingBoxMinX, double boundingBoxMinY, double boundingBoxMinZ,
@@ -1031,32 +1031,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             try
             {
-                // ✅ SCOPED DELETE: Delete ALL old clusters for the affected scopes (Combo/Filter/Category)
-                // This is critical to remove "Ghost Clusters" if the cluster composition changes (and thus GUID changes).
-                // We simply wipe the slate clean for the scopes we are about to update.
-                var scopes = clusters
-                    .Select(c => new { c.ComboId, c.FilterId, Category = c.Category ?? string.Empty })
-                    .Distinct()
-                    .ToList();
-
-                using (var deleteCmd = conn.CreateCommand())
-                {
-                    deleteCmd.Transaction = transaction;
-                    foreach (var scope in scopes)
-                    {
-                        deleteCmd.CommandText = @"
-                            DELETE FROM ClusterSleeves_v2
-                            WHERE ComboId = @ComboId
-                              AND FilterId = @FilterId
-                              AND Category = @Category";
-                        deleteCmd.Parameters.Clear();
-                        deleteCmd.Parameters.AddWithValue("@ComboId", scope.ComboId);
-                        deleteCmd.Parameters.AddWithValue("@FilterId", scope.FilterId);
-                        deleteCmd.Parameters.AddWithValue("@Category", scope.Category);
-                        deleteCmd.ExecuteNonQuery();
-                    }
-                }
-
                 int savedCount = 0;
 
                 // ✅ FIX: Generate batchId PER CATEGORY (not one for all clusters)
@@ -1589,8 +1563,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         private void AddClusterSleeveParameters(
             SQLiteCommand cmd,
-            int clusterInstanceId,
-            int comboId,
+            long clusterInstanceId,
+            long comboId,
             int filterId,
             string category,
             double boundingBoxMinX, double boundingBoxMinY, double boundingBoxMinZ,
@@ -1835,7 +1809,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Retrieves ClashZoneGuids associated with a cluster from the ClashZones table.
         /// </summary>
-        public List<Guid> GetClashZoneGuidsForCluster(int clusterInstanceId)
+        public List<Guid> GetClashZoneGuidsForCluster(long clusterInstanceId)
         {
             var guids = new List<Guid>();
             try
@@ -1865,7 +1839,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Load cluster sleeve data for a specific ComboId and Category
         /// Used by PATH 1 (Replay) to check if cluster data exists
         /// </summary>
-        public List<ClusterSleeveData> LoadClusterSleevesForCombo(int comboId, string category = null)
+        public List<ClusterSleeveData> LoadClusterSleevesForCombo(long comboId, string category = null)
         {
             var clusters = new List<ClusterSleeveData>();
 
@@ -1917,8 +1891,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var cluster = new ClusterSleeveData
                         {
-                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
-                            ComboId = GetInt(reader, "ComboId", -1),
+                            ClusterInstanceId = GetLong(reader, "ClusterInstanceId", -1),
+                            ComboId = GetLong(reader, "ComboId", -1),
                             FilterId = GetInt(reader, "FilterId", -1),
                             Category = GetString(reader, "Category"),
                             BoundingBoxMinX = GetDouble(reader, "BoundingBoxMinX", 0.0),
@@ -2017,8 +1991,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var cluster = new ClusterSleeveData
                         {
-                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
-                            ComboId = GetInt(reader, "ComboId", -1),
+                            ClusterInstanceId = GetLong(reader, "ClusterInstanceId", -1),
+                            ComboId = GetLong(reader, "ComboId", -1),
                             FilterId = GetInt(reader, "FilterId", -1),
                             Category = GetString(reader, "Category"),
                             BoundingBoxMinX = GetDouble(reader, "BoundingBoxMinX", 0.0),
@@ -2073,7 +2047,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Check if cluster data exists for a ComboId (used by PATH 1 to decide if recalculation is needed)
         /// </summary>
-        public bool HasClusterDataForCombo(int comboId, string category = null)
+        public bool HasClusterDataForCombo(long comboId, string category = null)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -2101,7 +2075,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Delete cluster sleeve data (called when cluster sleeve is deleted from Revit)
         /// </summary>
-        public void DeleteClusterSleeve(int clusterInstanceId)
+        public void DeleteClusterSleeve(long clusterInstanceId)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -2115,35 +2089,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
-        // Helper methods
-        private int GetInt(SQLiteDataReader reader, string columnName, int defaultValue = 0)
-        {
-            var ordinal = reader.GetOrdinal(columnName);
-            return reader.IsDBNull(ordinal) ? defaultValue : reader.GetInt32(ordinal);
-        }
 
-        private double GetDouble(SQLiteDataReader reader, string columnName, double defaultValue = 0.0)
-        {
-            var ordinal = reader.GetOrdinal(columnName);
-            return reader.IsDBNull(ordinal) ? defaultValue : reader.GetDouble(ordinal);
-        }
-
-        private string GetString(SQLiteDataReader reader, string columnName)
-        {
-            var ordinal = reader.GetOrdinal(columnName);
-            return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
-        }
-
-        private bool GetBool(SQLiteDataReader reader, string columnName)
-        {
-            var ordinal = reader.GetOrdinal(columnName);
-            return !reader.IsDBNull(ordinal) && reader.GetInt32(ordinal) != 0;
-        }
         /// <summary>
         /// ✅ BATCH UPDATE: Update corner coordinates for multiple cluster sleeves
         /// Updates BOTH ClusterSleeves (legacy) and ClusterSleeves_v2 (new)
         /// </summary>
-        public void BatchUpdateClusterSleeveCorners(List<(int InstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates)
+        public void BatchUpdateClusterSleeveCorners(List<(long InstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates)
         {
             if (updates == null || updates.Count == 0) return;
 
@@ -2253,6 +2204,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
             }
         }
+
+        private static long GetLong(SQLiteDataReader reader, string column, long defaultValue = 0)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? defaultValue : Convert.ToInt64(reader.GetValue(ordinal));
+        }
+
+        private static string GetString(SQLiteDataReader reader, string column)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
+        }
+
+        private static double GetDouble(SQLiteDataReader reader, string column, double defaultValue = 0)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? defaultValue : reader.GetDouble(ordinal);
+        }
+
+        private static int GetInt(SQLiteDataReader reader, string column, int defaultValue = 0)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? defaultValue : reader.GetInt32(ordinal);
+        }
+
+        private static bool GetBool(SQLiteDataReader reader, string column)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return !reader.IsDBNull(ordinal) && Convert.ToBoolean(reader.GetValue(ordinal));
+        }
     }
 
     /// <summary>
@@ -2260,8 +2241,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
     /// </summary>
     public class ClusterSleeveData
     {
-        public int ClusterInstanceId { get; set; }
-        public int ComboId { get; set; }
+        public long ClusterInstanceId { get; set; }
+        public long ComboId { get; set; }
         public int FilterId { get; set; }
         public string Category { get; set; } = string.Empty;
         public double BoundingBoxMinX { get; set; }

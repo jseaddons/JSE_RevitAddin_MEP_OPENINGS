@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
@@ -11,45 +11,45 @@ using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
     /// <summary>
-    /// ✅ SRP COMPLIANCE: Service responsible for setting all parameters on sleeve elements.
+    /// âœ… SRP COMPLIANCE: Service responsible for setting all parameters on sleeve elements.
     /// Single Responsibility: Parameter setting and deferred parameter management only.
     /// 
     /// Preserves all 28 features from COMPREHENSIVE_ARCHITECTURE_PLAN.md:
-    /// - ✅ POINT 10: Parameter Batching (4-6× faster placement)
-    /// - ✅ Performance Monitoring (tracks operation timings)
-    /// - ✅ Safe Element Validation (avoids document mismatch bugs)
-    /// - ✅ Global Settings (rounding based on configuration)
-    /// - ✅ Diagnostic Logging (multi-level logging support)
-    /// - ✅ Deployment Mode (reduces logging in production)
-    /// - ✅ Transaction Safety (safe parameter writes)
-    /// - ✅ Crash-Safe Execution (exception handling)
-    /// - ✅ Flag-Based Control (respects optimization flags)
-    /// - ✅ And all other features from comprehensive architecture
+    /// - âœ… POINT 10: Parameter Batching (4-6Ã— faster placement)
+    /// - âœ… Performance Monitoring (tracks operation timings)
+    /// - âœ… Safe Element Validation (avoids document mismatch bugs)
+    /// - âœ… Global Settings (rounding based on configuration)
+    /// - âœ… Diagnostic Logging (multi-level logging support)
+    /// - âœ… Deployment Mode (reduces logging in production)
+    /// - âœ… Transaction Safety (safe parameter writes)
+    /// - âœ… Crash-Safe Execution (exception handling)
+    /// - âœ… Flag-Based Control (respects optimization flags)
+    /// - âœ… And all other features from comprehensive architecture
     /// 
-    /// ✅ PERFORMANCE OPTIMIZATION: Caching for expensive operations
+    /// âœ… PERFORMANCE OPTIMIZATION: Caching for expensive operations
     /// - Level lookup caching (Schedule Level parameters)
     /// - Elevation calculation caching
     /// - Parameter name resolution caching
     /// - Host thickness caching
     /// </summary>
-    public class SleeveParameterService
+    public class SleeveParameterService : JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IParameterBatchingService
     {
         private readonly Document _doc;
         private readonly bool _isReplayPath;
         
-        // ✅ PERFORMANCE MONITORING: Performance monitor for tracking operations
+        // âœ… PERFORMANCE MONITORING: Performance monitor for tracking operations
         private readonly PlacementPerformanceMonitor? _performanceMonitor;
         
-        // ✅ PARAMETER BATCHING: Deferred parameter writes (4-6× faster placement)
+        // âœ… PARAMETER BATCHING: Deferred parameter writes (4-6Ã— faster placement)
         // Accumulates parameter values during placement loop, writes all after single regeneration
         // Key: ElementId of sleeve instance
-        // Value: Dictionary of parameter name → value (double or string)
+        // Value: Dictionary of parameter name â†’ value (double or string)
         private Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = 
             new Dictionary<ElementId, Dictionary<string, object>>();
         
 
         /// <summary>
-        /// ✅ NEW: Support for external batch dictionaries (e.g. from RefactoredClusterService).
+        /// âœ… NEW: Support for external batch dictionaries (e.g. from RefactoredClusterService).
         /// When set, all batched parameter writes will go to this dictionary instead of the internal one.
         /// This ensures context synchronization across different services.
         /// </summary>
@@ -60,7 +60,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         private Dictionary<ElementId, Dictionary<string, object>> ActiveBatchDictionary => DivertedBatchDictionary ?? _deferredParameters;
         
-        // ✅ PERFORMANCE OPTIMIZATION: Caching for expensive operations
+        // âœ… PERFORMANCE OPTIMIZATION: Caching for expensive operations
         // Level lookup cache - prevents repeated level searches for same level names
         private readonly Dictionary<string, Level> _levelCache = new Dictionary<string, Level>();
         
@@ -73,7 +73,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         // Host thickness cache - stores calculated thickness values
         private readonly Dictionary<int, double> _thicknessCache = new Dictionary<int, double>();
 
-        // ✅ BATCH LOGGING: Only log every N calls to avoid I/O overhead (20-30% faster)
+        // ✅ PERF FIX: Cache resolved "Schedule Level" parameter name per family type
+        // Avoids 6 LookupParameter calls per sleeve — all instances of same family share parameter names
+        private readonly Dictionary<string, string> _scheduleLevelParamNameCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, StorageType> _scheduleLevelStorageTypeCache = new Dictionary<string, StorageType>(StringComparer.OrdinalIgnoreCase);
+        private string _cachedBottomOfOpeningParamName = null;
+        private bool _bottomOfOpeningParamProbed = false;
+        private string _cachedSleeveInstanceIdParamName = null;
+        private bool _sleeveInstanceIdParamProbed = false;
+        private string _cachedSleeveInstanceIdSpacedParamName = null;
+        private bool _sleeveInstanceIdSpacedParamProbed = false;
+
+        // âœ… BATCH LOGGING: Only log every N calls to avoid I/O overhead (20-30% faster)
         private const int BatchLogInterval = 20;
         private int _setParametersCallCount;
 
@@ -88,7 +99,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ DUPLICATE FIX: Set SleeveInstanceId on Revit element.
+        /// âœ… DUPLICATE FIX: Set SleeveInstanceId on Revit element.
         /// Use this to mark the element as "placed" so future runs can identify it.
         /// Sets both "SleeveInstanceId" and "Sleeve Instance ID" so cluster sleeves (-1) are correct
         /// regardless of which name the family uses (SetSleeveParameters uses ElementId overload and sets "Sleeve Instance ID").
@@ -97,13 +108,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         {
             try
             {
-                // Set both possible parameter names so cluster sleeves get -1 on the parameter downstream code reads
-                var param = instance.LookupParameter("SleeveInstanceId");
-                if (param != null && !param.IsReadOnly)
-                    param.Set(elementId);
-                var paramSpaced = instance.LookupParameter("Sleeve Instance ID");
-                if (paramSpaced != null && !paramSpaced.IsReadOnly)
-                    paramSpaced.Set(elementId);
+                // âœ… PERF FIX: Cache "SleeveInstanceId" name
+                if (_cachedSleeveInstanceIdParamName == null && !_sleeveInstanceIdParamProbed)
+                {
+                    _sleeveInstanceIdParamProbed = true;
+                    var p = instance.LookupParameter("SleeveInstanceId");
+                    if (p != null) _cachedSleeveInstanceIdParamName = "SleeveInstanceId";
+                }
+                if (_cachedSleeveInstanceIdParamName != null)
+                {
+                    var param = instance.LookupParameter(_cachedSleeveInstanceIdParamName);
+                    if (param != null && !param.IsReadOnly) param.Set(elementId);
+                }
+
+                // âœ… PERF FIX: Cache "Sleeve Instance ID" name
+                if (_cachedSleeveInstanceIdSpacedParamName == null && !_sleeveInstanceIdSpacedParamProbed)
+                {
+                    _sleeveInstanceIdSpacedParamProbed = true;
+                    var p = instance.LookupParameter("Sleeve Instance ID");
+                    if (p != null) _cachedSleeveInstanceIdSpacedParamName = "Sleeve Instance ID";
+                }
+                if (_cachedSleeveInstanceIdSpacedParamName != null)
+                {
+                    var paramSpaced = instance.LookupParameter(_cachedSleeveInstanceIdSpacedParamName);
+                    if (paramSpaced != null && !paramSpaced.IsReadOnly) paramSpaced.Set(elementId);
+                }
                 // If this is a cluster sleeve (-1), ensure batch dictionary has -1 so a later flush does not overwrite
                 if (elementId == -1 && instance != null)
                 {
@@ -112,8 +141,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (targetDict.ContainsKey(eid))
                         targetDict[eid]["Sleeve Instance ID"] = -1;
                 }
-                if ((param == null || param.IsReadOnly) && (paramSpaced == null || paramSpaced.IsReadOnly) && !DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"SleeveInstanceId / Sleeve Instance ID not found or read-only on instance {instance.Id}");
             }
             catch (Exception ex)
             {
@@ -122,7 +149,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ CLUSTER FIX: Force immediate parameter write (bypasses batching).
+        /// âœ… CLUSTER FIX: Force immediate parameter write (bypasses batching).
         /// Use for cluster sleeves where batching causes parameters to never be written.
         /// This ensures parameters are set before transaction commits.
         /// </summary>
@@ -135,11 +162,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             ClashZone zone,
             double? depthOverride = null)
         {
-            // ✅ DIAGNOSTIC: Log entry
+            // âœ… DIAGNOSTIC: Log entry
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("cluster_params.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🚀 IMMEDIATE WRITE CALLED: Instance={instance.Id.GetIntegerValue()}, " +
+                    $"[{DateTime.Now:HH:mm:ss}] ðŸš€ IMMEDIATE WRITE CALLED: Instance={instance.Id.GetIntegerValue()}, " +
                     $"W={width*304.8:F1}mm, H={height*304.8:F1}mm\n");
             }
             
@@ -159,17 +186,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // Restore original batching state
                 OptimizationFlags.UseBatchedParameterWrites = originalBatchingState;
                 
-                // ✅ DIAGNOSTIC: Log exit
+                // âœ… DIAGNOSTIC: Log exit
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("cluster_params.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ IMMEDIATE WRITE COMPLETE: Instance={instance.Id.GetIntegerValue()}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] âœ… IMMEDIATE WRITE COMPLETE: Instance={instance.Id.GetIntegerValue()}\n");
                 }
             }
         }
 
         /// <summary>
-        /// ✅ UNIFIED ARCHITECTURE: Apply parameters using planned values.
+        /// âœ… UNIFIED ARCHITECTURE: Apply parameters using planned values.
         /// Used by BulkPlacementService to set dimensions and depth from DTO values.
         /// </summary>
         public void ApplyBatchSleeveParameters(
@@ -206,102 +233,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ MAIN METHOD: Set all parameters on a sleeve instance.
+        /// âœ… MAIN METHOD: Set all parameters on a sleeve instance.
         /// Handles dimensions, metadata, clearances, and depth parameters.
         /// CRITICAL PERFORMANCE OPTIMIZATION: Batch parameter setting for 8x faster performance.
         /// </summary>
         public void SetSleeveParameters(
-            FamilyInstance instance, 
-            double width, 
-            double height, 
-            double diameter, 
-            bool isCircular, 
+            FamilyInstance instance,
+            double width,
+            double height,
+            double diameter,
+            bool isCircular,
             ClashZone zone,
                 double? depthOverride = null,
-            bool isCluster = false)
+            bool isCluster = false,
+            bool skipValidation = false)
         {
-            // ✅ PERFORMANCE MONITORING: Track parameter setting
-            using (var tracker = _performanceMonitor?.TrackOperation("Set Sleeve Parameters"))
-            {
-                if (instance == null) return;
+            if (instance == null) return;
 
-                // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid (avoids document mismatch bug)
-                if (OptimizationFlags.UseSafeElementValidation)
+            // âœ… PERFORMANCE MONITORING: Track parameter setting (minimal overhead when disabled)
+            using (var tracker = (OptimizationFlags.UseDiagnosticMode ? _performanceMonitor?.TrackOperation("Set Sleeve Parameters") : null))
+            {
+                // âœ… SAFE ELEMENT VALIDATION: Skip for freshly-placed elements to save time
+                using (_performanceMonitor?.TrackOperation("Sub: Validation"))
                 {
-                    if (!ValidateElement(instance))
-                        return;
+                    // PERF FIX: Skip GetElement(~4.5ms) when we know the element is fresh and valid
+                    if (OptimizationFlags.SkipRedundantValidation && !skipValidation)
+                    {
+                        if (!ValidateElement(instance)) return;
+                    }
                 }
 
                 var currentSleeveId = instance.Id;
 
-                // ✅ Always apply rounding here so dampers and every path get RoundAlwaysUp/RoundingValue (e.g. 710 → 750).
-                // Rounding idempotent when values already rounded upstream.
-                var (roundedWidth, roundedHeight, roundedDiameter) = zone != null
-                    ? ApplyRounding(width, height, diameter, zone)
-                    : (width, height, diameter);
+                // âœ… USER REQUEST: Remove redundant rounding.
+                // The Parallel Planner is the Source of Truth: it already calculated and rounded 
+                // the dimensions based on category-specific clearances from the DB.
+                double roundedWidth = width;
+                double roundedHeight = height;
+                double roundedDiameter = diameter;
 
-                // ✅ BATCH LOGGING: Log every 20th call only (avoids I/O killing performance)
+                // âœ… BATCH LOGGING: Deployment mode skip
                 _setParametersCallCount++;
-                bool logThisCall = (_setParametersCallCount == 1 || _setParametersCallCount % BatchLogInterval == 0);
-                if (!DeploymentConfiguration.DeploymentMode && !OptimizationFlags.DisableVerboseLogging && logThisCall)
+                if (!DeploymentConfiguration.DeploymentMode && _setParametersCallCount % 20 == 1)
                 {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [PARAMETERS] (batch {_setParametersCallCount}) Zone={zone?.Id}, Sleeve={instance?.Id}, IsCluster={isCluster}, " +
-                        $"Width={roundedWidth * 304.8:F1}mm, Height={roundedHeight * 304.8:F1}mm, Diameter={roundedDiameter * 304.8:F1}mm, " + 
-                        $"DepthOverride={(depthOverride.HasValue ? (depthOverride.Value * 304.8).ToString("F1") + "mm" : "None")}\n");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetSleeveParameters] Info: Processing sleeve {currentSleeveId} (Zone {zone?.Id}, Batching={OptimizationFlags.UseBatchedParameterWrites})\n");
                 }
-
-                // ✅ CRITICAL PERFORMANCE FIX: Batch parameter setting for 8x faster performance
-                // Note: The user explicitly requested to disable deferred writes due to persistence issues.
-                // We are now forcing IMMEDIATE writes, but keeping the structure for easy reversion if needed.
-                bool forceImmediateWrite = false; // ✅ FIX: Re-enabled batching for performance
                 
-                // ✅ BATCH LOGGING: Only log every 20th to reduce I/O
-                if (!DeploymentConfiguration.DeploymentMode && logThisCall)
-                {
-                     string familyName = instance.Symbol?.Family?.Name ?? "NULL";
-                     SafeFileLogger.SafeAppendText("batch_mode_entry.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 📝 PARAMETER CHECK (batch {_setParametersCallCount}): Sleeve {instance.Id}\n" +
-                        $"  FamilyName={familyName}, IsCircular={isCircular}\n" +
-                        $"  Width={roundedWidth*304.8:F1}mm, Height={roundedHeight*304.8:F1}mm, Diameter={roundedDiameter*304.8:F1}mm\n" +
-                        $"  ForceImmediate={forceImmediateWrite}, OptimizationFlag={OptimizationFlags.UseBatchedParameterWrites}\n");
-                }
+                // âœ… CRITICAL PERFORMANCE FIX: Strict batching
+                bool batchingEnabled = OptimizationFlags.UseBatchedParameterWrites;
 
-                // ✅ USER OVERRIDE: Explicitly bypass ALL deferred logic if forced
-                bool forceDirect = false; // ✅ FIX: Re-enabled batching (was test flag)
-
-                if (forceDirect || !OptimizationFlags.UseBatchedParameterWrites)
+                if (batchingEnabled)
                 {
-                    if (logThisCall)
-                        SafeFileLogger.SafeAppendText("batch_mode_entry.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ ENTERING DIRECT FORCE BLOCK (Id={instance.Id}) -> Forcing Immediate Write Path\n");
-                    forceImmediateWrite = true; 
-                    // We let the main logic block below handle the actual setting (via the else block of the batch check)
-                    // This avoids duplicating 100 lines of parameter setting logic and ensures consistency.
-                }
+                    if (!DeploymentConfiguration.DeploymentMode && _setParametersCallCount % 20 == 1)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_mode_entry.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSleeveParameters] BATCH MODE: Queueing parameters for sleeve {currentSleeveId}\n");
+                    }
 
-                if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediateWrite && !forceDirect)
-                {
-                    // ✅ BATCH OPTIMIZATION: Accumulate parameters for batch processing
+                    // âœ… BATCH OPTIMIZATION: Accumulate parameters for batch processing
                     var targetDict = ActiveBatchDictionary;
                     if (!targetDict.ContainsKey(currentSleeveId))
                         targetDict[currentSleeveId] = new Dictionary<string, object>();
                     
-                    // Set dimensions (Width/Height or Diameter)
-                    if (!DeploymentConfiguration.DeploymentMode && logThisCall)
-                    {
-                         SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-ADD] Element {currentSleeveId} added to batch. DictCount={targetDict.Count}\n");
-                    }
-
-                    // ✅ FIX: Check actual family type, not isCircular flag
-                    // Pipes > threshold use RectangularOpeningOnWall and need Width/Height
-                    string famName = instance.Symbol?.Family?.Name;
-                    bool isActuallyCircular = famName != null && (famName.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || famName.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0);
-                    
-                    if (!DeploymentConfiguration.DeploymentMode && logThisCall)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [FAMILY-TYPE-CHECK] Sleeve {currentSleeveId}: FamilyName={instance.Symbol?.Family?.Name}, IsActuallyCircular={isActuallyCircular}, IsCircularFlag={isCircular}\n");
-                    }
+                    // âœ… PERF FIX: Use zone.SleeveFamilyName instead of instance.Symbol?.Family?.Name (saves Revit COM calls)
+                    string famName = zone?.SleeveFamilyName ?? "";
+                    bool isActuallyCircular = famName.Length > 0 && (famName.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || famName.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0);
                     
                     if (isActuallyCircular)
                     {
@@ -316,113 +313,89 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         targetDict[currentSleeveId]["Sleeve Height"] = roundedHeight;
                     }
                     
-                    // ✅ SRP COMPLIANCE: Delegate depth parameter setting to dedicated method
+                    // âœ… SRP COMPLIANCE: Delegate depth parameter setting to dedicated method
                     if (zone != null)
                     {
-                        SetDepthParameter(instance, zone, currentSleeveId, depthOverride, forceImmediate: false, logDetail: logThisCall);
-                    }
-
-                    // ✅ FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID IMMEDIATELY (not deferred)
-                    // Flag management reads this parameter from Revit elements to identify individual sleeves
-                    // SetSleeveInstanceId handles forceImmediate internally (always sets immediate if critical)
-                    SetSleeveInstanceId(instance, currentSleeveId);
-
-                    // ✅ CLUSTERING SUPPORT: Set MEP_ElementId and MEP_Category for clustering / Parameter Service
-                    // NOTE: Clearances are DB-only for size/type calculation; no need to write them to Revit here.
-                    if (zone != null)
-                    {
-                        SetMepMetadata(instance, zone, currentSleeveId, forceImmediate: forceImmediateWrite);
-                    }
-
-                    // ✅ SCHEDULE LEVEL: Set Schedule Level from MEP element's Reference Level
-                    // FIX: Pass forceImmediateWrite to these helpers
-                    if (zone != null)
-                    {
-                        SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId, forceImmediate: forceImmediateWrite);
-                    }
-
-                    // ✅ GEOMETRIC SYNC: Set Host Orientation and Rotation Angle
-                    // FIX: Pass forceImmediateWrite to these helpers
-                    if (zone != null)
-                    {
-                        if (!string.IsNullOrEmpty(zone.HostOrientation))
+                        using (_performanceMonitor?.TrackOperation("Sub: Depth"))
                         {
-                            SetParameter(instance, "HostOrientation", zone.HostOrientation, currentSleeveId, fallbackName: "Host Orientation", forceImmediate: forceImmediateWrite);
-                        }
-                        
-                        // Set rotation angle only when needed (X wall or Floor with rotated MEP); skip for Y wall and no rotation
-                        if (ShouldSetRotation(zone))
-                        {
-                            SetParameter(instance, "MepElementRotationAngle", zone.MepElementRotationAngle, currentSleeveId, fallbackName: "Rotation", forceImmediate: forceImmediateWrite);
+                            SetDepthParameter(instance, zone, currentSleeveId, depthOverride, forceImmediate: false, logDetail: (_setParametersCallCount % 20 == 1));
                         }
                     }
 
-                    // ✅ BOTTOM OF OPENING (WALL/FRAMING ONLY):
-                    // Calculate and set "Bottom of Opening" for RectangularOpeningOnWall sleeves,
-                    // but only when host is Wall / Structural Framing. Floors do NOT use this parameter.
-                    bool isRectangularFamily = instance.Symbol?.Family?.Name?.Contains("Rectangular", StringComparison.OrdinalIgnoreCase) ?? false;
+                    // âœ… FLAG MANAGEMENT SUPPORT: Batch the Sleeve Instance ID
+                    using (_performanceMonitor?.TrackOperation("Sub: InstanceId"))
+                    {
+                        SetSleeveInstanceId(instance, currentSleeveId, forceImmediate: false);
+                    }
+
+                    // âœ… CLUSTERING SUPPORT: Batch MEP_ElementId and MEP_Category
+                    if (zone != null)
+                    {
+                        using (_performanceMonitor?.TrackOperation("Sub: Metadata"))
+                        {
+                            SetMepMetadata(instance, zone, currentSleeveId, forceImmediate: false);
+                        }
+                    }
+
+                    // âœ… SCHEDULE LEVEL: Batch Schedule Level
+                    if (zone != null)
+                    {
+                        using (_performanceMonitor?.TrackOperation("Sub: ScheduleLevel"))
+                        {
+                            SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId, forceImmediate: false);
+                        }
+                    }
+
+                    // âœ… PERF FIX: Queue HostOrientation and Rotation directly to batch dict
+                    if (zone != null)
+                    {
+                        using (_performanceMonitor?.TrackOperation("Sub: RotationParams"))
+                        {
+                            if (!string.IsNullOrEmpty(zone.HostOrientation))
+                            {
+                                targetDict[currentSleeveId]["HostOrientation"] = zone.HostOrientation;
+                            }
+
+                            if (ShouldSetRotation(zone))
+                            {
+                                targetDict[currentSleeveId]["MepElementRotationAngle"] = zone.MepElementRotationAngle;
+                            }
+                        }
+                    }
+
+                    // âœ… BOTTOM OF OPENING calculation
+                    bool isRectangularFamily = famName.IndexOf("Rectangular", StringComparison.OrdinalIgnoreCase) >= 0;
                     bool isWallOrFramingHost = zone != null &&
                         (zone.StructuralElementType == "Wall" ||
                          zone.StructuralElementType == "Walls" ||
                          string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase));
                     if (OptimizationFlags.UseBottomOfOpeningCalculation && isRectangularFamily && isWallOrFramingHost)
                     {
-                        SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone, forceImmediate: forceImmediateWrite);
+                        using (_performanceMonitor?.TrackOperation("Sub: BottomOfOpening"))
+                        {
+                            SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone, forceImmediate: false);
+                        }
                     }
                 }
-                else // This block will now always execute immediate writes due to forceImmediateWrite = true (if forced)
+                else 
                 {
-                    // ✅ FALLBACK: Original immediate parameter setting (for compatibility)
-                    // Set dimensions (Width/Height or Diameter)
-                    bool immediate = true; // For readability/consistency in this block
-                    
-                    // ✅ FIX: Check actual family type, not isCircular flag (same fix as batching block)
+                    // âœ… FALLBACK: Original immediate parameter setting (for compatibility/non-batched modes)
                     string famNameImm = instance.Symbol?.Family?.Name;
                     bool isActuallyCircular = famNameImm != null && (famNameImm.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || famNameImm.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0);
                     
                     if (isActuallyCircular)
                     {
-                        SetParameter(instance, "Diameter", roundedDiameter, currentSleeveId, 
-                            fallbackName: "Sleeve Diameter", forceImmediate: immediate);
-                        SetParameter(instance, "Sleeve Diameter", roundedDiameter, currentSleeveId, forceImmediate: immediate);
-                        
-                        // ✅ CRITICAL VERIFICATION: Read back the parameter to see what Revit actually stored
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            var diamParam = instance.LookupParameter("Diameter") ?? instance.LookupParameter("Sleeve Diameter");
-                            if (diamParam != null)
-                            {
-                                double actualDiameter = diamParam.AsDouble();
-                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [VERIFY-AFTER-SET] Sleeve {currentSleeveId}: SET Diameter={roundedDiameter*304.8:F1}mm, ACTUAL in Revit={actualDiameter*304.8:F1}mm\n");
-                            }
-                        }
+                        SetParameter(instance, "Diameter", roundedDiameter, currentSleeveId, fallbackName: "Sleeve Diameter", forceImmediate: true);
+                        SetParameter(instance, "Sleeve Diameter", roundedDiameter, currentSleeveId, forceImmediate: true);
                     }
                     else
                     {
-                        SetParameter(instance, "Width", roundedWidth, currentSleeveId, 
-                            fallbackName: "Sleeve Width", forceImmediate: immediate);
-                        SetParameter(instance, "Sleeve Width", roundedWidth, currentSleeveId, forceImmediate: immediate);
-                        SetParameter(instance, "Height", roundedHeight, currentSleeveId, 
-                            fallbackName: "Sleeve Height", forceImmediate: immediate);
-                        SetParameter(instance, "Sleeve Height", roundedHeight, currentSleeveId, forceImmediate: immediate);
-                        
-                        // ✅ CRITICAL VERIFICATION: Read back the parameters to see what Revit actually stored
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            var widthParam = instance.LookupParameter("Width") ?? instance.LookupParameter("Sleeve Width");
-                            var heightParam = instance.LookupParameter("Height") ?? instance.LookupParameter("Sleeve Height");
-                            if (widthParam != null && heightParam != null)
-                            {
-                                double actualWidth = widthParam.AsDouble();
-                                double actualHeight = heightParam.AsDouble();
-                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [VERIFY-AFTER-SET] Sleeve {currentSleeveId}: SET Width={roundedWidth*304.8:F1}mm Height={roundedHeight*304.8:F1}mm, ACTUAL in Revit Width={actualWidth*304.8:F1}mm Height={actualHeight*304.8:F1}mm\n");
-                            }
-                        }
+                        SetParameter(instance, "Width", roundedWidth, currentSleeveId, fallbackName: "Sleeve Width", forceImmediate: true);
+                        SetParameter(instance, "Sleeve Width", roundedWidth, currentSleeveId, forceImmediate: true);
+                        SetParameter(instance, "Height", roundedHeight, currentSleeveId, fallbackName: "Sleeve Height", forceImmediate: true);
+                        SetParameter(instance, "Sleeve Height", roundedHeight, currentSleeveId, forceImmediate: true);
                     }
 
-                    // ✅ GEOMETRIC SYNC: Set Host Orientation and Rotation Angle
                     if (zone != null)
                     {
                         if (!string.IsNullOrEmpty(zone.HostOrientation))
@@ -430,57 +403,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             SetParameter(instance, "HostOrientation", zone.HostOrientation, currentSleeveId, fallbackName: "Host Orientation", forceImmediate: true);
                         }
                         
-                        // Set rotation angle only when needed (X wall or Floor with rotated MEP); skip for Y wall and no rotation
                         if (ShouldSetRotation(zone))
                         {
                             SetParameter(instance, "MepElementRotationAngle", zone.MepElementRotationAngle, currentSleeveId, fallbackName: "Rotation", forceImmediate: true);
                         }
-                    }
 
-                    // ✅ SRP COMPLIANCE: Delegate depth parameter setting to dedicated method
-                    if (zone != null)
-                    {
-                        SetDepthParameter(instance, zone, currentSleeveId, depthOverride, forceImmediate: false, logDetail: logThisCall); // ✅ Use batching
-                    }
+                        SetDepthParameter(instance, zone, currentSleeveId, depthOverride, forceImmediate: true, logDetail: (_setParametersCallCount % 20 == 1));
+                        SetSleeveInstanceId(instance, currentSleeveId, forceImmediate: true);
+                        SetMepMetadata(instance, zone, currentSleeveId, forceImmediate: true);
+                        SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId, forceImmediate: true);
 
-                    // ✅ FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID IMMEDIATELY (not deferred)
-                    SetSleeveInstanceId(instance, currentSleeveId);
-
-                    // ✅ CLUSTERING SUPPORT: Set MEP_ElementId and MEP_Category for clustering / Parameter Service
-                    if (zone != null)
-                    {
-                        SetMepMetadata(instance, zone, currentSleeveId, forceImmediate: false); // ✅ Use batching
-                        // Clearances stay DB-only; no need to mirror to sleeve parameters during placement.
-                    }
-
-                    // ✅ SCHEDULE LEVEL: Set Schedule Level from MEP element's Reference Level
-                    if (zone != null)
-                    {
-                        SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId, forceImmediate: false); // ✅ Use batching
-                    }
-
-                    // ✅ GEOMETRIC SYNC: Set Host Orientation for proper rotation (X/Y walls)
-                    if (zone != null && !string.IsNullOrEmpty(zone.HostOrientation))
-                    {
-                        SetParameter(instance, "HostOrientation", zone.HostOrientation, currentSleeveId, fallbackName: "Host Orientation", forceImmediate: false); // ✅ Use batching
-                    }
-
-                    // ✅ BOTTOM OF OPENING (WALL/FRAMING ONLY):
-                    // Floors: no Bottom of Opening parameter. Walls/Framing: queue for batch flush.
-                    bool isWallOrFramingHostImm = zone != null &&
-                        (zone.StructuralElementType == "Wall" ||
-                         zone.StructuralElementType == "Walls" ||
-                         string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase));
-                    if (OptimizationFlags.UseBottomOfOpeningCalculation && !isCircular && isWallOrFramingHostImm)
-                    {
-                        SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone, forceImmediate: false); // ✅ Use batching
+                        bool isRectangularFamilyImm = famNameImm != null && famNameImm.IndexOf("Rectangular", StringComparison.OrdinalIgnoreCase) >= 0;
+                        bool isWallOrFramingHostImm = (zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls" || string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase));
+                        if (OptimizationFlags.UseBottomOfOpeningCalculation && isRectangularFamilyImm && isWallOrFramingHostImm)
+                        {
+                            SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone, forceImmediate: true);
+                        }
                     }
                 }
             }
         }
 
         /// <summary>
-        /// ✅ SRP COMPLIANCE: Dedicated method for setting Depth parameter based on host type.
+        /// âœ… SRP COMPLIANCE: Dedicated method for setting Depth parameter based on host type.
         /// Single Responsibility: Calculate and set structural thickness parameter only (Depth = host thickness for all hosts).
         /// Maintains all optimization features: batching, performance monitoring, safe validation, diagnostic logging.
         /// </summary>
@@ -499,7 +444,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             // Get the correct thickness based on host type (use override if provided)
             double thickness = structuralThicknessOverride ?? GetThickness(zone, zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls", isFramingHost);
             
-            // ✅ BATCH LOGGING: Only log when logDetail (every 20th from SetSleeveParameters)
+            // âœ… BATCH LOGGING: Only log when logDetail (every 20th from SetSleeveParameters)
             if (!DeploymentConfiguration.DeploymentMode && logDetail)
             {
                 SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
@@ -512,17 +457,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     $"CalculatedThickness={thickness * 304.8:F1}mm\n");
             }
             
-            // ✅ DB-FIRST: No fallback to linked files during placement (user requirement)
+            // âœ… DB-FIRST: No fallback to linked files during placement (user requirement)
             if (thickness <= 0.0)
             {
                 if (!DeploymentConfiguration.DeploymentMode && logDetail)
                 {
                     SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ⚠️ Zone={zone.Id}: Thickness is 0 and no linked-file fallback allowed (DB-first clean placement mode)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] âš ï¸ Zone={zone.Id}: Thickness is 0 and no linked-file fallback allowed (DB-first clean placement mode)\n");
                 }
             }
             
-            // ✅ BATCH PATH: When batching and not forced immediate, queue values directly (no per-instance LookupParameter).
+            // âœ… BATCH PATH: When batching and not forced immediate, queue values directly (no per-instance LookupParameter).
             if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
             {
                 var targetDict = ActiveBatchDictionary;
@@ -535,7 +480,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     DebugLogger.Info($"[SleeveParameterService] [DEPTH-SET-BATCH] Zone={zone.Id}, Sleeve={instance.Id}: Queue Depth={thickness * 304.8:F1}mm");
                     SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ✅ (BATCH) Zone={zone.Id}, Sleeve={instance.Id}: Queue Depth={thickness * 304.8:F1}mm\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] âœ… (BATCH) Zone={zone.Id}, Sleeve={instance.Id}: Queue Depth={thickness * 304.8:F1}mm\n");
                 }
 
                 // Success if we queued Depth
@@ -543,22 +488,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
             else
             {
-                // ✅ IMMEDIATE PATH: Use SetParameter for direct writes
-                // ✅ CRITICAL: Depth always = structural thickness for all host types
+                // âœ… IMMEDIATE PATH: Use SetParameter for direct writes
+                // âœ… CRITICAL: Depth always = structural thickness for all host types
                 bool geometryDepthSuccess = SetParameter(instance, "Depth", thickness, currentSleeveId, fallbackName: null, forceImmediate: forceImmediate);
                 
                 if (geometryDepthSuccess && !DeploymentConfiguration.DeploymentMode && logDetail)
                 {
                     DebugLogger.Info($"[SleeveParameterService] [DEPTH-SET] Zone={zone.Id}, Sleeve={instance.Id}: Set Depth={thickness * 304.8:F1}mm");
                     SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ✅ Zone={zone.Id}, Sleeve={instance.Id}: Set Depth={thickness * 304.8:F1}mm\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] âœ… Zone={zone.Id}, Sleeve={instance.Id}: Set Depth={thickness * 304.8:F1}mm\n");
                 }
                 
                 if (!geometryDepthSuccess && !DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Warning($"[SleeveParameterService] [DEPTH-SET] ❌ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth parameter");
+                    DebugLogger.Warning($"[SleeveParameterService] [DEPTH-SET] âŒ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth parameter");
                     SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ❌ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth parameter (thickness={thickness * 304.8:F1}mm)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] âŒ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth parameter (thickness={thickness * 304.8:F1}mm)\n");
                 }
 
                 return geometryDepthSuccess;
@@ -566,7 +511,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PARAMETER BATCHING: Flush all deferred parameters to Revit elements.
+        /// âœ… PARAMETER BATCHING: Flush all deferred parameters to Revit elements.
         /// Applies all accumulated parameter values after regeneration.
         /// Preserves all safety features: duplicate flush prevention, error handling, logging.
         /// </summary>
@@ -598,12 +543,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 totalParams = targetDict.Values.Sum(d => d.Count);
-                DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] 🔄 [{context}] Flushing {targetDict.Count} sleeves with {totalParams} total parameters...");
+                DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] ðŸ”„ [{context}] Flushing {targetDict.Count} sleeves with {totalParams} total parameters...");
             }
             
             try
             {
-                // ✅ PERFORMANCE OPTIMIZATION: Cache all elements BEFORE parameter setting loop
+                // âœ… PERFORMANCE OPTIMIZATION: Cache all elements BEFORE parameter setting loop
                 // GetElement() is expensive (~4-5ms per call). Pre-caching eliminates 83+ lookups.
                 var elementCache = new Dictionary<ElementId, FamilyInstance>();
                 var levelCache = new Dictionary<ElementId, Level>();
@@ -618,7 +563,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                 }
                 
-                // ✅ PARAM OPTIMIZATION: Cache parameter Definitions once (same W/HT/Depth for all sleeves).
+                // âœ… PARAM OPTIMIZATION: Cache parameter Definitions once (same W/HT/Depth for all sleeves).
                 // Use get_Parameter(Definition) in the loop instead of LookupParameter(name) per sleeve per param.
                 var defCache = new Dictionary<string, Definition>();
                 var allParamNames = targetDict.Values.SelectMany(d => d.Keys).Distinct().ToList();
@@ -639,7 +584,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                 }
                 
-                // ✅ PARAM OPTIMIZATION: Group same-sized sleeves so we apply one param set per group.
+                // âœ… PARAM OPTIMIZATION: Group same-sized sleeves so we apply one param set per group.
                 // Circular sleeves: Diameter + Depth only. Rectangular: Width, Height (HT), Depth.
                 var groupsBySize = new Dictionary<string, List<ElementId>>();
                 foreach (var kvp in targetDict)
@@ -662,7 +607,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     groupsBySize[sizeKey].Add(sleeveId);
                 }
                 
-                // ✅ PERFORMANCE OPTIMIZATION: Track total flush time once, not per-nested-op
+                // âœ… PERFORMANCE OPTIMIZATION: Track total flush time once, not per-nested-op
                 using (_performanceMonitor?.TrackOperation("Flush All Parameters"))
                 {
                     foreach (var group in groupsBySize)
@@ -675,7 +620,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             if (!elementCache.TryGetValue(sleeveId, out FamilyInstance sleeve))
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Sleeve Element {sleeveId} not found during flush.\n");
+                                    SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] âš ï¸ Sleeve Element {sleeveId} not found during flush.\n");
                                 continue;
                             }
                             var symbol = sleeve.Symbol;
@@ -696,10 +641,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                         if (paramKvp.Value is double dVal)
                                         {
                                             param.Set(dVal);
-                                            // ✅ DIAGNOSTIC: Log exact value being set for critical parameters
+                                            // âœ… DIAGNOSTIC: Log exact value being set for critical parameters
                                             if (!DeploymentConfiguration.DeploymentMode && (paramKvp.Key == "Width" || paramKvp.Key == "Height" || paramKvp.Key == "Sleeve Width" || paramKvp.Key == "Sleeve Height"))
                                             {
-                                                SafeFileLogger.SafeAppendText("parameter_set_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] 🛠️ SET PARAM: Element={sleeveId.GetIntegerValue()}, Param={paramKvp.Key}, Value={dVal:F6} (ft), {dVal * 304.8:F1} (mm)\n");
+                                                SafeFileLogger.SafeAppendText("parameter_set_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] ðŸ› ï¸ SET PARAM: Element={sleeveId.GetIntegerValue()}, Param={paramKvp.Key}, Value={dVal:F6} (ft), {dVal * 304.8:F1} (mm)\n");
                                             }
                                         }
                                         else if (paramKvp.Value is string sVal)
@@ -754,7 +699,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] ✅ Flushed {successCount} parameters for {sleevesForLog} sleeves, {failCount} failed. ClearList={clearList}");
+                    DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] âœ… Flushed {successCount} parameters for {sleevesForLog} sleeves, {failCount} failed. ClearList={clearList}");
                     if (errorLog.Length > 0)
                     {
                         SafeFileLogger.SafeAppendText("parameter_batching_errors.log", errorLog.ToString());
@@ -777,7 +722,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ RESET: Reset the flush flag for a new placement batch.
+        /// âœ… RESET: Reset the flush flag for a new placement batch.
         /// Called at the start of each placement run.
         /// </summary>
         public void ResetFlushFlag()
@@ -785,7 +730,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ CRITICAL FIX: Read parameter from deferred cache first, then fallback to Revit element.
+        /// âœ… CRITICAL FIX: Read parameter from deferred cache first, then fallback to Revit element.
         /// This prevents stale reads during corner placement calculations when batching is enabled.
         /// </summary>
         public double GetParameterValueWithBatchingSupport(
@@ -846,7 +791,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ ROTATION RULE: Set MepElementRotationAngle only for X wall, or for Floor when MEP is rotated.
+        /// âœ… ROTATION RULE: Set MepElementRotationAngle only for X wall, or for Floor when MEP is rotated.
         /// Skip rotation for Y wall and when MEP has no rotation.
         /// </summary>
         private static bool ShouldSetRotation(ClashZone zone)
@@ -863,20 +808,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid (avoids document mismatch bug)
+        /// âœ… SAFE ELEMENT VALIDATION: Validate instance is still valid (avoids document mismatch bug)
         /// </summary>
         private bool ValidateElement(FamilyInstance instance)
         {
             try
             {
-                // ⚠️ CRITICAL: Do NOT compare documents by reference (causes false positives like in parameter transfer)
+                // âš ï¸ CRITICAL: Do NOT compare documents by reference (causes false positives like in parameter transfer)
                 // Instead, validate by element ID - if doc.GetElement() succeeds, element is in correct document
                 var validationElement = _doc.GetElement(instance.Id);
                 if (validationElement == null || !validationElement.IsValidObject)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Warning($"[SleeveParameterService] ⚠️ Instance {instance.Id.GetIntegerValue()} is invalid - skipping parameter setting");
+                        DebugLogger.Warning($"[SleeveParameterService] âš ï¸ Instance {instance.Id.GetIntegerValue()} is invalid - skipping parameter setting");
                     }
                     return false;
                 }
@@ -886,7 +831,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Warning($"[SleeveParameterService] ⚠️ Element ID mismatch for instance {instance.Id.GetIntegerValue()}");
+                        DebugLogger.Warning($"[SleeveParameterService] âš ï¸ Element ID mismatch for instance {instance.Id.GetIntegerValue()}");
                     }
                     return false;
                 }
@@ -904,7 +849,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ GLOBAL SETTINGS: Apply rounding based on global configuration
+        /// âœ… GLOBAL SETTINGS: Apply rounding based on global configuration
         /// </summary>
         private (double roundedWidth, double roundedHeight, double roundedDiameter) ApplyRounding(
             double width, double height, double diameter, ClashZone zone)
@@ -914,7 +859,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                            (zone.MepElementCategory.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                             zone.MepElementCategory.IndexOf("Duct Accessories", StringComparison.OrdinalIgnoreCase) >= 0);
             
-            // ✅ CRITICAL FIX: Apply rounding to ALL categories including dampers (consistent with cluster sleeves)
+            // âœ… CRITICAL FIX: Apply rounding to ALL categories including dampers (consistent with cluster sleeves)
             // Rounding is applied to all categories: dampers, pipes, ducts, cable trays, etc.
             // OpeningSettingsHelper reads RoundingValue and RoundAlwaysUp from ApplicationProfileService
             var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
@@ -927,9 +872,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     string categoryInfo = isDamper ? "DAMPER" : zone?.MepElementCategory ?? "Unknown";
                     DebugLogger.Info($"[SleeveParameterService] [ROUNDING] Zone {zone?.Id} ({categoryInfo}): " +
-                        $"Width {RevitUnitConversionService.Instance.FromInternalMillimeters(width):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, " +
-                        $"Height {RevitUnitConversionService.Instance.FromInternalMillimeters(height):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm, " +
-                        $"Diameter {RevitUnitConversionService.Instance.FromInternalMillimeters(diameter):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter):F1}mm");
+                        $"Width {RevitUnitConversionService.Instance.FromInternalMillimeters(width):F1}mm â†’ {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, " +
+                        $"Height {RevitUnitConversionService.Instance.FromInternalMillimeters(height):F1}mm â†’ {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm, " +
+                        $"Diameter {RevitUnitConversionService.Instance.FromInternalMillimeters(diameter):F1}mm â†’ {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter):F1}mm");
                 }
             }
             
@@ -937,7 +882,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PARAMETER BATCHING: Set parameter value with batching support and diagnostic logging.
+        /// âœ… PARAMETER BATCHING: Set parameter value with batching support and diagnostic logging.
         /// Deferred when batching enabled, immediate when disabled.
         /// </summary>
         private bool SetParameter(
@@ -953,17 +898,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             if (param == null || param.IsReadOnly) return false;
             
-            // ✅ BATCHING LOGIC: Bypass batching if forced immediate
+            // âœ… BATCHING LOGIC: Bypass batching if forced immediate
             if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
             {
                 var targetDict = ActiveBatchDictionary;
                 if (!targetDict.ContainsKey(currentSleeveId))
                     targetDict[currentSleeveId] = new Dictionary<string, object>();
                 
-                // ✅ FIX: Use the actual parameter definition name as the key.
+                // âœ… FIX: Use the actual parameter definition name as the key.
                 string actualParamName = param.Definition.Name;
                 
-                // ✅ CRITICAL DIAGNOSTIC: Log if parameter is being overwritten
+                // âœ… CRITICAL DIAGNOSTIC: Log if parameter is being overwritten
                 bool isOverwrite = targetDict[currentSleeveId].ContainsKey(actualParamName);
                 if ((actualParamName == "Width" || actualParamName == "Height" || 
                      actualParamName == "Depth" || actualParamName == "Wall Width"))
@@ -972,7 +917,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     {
                         var oldValue = targetDict[currentSleeveId][actualParamName];
                         SafeFileLogger.SafeAppendText("parameter_overwrite_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ⚠️ PARAMETER OVERWRITE: Sleeve {currentSleeveId.GetIntegerValue()}, " +
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] âš ï¸ PARAMETER OVERWRITE: Sleeve {currentSleeveId.GetIntegerValue()}, " +
                             $"Parameter='{actualParamName}' (requested='{parameterName}'), OldValue={oldValue}, NewValue={value}\n");
                     }
                 }
@@ -988,7 +933,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PARAMETER BATCHING: Set parameter value (string) with batching support.
+        /// âœ… PARAMETER BATCHING: Set parameter value (string) with batching support.
         /// Deferred when batching enabled, immediate when disabled.
         /// </summary>
         private bool SetParameter(
@@ -999,75 +944,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             string fallbackName = null,
             bool forceImmediate = false)
         {
-            var param = instance.LookupParameter(parameterName) ?? 
-                       (fallbackName != null ? instance.LookupParameter(fallbackName) : null);
-            
-            if (param == null || param.IsReadOnly) return false;
-            
-            // ✅ BATCHING LOGIC: Bypass batching if forced immediate
+            // âœ… BATCH PATH: Queue directly without LookupParameter (huge performance gain)
             if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
             {
                 var targetDict = ActiveBatchDictionary;
                 if (!targetDict.ContainsKey(currentSleeveId))
                     targetDict[currentSleeveId] = new Dictionary<string, object>();
                 
-                // ✅ FIX: Use the actual parameter definition name as the key.
-                string actualParamName = param.Definition.Name;
-                
-                targetDict[currentSleeveId][actualParamName] = value;
+                targetDict[currentSleeveId][parameterName] = value;
+                if (fallbackName != null) targetDict[currentSleeveId][fallbackName] = value;
                 return true;
             }
-            else
-            {
-                param.Set(value);
-                return true;
-            }
+
+            // âœ… IMMEDIATE PATH: Keep lookup for non-batched calls
+            var param = instance.LookupParameter(parameterName) ?? 
+                       (fallbackName != null ? instance.LookupParameter(fallbackName) : null);
+            
+            if (param == null || param.IsReadOnly) return false;
+            
+            param.Set(value);
+            return true;
         }
 
         /// <summary>
-        /// ✅ FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID IMMEDIATELY (not deferred)
+        /// âœ… FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID IMMEDIATELY (not deferred)
         /// </summary>
-        public void SetSleeveInstanceId(FamilyInstance instance, ElementId currentSleeveId)
+        public void SetSleeveInstanceId(FamilyInstance instance, ElementId currentSleeveId, bool forceImmediate = false)
         {
-            var sleeveInstanceIdParam = instance.LookupParameter("Sleeve Instance ID");
-            if (sleeveInstanceIdParam != null && !sleeveInstanceIdParam.IsReadOnly)
+            // âœ… BATCH PATH: Queue directly without LookupParameter (saves 1 Revit API call per sleeve)
+            if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
             {
-                // ✅ BATCH OPTIMIZATION: If batching is enabled, defer this write to improve performance
-                // This parameter is used for flag management, but flag management runs AFTER the placement loop,
-                // so it will be available in Revit after the Batch Flush.
-                if (OptimizationFlags.UseBatchedParameterWrites)
-                {
-                    var targetDict = ActiveBatchDictionary;
-                    if (!targetDict.ContainsKey(currentSleeveId))
-                        targetDict[currentSleeveId] = new Dictionary<string, object>();
-                    
-                    targetDict[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.GetIntegerValue();
-                }
-                else
-                {
-                    sleeveInstanceIdParam.Set(currentSleeveId.GetIntegerValue());
-                }
+                var targetDict = ActiveBatchDictionary;
+                if (!targetDict.ContainsKey(currentSleeveId))
+                    targetDict[currentSleeveId] = new Dictionary<string, object>();
+
+                // Set on both potential parameter names used by different family versions
+                targetDict[currentSleeveId]["SleeveInstanceId"] = currentSleeveId.GetIntegerValue().ToString();
+                targetDict[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.GetIntegerValue().ToString();
+                return;
             }
-            else
-            {
-                // ⚠️ CRITICAL WARNING: Sleeve Instance ID parameter not found or read-only
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ⚠️⚠️⚠️ CRITICAL: Cannot set 'Sleeve Instance ID' for sleeve {currentSleeveId.GetIntegerValue()} - parameter not found or read-only!\n" +
-                        $"  This will prevent flag management from identifying individual sleeves!\n");
-                }
-            }
+
+            // âœ… IMMEDIATE PATH: Fallback for critical cases or when batching is disabled
+            SetParameter(instance, "SleeveInstanceId", currentSleeveId.GetIntegerValue().ToString(), currentSleeveId, forceImmediate: true);
+            SetParameter(instance, "Sleeve Instance ID", currentSleeveId.GetIntegerValue().ToString(), currentSleeveId, forceImmediate: true);
         }
 
         /// <summary>
-        /// ✅ CLUSTERING SUPPORT: Set MEP_ElementId and MEP_Category for clustering / Parameter Service.
+        /// âœ… CLUSTERING SUPPORT: Set MEP_ElementId and MEP_Category for clustering / Parameter Service.
         /// NOTE: Other MEP metadata (system, service, reference offset, clearances) are DB-only
-        /// and will be handled by Parameter Service – no need to write them during placement.
+        /// and will be handled by Parameter Service â€“ no need to write them during placement.
         /// </summary>
         private void SetMepMetadata(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId, bool forceImmediate = false)
         {
-            // ✅ BATCH PATH: queue values directly (no per-instance LookupParameter)
+            if (zone == null) return;
+
+            // âœ… BATCH PATH: queue values directly (no per-instance LookupParameter)
             if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
             {
                 var targetDict = ActiveBatchDictionary;
@@ -1083,77 +1014,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     targetDict[currentSleeveId]["MEP_Category"] = zone.MepElementCategory;
                 }
-
                 return;
             }
 
-            // ✅ IMMEDIATE PATH: only when batching is disabled or forceImmediate=true
-            // Set MEP_ElementId
-            if (zone.MepElementId != null)
+            // âœ… IMMEDIATE PATH: only when batching is disabled or forceImmediate=true
+            if (zone.MepElementId != null && zone.MepElementId.GetIntegerValue() > 0)
             {
-                SetParameter(instance, "MEP_ElementId", zone.MepElementId.GetIntegerValue().ToString(), currentSleeveId, fallbackName: null, forceImmediate: true);
+                SetParameter(instance, "MEP_ElementId", zone.MepElementId.GetIntegerValue().ToString(), currentSleeveId, forceImmediate: true);
             }
 
-            // Set MEP_Category
             if (!string.IsNullOrEmpty(zone.MepElementCategory))
             {
-                var mepCategoryParam = instance.LookupParameter("MEP_Category");
-                if (mepCategoryParam != null && !mepCategoryParam.IsReadOnly)
-                {
-                    mepCategoryParam.Set(zone.MepElementCategory);
-                }
-            }
-
-            // ✅ LEGACY SAFETY: Direct MEP_ElementId write for existing families (kept for backward compatibility)
-            var mepElementIdParam = instance.LookupParameter("MEP_ElementId");
-            if (mepElementIdParam != null && !mepElementIdParam.IsReadOnly)
-            {
-                // ✅ NULL SAFETY: Check if MepElementId is null before setting
-                if (zone.MepElementId != null && zone.MepElementId.GetIntegerValue() > 0)
-                {
-                    // ✅ BATCH OPTIMIZATION: Defer this write if batching is enabled
-                    // This is used for clustering/auditing, but these happen after the batch flush
-                    if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
-                    {
-                        var targetDict = ActiveBatchDictionary;
-                        if (!targetDict.ContainsKey(currentSleeveId))
-                            targetDict[currentSleeveId] = new Dictionary<string, object>();
-                        
-                        targetDict[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.GetIntegerValue();
-                    }
-                    else
-                    {
-                        mepElementIdParam.Set(zone.MepElementId.GetIntegerValue());
-                    }
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ✅ IMMEDIATE: Set 'MEP_ElementId'={zone.MepElementId.GetIntegerValue()} for sleeve {currentSleeveId}\n");
-                    }
-                }
-                else if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ⚠️ WARNING: MepElementId is null or invalid for sleeve {currentSleeveId}\n");
-                }
-            }
-            else
-            {
-                // ⚠️ CRITICAL WARNING: MEP_ElementId parameter not found or read-only
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ⚠️⚠️⚠️ CRITICAL: Cannot set 'MEP_ElementId' for sleeve {currentSleeveId} - parameter not found or read-only!\n" +
-                        $"  This will prevent cluster sizing from finding corners in database!\n");
-                }
+                SetParameter(instance, "MEP_Category", zone.MepElementCategory, currentSleeveId, forceImmediate: true);
             }
         }
 
 
 
         /// <summary>
-        /// ✅ DAMPER ASYMMETRIC CLEARANCE: Set individual clearance parameters from zone
+        /// âœ… DAMPER ASYMMETRIC CLEARANCE: Set individual clearance parameters from zone
         /// </summary>
         private void SetDamperClearances(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId, bool forceImmediate = false)
         {
@@ -1184,7 +1063,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!DeploymentConfiguration.DeploymentMode && 
                 (zone.ClearanceLeft > 0 || zone.ClearanceRight > 0 || zone.ClearanceTop > 0 || zone.ClearanceBottom > 0))
             {
-                DebugLogger.Info($"[SleeveParameterService] ✅ DAMPER CLEARANCES SET: Zone {zone.Id}, " +
+                DebugLogger.Info($"[SleeveParameterService] âœ… DAMPER CLEARANCES SET: Zone {zone.Id}, " +
                     $"L={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceLeft):F1}mm, " +
                     $"R={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceRight):F1}mm, " +
                     $"T={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceTop):F1}mm, " +
@@ -1197,20 +1076,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         private void SetClearanceParameter(FamilyInstance instance, string paramName, double value, ElementId currentSleeveId, bool forceImmediate = false)
         {
+            // âœ… BATCH PATH: Queue directly without LookupParameter
+            if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
+            {
+                var targetDict = ActiveBatchDictionary;
+                if (!targetDict.ContainsKey(currentSleeveId))
+                    targetDict[currentSleeveId] = new Dictionary<string, object>();
+                
+                targetDict[currentSleeveId][paramName] = value;
+                return;
+            }
+
+            // âœ… IMMEDIATE PATH: Keep lookup for non-batched calls
             var param = instance.LookupParameter(paramName);
             if (param != null && !param.IsReadOnly)
             {
-                if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
-                {
-                    var targetDict = ActiveBatchDictionary;
-                    if (!targetDict.ContainsKey(currentSleeveId))
-                        targetDict[currentSleeveId] = new Dictionary<string, object>();
-                    targetDict[currentSleeveId][paramName] = value;
-                }
-                else
-                {
-                    param.Set(value);
-                }
+                param.Set(value);
             }
         }
 
@@ -1223,15 +1104,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             return zone.StructuralElementThickness;
         }
 
-        // ✅ REMOVED: Probing linked files during placement is deprecated (user requirement)
+        // âœ… REMOVED: Probing linked files during placement is deprecated (user requirement)
         // Cleanup: Method removed to ensure DB-first logic
 
         /// <summary>
-        /// ✅ SRP COMPLIANCE: Map MEP element's Level to sleeve's "Schedule of Level" parameter.
+        /// âœ… SRP COMPLIANCE: Map MEP element's Level to sleeve's "Schedule of Level" parameter.
         /// Single Responsibility: ONLY maps level data (already extracted during refresh) to sleeve parameter.
         /// Does NOT extract level - that's ParameterCaptureService's responsibility during refresh.
         /// 
-        /// ✅ PERFORMANCE OPTIMIZATION: Uses caching to reduce level lookup time by ~70-80%.
+        /// âœ… PERFORMANCE OPTIMIZATION: Uses caching to reduce level lookup time by ~70-80%.
         /// </summary>
         private void SetScheduleLevelFromMepReferenceLevel(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId, bool forceImmediate = false)
         {
@@ -1239,114 +1120,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             try
             {
-                // ✅ SRP COMPLIANCE: Use level data already extracted during refresh (saved to database)
+                // âœ… SRP COMPLIANCE: Use level data already extracted during refresh (saved to database)
                 // ParameterCaptureService.ExtractMepElementLevelInfo() extracts this during refresh
                 // We just map it to the sleeve parameter - no extraction logic here
-                Level? mepLevel = null;
-
-                // ✅ PRIORITY 1: Get from ClashZone.MepElementLevelName (extracted during refresh, saved to database)
-                if (!string.IsNullOrWhiteSpace(zone.MepElementLevelName))
+                // Get level for mapping
+                Level mepLevel = null;
+                if (!string.IsNullOrEmpty(zone.MepElementLevelName))
                 {
-                    // ✅ PERFORMANCE OPTIMIZATION: Use cached level lookup
                     mepLevel = GetCachedLevel(zone.MepElementLevelName);
-                    
-                    if (mepLevel != null && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"Found Level '{mepLevel.Name}' from MepElementLevelName (database - extracted during refresh) - CACHED\n");
-                    }
-                    else if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"MepElementLevelName='{zone.MepElementLevelName}' found in database but level not found in document\n");
-                    }
                 }
 
-                // ✅ STEP 2: Set "Schedule of Level" on sleeve (map MEP level to sleeve parameter)
                 if (mepLevel != null)
                 {
-                    // ✅ FIX: Try "Schedule of Level" FIRST (user specified this is the correct name)
-                    var scheduleLevelParam = GetCachedParameter(instance, "Schedule of Level")
-                                         ?? GetCachedParameter(instance, "Schedule Level")
-                                         ?? GetCachedParameter(instance, "ScheduleLevel")
-                                         ?? instance.Symbol?.LookupParameter("Schedule of Level")
-                                         ?? instance.Symbol?.LookupParameter("Schedule Level")
-                                         ?? instance.Symbol?.LookupParameter("ScheduleLevel");
-                    
-                    if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        string paramName = scheduleLevelParam.Definition.Name;
-                        
-                        if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] âœ… Found Level '{mepLevel.Name}' for Zone {zone.Id}\n");
+                    }
+
+                    string familyKey = zone.SleeveFamilyName ?? "UNKNOWN";
+                    
+                    // âœ… CACHE LOOKUP: Use previously resolved parameter name (check ContainsKey for null caching)
+                    if (!_scheduleLevelParamNameCache.TryGetValue(familyKey, out string resolvedScheduleLevelParamName))
+                    {
+                        // Cache miss — probe candidates once for this family
+                        string[] candidates = { "Schedule of Level", "Schedule Level", "ScheduleLevel" };
+                        foreach (var candidate in candidates)
                         {
-                            if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
+                            // âœ… PERF FIX: Only call .Symbol if absolutely necessary, and only once
+                            var symbol = instance.Symbol;
+                            var probe = instance.LookupParameter(candidate) ?? symbol?.LookupParameter(candidate);
+                            if (probe != null && !probe.IsReadOnly)
                             {
-                                var targetDict = ActiveBatchDictionary;
-                                if (!targetDict.ContainsKey(currentSleeveId))
-                                    targetDict[currentSleeveId] = new Dictionary<string, object>();
-                                targetDict[currentSleeveId][paramName] = mepLevel.Id;
+                                resolvedScheduleLevelParamName = candidate;
+                                break;
+                            }
+                        }
+                        _scheduleLevelParamNameCache[familyKey] = resolvedScheduleLevelParamName; // Can be null (cached as "not found")
+                    }
+
+                    if (resolvedScheduleLevelParamName != null)
+                    {
+                        // âœ… BATCH PATH: Defer write if batching is enabled
+                        if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
+                        {
+                            var targetDict = ActiveBatchDictionary;
+                            if (!targetDict.ContainsKey(currentSleeveId))
+                                targetDict[currentSleeveId] = new Dictionary<string, object>();
+
+                            if (_scheduleLevelStorageTypeCache.TryGetValue(familyKey, out StorageType cachedStorageType))
+                            {
+                                // âœ… PERF FIX: Reuse cached storage type to avoid LookupParameter
+                                targetDict[currentSleeveId][resolvedScheduleLevelParamName] = 
+                                    (cachedStorageType == StorageType.ElementId) ? (object)mepLevel.Id : (object)mepLevel.Name;
                             }
                             else
                             {
-                                scheduleLevelParam.Set(mepLevel.Id);
-                            }
-
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                    $"Set '{paramName}' to '{mepLevel.Name}' (ID: {mepLevel.Id.GetIntegerValue()}, StorageType=ElementId) - CACHED PARAMETER\n");
-                            }
-                        }
-                        else if (scheduleLevelParam.StorageType == StorageType.String)
-                        {
-                            if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
-                            {
-                                var targetDict = ActiveBatchDictionary;
-                                if (!targetDict.ContainsKey(currentSleeveId))
-                                    targetDict[currentSleeveId] = new Dictionary<string, object>();
-                                targetDict[currentSleeveId][paramName] = mepLevel.Name;
-                            }
-                            else
-                            {
-                                scheduleLevelParam.Set(mepLevel.Name);
-                            }
-
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                    $"Set '{paramName}' to '{mepLevel.Name}' (StorageType=String) - CACHED PARAMETER\n");
+                                // One-time probe for storage type
+                                var symbol = instance.Symbol;
+                                var probe = instance.LookupParameter(resolvedScheduleLevelParamName) ?? symbol?.LookupParameter(resolvedScheduleLevelParamName);
+                                if (probe != null)
+                                {
+                                    _scheduleLevelStorageTypeCache[familyKey] = probe.StorageType;
+                                    targetDict[currentSleeveId][resolvedScheduleLevelParamName] = 
+                                        (probe.StorageType == StorageType.ElementId) ? (object)mepLevel.Id : (object)mepLevel.Name;
+                                }
                             }
                         }
-                        else if (!DeploymentConfiguration.DeploymentMode)
+                        else
                         {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                $"Found '{paramName}' parameter but StorageType={scheduleLevelParam.StorageType} is not ElementId or String - cannot set level reference\n");
+                            // âœ… IMMEDIATE PATH
+                            var scheduleLevelParam = instance.LookupParameter(resolvedScheduleLevelParamName) ?? instance.Symbol?.LookupParameter(resolvedScheduleLevelParamName);
+                            if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                            {
+                                _scheduleLevelStorageTypeCache[familyKey] = scheduleLevelParam.StorageType;
+                                if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                                    scheduleLevelParam.Set(mepLevel.Id);
+                                else if (scheduleLevelParam.StorageType == StorageType.String)
+                                    scheduleLevelParam.Set(mepLevel.Name);
+                            }
                         }
                     }
                     else if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        // ✅ DIAGNOSTIC: Log all available parameters to help identify the correct parameter name
-                        var allParams = instance.Parameters.Cast<Parameter>()
-                            .Where(p => p.Definition.Name.Contains("Schedule", StringComparison.OrdinalIgnoreCase) ||
-                                       p.Definition.Name.Contains("Level", StringComparison.OrdinalIgnoreCase))
-                            .Select(p => $"{p.Definition.Name} (StorageType={p.StorageType}, ReadOnly={p.IsReadOnly})")
-                            .ToList();
-                        
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"Schedule Level parameter not found or read-only. Available Schedule/Level parameters: [{string.Join(", ", allParams)}]\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] âš ï¸  Parameter not found for family {familyKey}\n");
                     }
                 }
-                else if (!DeploymentConfiguration.DeploymentMode)
+                else if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrEmpty(zone.MepElementLevelName))
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                        $"MepElementLevelName not found in database - Schedule Level not set (should be extracted during refresh)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] âš ï¸  Level '{zone.MepElementLevelName}' not found in document for Zone {zone.Id}\n");
                 }
             }
             catch (Exception ex)
@@ -1354,14 +1218,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ❌ Zone={zone?.Id}, Sleeve={instance?.Id}: " +
-                        $"Error setting Schedule Level: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] â Œ Error: {ex.Message}\n");
                 }
             }
         }
 
         /// <summary>
-        /// ✅ SRP COMPLIANCE: Dedicated method for setting "Bottom of Opening" parameter.
+        /// âœ… SRP COMPLIANCE: Dedicated method for setting "Bottom of Opening" parameter.
         /// Single Responsibility: Calculate and set Bottom of Opening parameter only.
         /// 
         /// Formula: Bottom of Opening = Schedule of Level - (Height / 2)
@@ -1375,34 +1238,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 ENTRY: Zone={zone?.Id}, Sleeve={instance?.Id}, Height={height * 304.8:F1}mm\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ðŸ”  ENTRY: Zone={zone?.Id}, Sleeve={instance?.Id}, Height={height * 304.8:F1}mm\n");
             }
-            
-            if (instance == null)
+
+            if (instance == null || zone == null) return;
+
+            // âœ… FAMILY CHECK: Only apply to RectangularOpeningOnWall family
+            string familyName = zone.SleeveFamilyName ?? string.Empty;
+            if (!familyName.Equals("RectangularOpeningOnWall", StringComparison.OrdinalIgnoreCase)
+                && !familyName.Equals("RectangularOpeningOnWall_X", StringComparison.OrdinalIgnoreCase))
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Instance is NULL - skipping\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] âš ï¸  Skipping - family is '{familyName}'\n");
                 }
-                return;
+                return; 
             }
 
-            // ✅ FAMILY CHECK: Only apply to RectangularOpeningOnWall family
-            string familyName = instance.Symbol?.FamilyName ?? string.Empty;
-            if (!familyName.Equals("RectangularOpeningOnWall", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Skipping - family is '{familyName}' (expected 'RectangularOpeningOnWall')\n");
-                }
-                return; // Not the correct family - skip silently
-            }
-
-            // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid
-            if (OptimizationFlags.UseSafeElementValidation)
+            // âœ… SAFE ELEMENT VALIDATION: Skip if redundant validation is enabled
+            if (!OptimizationFlags.SkipRedundantValidation)
             {
                 if (!ValidateElement(instance))
                     return;
@@ -1417,160 +1272,121 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     level = GetCachedLevel(zone.MepElementLevelName);
                 }
 
-                // ✅ ELEVATION CALCULATION HIERARCHY:
-                // 1. Primary: Use DB saved value (pre-calculated during refresh)
-                // 2. Fallback: Geometric calculation (Zone.Z - Level.Elevation)
-                
                 double? scheduleOfLevel = null;
                 string elevationSource = "Not Found";
 
                 // PRIORITY 1: DB Saved Value
-                if (zone != null && Math.Abs(zone.ElevationFromLevel) > 0.0001)
+                // ElevationFromLevel is stored in FEET (Revit internal units)
+                if (Math.Abs(zone.ElevationFromLevel) > 0.0001)
                 {
                     scheduleOfLevel = zone.ElevationFromLevel;
-                    elevationSource = "Database (zone.ElevationFromLevel)";
+                    elevationSource = "Database";
                 }
                 
-                // PRIORITY 2: Geometric Fallback (Skip Revit Parameter entirely per user request)
-                bool usedFallback = false;
+                // PRIORITY 2: Geometric Fallback
+                // SleevePlacementPointZ and level.Elevation are both in FEET (Revit internal)
                 if (!scheduleOfLevel.HasValue || Math.Abs(scheduleOfLevel.Value) < 0.0001)
                 {
-                    if (level != null && zone != null)
+                    if (level != null)
                     {
                         scheduleOfLevel = zone.SleevePlacementPointZ - level.Elevation;
-                        elevationSource = "Geometric Fallback (Zone.Z - Level.Elev)";
-                        usedFallback = true;
-
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 💡 FALLBACK TRIGGERED: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                                $"  - Reason: DB and Parameter values were zero or missing\n" +
-                                $"  - Calculation: Zone.Z ({zone.SleevePlacementPointZ:F4}) - Level.Elev ({level.Elevation:F4}) = {scheduleOfLevel:F4} ({scheduleOfLevel * 304.8:F1}mm)\n");
-                        }
+                        elevationSource = "Geometric Fallback";
                     }
                 }
 
-                // ✅ DIAGNOSTIC LOGGING: Log all values before validation and calculation
-                string scheduleStr = scheduleOfLevel.HasValue ? $"{scheduleOfLevel.Value * 304.8:F1}mm" : string.Empty;
-                SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                    $"  - Elevation Source: {elevationSource}\n" +
-                    $"  - scheduleOfLevel (Effective): {scheduleOfLevel?.ToString() ?? "null"} ({scheduleStr})\n" +
-                    $"  - height: {height} ({height * 304.8:F1}mm)\n");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ðŸ”  Elevation Source: {elevationSource}, Value: {scheduleOfLevel?.ToString() ?? "null"}\n");
+                }
 
-                // ✅ VALIDATION: Check if Schedule of Level is valid
+                // âœ… VALIDATION: Check if Schedule of Level and Height are valid
                 if (!scheduleOfLevel.HasValue || 
-                    !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value))
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Schedule of Level parameter not found or invalid (value={scheduleOfLevel?.ToString() ?? "null"}) - skipping\n" +
-                        $"  - IsValidScheduleOfLevel check: {scheduleOfLevel.HasValue && BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value)}\n");
-                    return; // Graceful degradation - skip if Schedule of Level is missing or invalid
-                }
-
-                // ✅ VALIDATION: Check if Height is valid
-                if (!BottomOfOpeningCalculationService.IsValidHeight(height))
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Height is invalid (value={height * 304.8:F1}mm) - skipping\n" +
-                        $"  - IsValidHeight check: {BottomOfOpeningCalculationService.IsValidHeight(height)}\n");
-                    return; // Graceful degradation - skip if Height is invalid
-                }
-
-                // ✅ CALCULATION: Calculate Bottom of Opening directly from Reference Level (PRIMARY SOURCE)
-                // ✅ FORMULA: Bottom of Opening = Placement Z - Reference Level Elevation - (Height / 2.0)
-                // This is equivalent to: Bottom of Opening = Elevation from Level - (Height / 2.0)
-                // where Elevation from Level = Placement Z - Reference Level Elevation
-                // Reference Level is the PRIMARY source of truth for this calculation
-                double? bottomOfOpening = BottomOfOpeningCalculationService.CalculateBottomOfOpening(
-                    scheduleOfLevel.Value, height);
-                
-                // ✅ DIAGNOSTIC LOGGING: Log calculation result
-                string bottomOfOpeningStr = bottomOfOpening.HasValue ? $"{bottomOfOpening.Value * 304.8:F1}mm" : string.Empty;
-                SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 CALCULATION RESULT: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                    $"  - Input: scheduleOfLevel={scheduleOfLevel.Value} ({scheduleOfLevel.Value * 304.8:F1}mm), height={height} ({height * 304.8:F1}mm)\n" +
-                    $"  - Formula: bottomOfOpening = scheduleOfLevel - (height / 2.0) = {scheduleOfLevel.Value} - ({height} / 2.0) = {scheduleOfLevel.Value - (height / 2.0)}\n" +
-                    $"  - Calculated result: {bottomOfOpening?.ToString() ?? "null"} ({bottomOfOpeningStr})\n");
-
-                if (!bottomOfOpening.HasValue)
+                    !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value) ||
+                    !BottomOfOpeningCalculationService.IsValidHeight(height))
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Calculation returned null (Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={height * 304.8:F1}mm) - skipping\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] âš ï¸  Validation failed\n");
                     }
-                    return; // Graceful degradation - skip if calculation fails
+                    return; 
                 }
 
-                // ✅ PARAMETER SETTING: Set "Bottom Of Opening" parameter with batching support
-                // Parameter name is "Bottom Of Opening" (capital O in "Of") as shown in Revit Properties
-                var bottomParam = instance.LookupParameter("Bottom Of Opening")  // ✅ FIRST: Exact name from Properties
-                               ?? instance.LookupParameter("Bottom of Opening")
-                               ?? instance.LookupParameter("BottomOfOpening")
-                               ?? instance.Symbol?.LookupParameter("Bottom Of Opening")
-                               ?? instance.Symbol?.LookupParameter("Bottom of Opening")
-                               ?? instance.Symbol?.LookupParameter("BottomOfOpening");
+                double? bottomOfOpening = BottomOfOpeningCalculationService.CalculateBottomOfOpening(scheduleOfLevel.Value, height);
                 
-                if (bottomParam != null && !bottomParam.IsReadOnly)
+                if (!bottomOfOpening.HasValue) 
                 {
-                    string paramName = bottomParam.Definition.Name;
-                    
-                    // ✅ DIAGNOSTIC LOGGING: Log before setting parameter
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 BEFORE SETTING: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                        $"  - Parameter name: '{paramName}'\n" +
-                        $"  - Parameter storage type: {bottomParam.StorageType}\n" +
-                        $"  - Parameter is read-only: {bottomParam.IsReadOnly}\n" +
-                        $"  - Value to set: {bottomOfOpening.Value} ({bottomOfOpening.Value * 304.8:F1}mm)\n" +
-                        $"  - UseBatchedParameterWrites: {OptimizationFlags.UseBatchedParameterWrites}\n");
-                    
-                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] âš ï¸  Calculation failed\n");
+                    }
+                    return;
+                }
+
+                // âœ… PARAMETER SETTING: Set "Bottom Of Opening" parameter
+                string resolvedParamName = _cachedBottomOfOpeningParamName;
+                if (resolvedParamName == null && !_bottomOfOpeningParamProbed)
+                {
+                    _bottomOfOpeningParamProbed = true;
+                    string[] candidates = { "Bottom Of Opening", "Bottom of Opening", "BottomOfOpening" };
+                    foreach (var candidate in candidates)
+                    {
+                        // âœ… PERF FIX: Only call .Symbol if absolutely necessary, and only once
+                        var symbol = instance.Symbol;
+                        var probe = instance.LookupParameter(candidate) ?? symbol?.LookupParameter(candidate);
+                        if (probe != null && !probe.IsReadOnly)
+                        {
+                            resolvedParamName = candidate;
+                            _cachedBottomOfOpeningParamName = candidate;
+                            break;
+                        }
+                    }
+                }
+                
+                if (resolvedParamName != null)
+                {
+                    if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
                     {
                         var targetDict = ActiveBatchDictionary;
                         if (!targetDict.ContainsKey(currentSleeveId))
                             targetDict[currentSleeveId] = new Dictionary<string, object>();
-                        targetDict[currentSleeveId][paramName] = bottomOfOpening.Value;
                         
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ DEFERRED: Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Added to deferred parameters: {paramName}={bottomOfOpening.Value * 304.8:F1}mm (will be flushed later)\n");
+                        targetDict[currentSleeveId][resolvedParamName] = bottomOfOpening.Value;
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] âœ… DEFERRED: {resolvedParamName}={bottomOfOpening.Value}\n");
+                        }
                     }
                     else
                     {
-                        bottomParam.Set(bottomOfOpening.Value);
-                        
-                        // ✅ DIAGNOSTIC LOGGING: Verify value was set correctly
-                        double actualValue = bottomParam.AsDouble();
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ SET DIRECTLY: Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Set {paramName}={bottomOfOpening.Value * 304.8:F1}mm, " +
-                            $"Actual value after set: {actualValue * 304.8:F1}mm " +
-                            $"(Match: {Math.Abs(actualValue - bottomOfOpening.Value) < 1e-6})\n");
+                        var bottomParam = instance.LookupParameter(resolvedParamName);
+                        if (bottomParam != null && !bottomParam.IsReadOnly)
+                        {
+                            bottomParam.Set(bottomOfOpening.Value);
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] âœ… SET IMMEDIATELY: {resolvedParamName}={bottomOfOpening.Value}\n");
+                            }
+                        }
                     }
                 }
-                else
+                else if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"'Bottom of Opening' parameter not found or read-only (tried: 'Bottom of Opening', 'Bottom Of Opening', 'BottomOfOpening' on instance and symbol)\n");
-                    }
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] âš ï¸  Parameter not found\n");
                 }
             }
             catch (Exception ex)
             {
-                // ✅ CRASH-SAFE: Graceful error handling
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ❌ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Error setting Bottom of Opening: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] â Œ Error: {ex.Message}\n");
                 }
             }
         }
@@ -1580,14 +1396,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         #region Performance Optimization Methods
 
         /// <summary>
-        /// ✅ PERFORMANCE OPTIMIZATION: Get cached level or search and cache it.
+        /// âœ… PERFORMANCE OPTIMIZATION: Get cached level or search and cache it.
         /// Reduces level lookup time by ~70-80% for repeated level names.
         /// </summary>
         private Level? GetCachedLevel(string levelName)
         {
             if (string.IsNullOrWhiteSpace(levelName)) return null;
 
-            // ✅ CACHE HIT: Return cached level
+            // âœ… CACHE HIT: Return cached level
             if (_levelCache.TryGetValue(levelName, out Level cachedLevel))
             {
                 if (cachedLevel != null && cachedLevel.IsValidObject)
@@ -1601,7 +1417,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
             }
 
-            // ✅ CACHE MISS: Search for level and cache it
+            // âœ… CACHE MISS: Search for level and cache it
             var level = new FilteredElementCollector(_doc)
                 .OfClass(typeof(Level))
                 .Cast<Level>()
@@ -1616,20 +1432,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PERFORMANCE OPTIMIZATION: Get cached elevation calculation or calculate and cache it.
+        /// âœ… PERFORMANCE OPTIMIZATION: Get cached elevation calculation or calculate and cache it.
         /// Reduces elevation calculation time by ~60-70% for repeated calculations.
         /// </summary>
         private double? GetCachedElevation(string cacheKey, Func<double?> calculateElevation)
         {
             if (string.IsNullOrWhiteSpace(cacheKey)) return null;
 
-            // ✅ CACHE HIT: Return cached elevation
+            // âœ… CACHE HIT: Return cached elevation
             if (_elevationCache.TryGetValue(cacheKey, out double cachedElevation))
             {
                 return cachedElevation;
             }
 
-            // ✅ CACHE MISS: Calculate elevation and cache it
+            // âœ… CACHE MISS: Calculate elevation and cache it
             var elevation = calculateElevation();
             if (elevation.HasValue)
             {
@@ -1640,7 +1456,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PERFORMANCE OPTIMIZATION: Get cached parameter or search and cache it.
+        /// âœ… PERFORMANCE OPTIMIZATION: Get cached parameter or search and cache it.
         /// Reduces parameter lookup time by ~50-60% for repeated parameter names.
         /// </summary>
         private Parameter? GetCachedParameter(FamilyInstance instance, string parameterName)
@@ -1649,7 +1465,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             string cacheKey = $"{instance.Id.GetIntegerValue()}_{parameterName}";
 
-            // ✅ CACHE HIT: Return cached parameter
+            // âœ… CACHE HIT: Return cached parameter
             if (_parameterCache.TryGetValue(cacheKey, out Parameter cachedParam))
             {
                 if (cachedParam != null && !cachedParam.IsReadOnly)
@@ -1663,7 +1479,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
             }
 
-            // ✅ CACHE MISS: Search for parameter and cache it
+            // âœ… CACHE MISS: Search for parameter and cache it
             var param = instance.LookupParameter(parameterName);
             if (param != null && !param.IsReadOnly)
             {
@@ -1674,18 +1490,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PERFORMANCE OPTIMIZATION: Get cached thickness or calculate and cache it.
+        /// âœ… PERFORMANCE OPTIMIZATION: Get cached thickness or calculate and cache it.
         /// Reduces thickness calculation time by ~40-50% for repeated structural elements.
         /// </summary>
         private double GetCachedThickness(int structuralElementId, Func<double> calculateThickness)
         {
-            // ✅ CACHE HIT: Return cached thickness
+            // âœ… CACHE HIT: Return cached thickness
             if (_thicknessCache.TryGetValue(structuralElementId, out double cachedThickness))
             {
                 return cachedThickness;
             }
 
-            // ✅ CACHE MISS: Calculate thickness and cache it
+            // âœ… CACHE MISS: Calculate thickness and cache it
             var thickness = calculateThickness();
             if (thickness > 0.0)
             {
@@ -1696,7 +1512,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PERFORMANCE OPTIMIZATION: Clear all caches for memory management.
+        /// âœ… PERFORMANCE OPTIMIZATION: Clear all caches for memory management.
         /// Called periodically to prevent memory leaks from cached data.
         /// </summary>
         public void ClearCaches()
@@ -1708,7 +1524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ PERFORMANCE OPTIMIZATION: Get cache statistics for monitoring.
+        /// âœ… PERFORMANCE OPTIMIZATION: Get cache statistics for monitoring.
         /// </summary>
         public string GetCacheStatistics()
         {
@@ -1718,7 +1534,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
         #endregion
         /// <summary>
-        /// ✅ NEW: Pre-cache specific levels upfront.
+        /// âœ… NEW: Pre-cache specific levels upfront.
         /// </summary>
         public void PreCacheLevels(IEnumerable<Level> levels)
         {
@@ -1732,9 +1548,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// ✅ CLUSTER BATCH: Queue rectangular cluster parameters (Width, Height, Depth only — no Diameter).
+        /// âœ… CLUSTER BATCH: Queue rectangular cluster parameters (Width, Height, Depth only â€” no Diameter).
         /// Cluster sleeves are always rectangular; same batching as individual: definition cache + group-by-size in flush.
-        /// Queues to ActiveBatchDictionary without per-instance LookupParameter for 20–30% faster cluster param apply.
+        /// Queues to ActiveBatchDictionary without per-instance LookupParameter for 20â€“30% faster cluster param apply.
         /// </summary>
         public void QueueRectangularClusterParameters(
             ElementId instanceId,
@@ -1748,7 +1564,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!targetDict.ContainsKey(instanceId))
                 targetDict[instanceId] = new Dictionary<string, object>();
 
-            // Rectangular only: Width, Height (HT), Depth — no Diameter
+            // Rectangular only: Width, Height (HT), Depth â€” no Diameter
             targetDict[instanceId]["Width"] = width;
             targetDict[instanceId]["Sleeve Width"] = width;
             targetDict[instanceId]["Height"] = height;
@@ -1765,7 +1581,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (templateZone != null && ShouldSetRotation(templateZone))
                 targetDict[instanceId]["MepElementRotationAngle"] = templateZone.MepElementRotationAngle;
 
-            // ✅ BOTTOM OF OPENING: Same calculation as individual sleeves (Wall/Framing only)
+            // âœ… BOTTOM OF OPENING: Same calculation as individual sleeves (Wall/Framing only)
             // Cluster sleeves are always RectangularOpeningOnWall, so skip family check.
             if (OptimizationFlags.UseBottomOfOpeningCalculation && templateZone != null)
             {
@@ -1777,6 +1593,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (isWallOrFramingHost)
                 {
                     // Elevation hierarchy: 1) DB value, 2) geometric fallback
+                    // All values in FEET (Revit internal units)
                     double? elevationFromLevel = null;
                     if (Math.Abs(templateZone.ElevationFromLevel) > 0.0001)
                     {
@@ -1800,10 +1617,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                 }
             }
+
+            // âœ… CLUSTER LEVEL: Ensure cluster sleeve has the correct Schedule Level set
+            if (templateZone != null && !string.IsNullOrEmpty(templateZone.MepElementLevelName))
+            {
+                var level = GetCachedLevel(templateZone.MepElementLevelName);
+                if (level != null)
+                {
+                    // For clusters, we assume "Schedule Level" (user standard)
+                    // In a production environment, we would also probe/cache parameter names for clusters 
+                    // but clusters usually use a unified "standard" family.
+                    targetDict[instanceId]["Schedule Level"] = level.Id; 
+                }
+            }
         }
 
         /// <summary>
-        /// ✅ CLUSTER ID: Set the Cluster Sleeve Instance ID parameter on the family instance.
+        /// âœ… CLUSTER ID: Set the Cluster Sleeve Instance ID parameter on the family instance.
         /// This allows the user to cross-reference the Revit element with the database cluster.
         /// </summary>
         public void SetClusterSleeveInstanceId(FamilyInstance instance, int clusterInstanceId)
@@ -1820,7 +1650,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🏷️ Set '{paramName}' = {clusterInstanceId} for instance {instance.Id}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ðŸ·ï¸ Set '{paramName}' = {clusterInstanceId} for instance {instance.Id}\n");
                 }
             }
             else
@@ -1829,13 +1659,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                  if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_errors.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Parameter '{paramName}' not found or read-only on instance {instance.Id} (Family: {instance.Symbol.Family.Name})\n");
+                        $"[{DateTime.Now:HH:mm:ss}] âš ï¸ Parameter '{paramName}' not found or read-only on instance {instance.Id} (Family: {instance.Symbol.Family.Name})\n");
                 }
             }
         }
 
         /// <summary>
-        /// ✅ CLUSTER SUPPORT: Set Schedule Level for a cluster instance based on a reference ClashZone.
+        /// âœ… CLUSTER SUPPORT: Set Schedule Level for a cluster instance based on a reference ClashZone.
         /// </summary>
         public void SetScheduleLevelAndElevationForCluster(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId)
         {
@@ -1848,8 +1678,81 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("cluster_params.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 CLUSTER LEVEL SET: Instance={instance.Id.GetIntegerValue()}, Level={zone.MepElementLevelName}\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ðŸ“Š CLUSTER LEVEL SET: Instance={instance.Id.GetIntegerValue()}, Level={zone.MepElementLevelName}\n");
             }
         }
+    
+
+        #region IParameterBatchingService Implementation
+
+        /// <summary>
+        /// INTERFACE IMPLEMENTATION: IParameterBatchingService.DeferParameter
+        /// Queue a parameter value to be written later during flush.
+        /// </summary>
+        public void DeferParameter(ElementId elementId, string parameterName, object value)
+        {
+            if (elementId == null || string.IsNullOrEmpty(parameterName)) return;
+            
+            var targetDict = ActiveBatchDictionary;
+            
+            if (!targetDict.ContainsKey(elementId))
+            {
+                targetDict[elementId] = new Dictionary<string, object>();
+            }
+            
+            targetDict[elementId][parameterName] = value;
+        }
+
+        /// <summary>
+        /// INTERFACE IMPLEMENTATION: IParameterBatchingService.FlushDeferredParameters
+        /// Write all accumulated parameter values to elements after regeneration.
+        /// </summary>
+        public int FlushDeferredParameters(Document doc)
+        {
+            // Delegate to existing implementation with default options
+            return FlushDeferredParameters(clearList: true, context: "BatchFlush");
+        }
+
+        /// <summary>
+        /// INTERFACE IMPLEMENTATION: IParameterBatchingService.Clear
+        /// Clear all deferred parameters without writing them.
+        /// </summary>
+        public void Clear()
+        {
+            _deferredParameters.Clear();
+            if (DivertedBatchDictionary != null)
+            {
+                DivertedBatchDictionary.Clear();
+            }
+        }
+
+        /// <summary>
+        /// INTERFACE IMPLEMENTATION: IParameterBatchingService.DeferredElementCount
+        /// Get count of elements with deferred parameters.
+        /// </summary>
+        public int DeferredElementCount
+        {
+            get { return ActiveBatchDictionary?.Count ?? 0; }
+        }
+
+        /// <summary>
+        /// INTERFACE IMPLEMENTATION: IParameterBatchingService.DeferredParameterCount
+        /// Get total count of deferred parameter values.
+        /// </summary>
+        public int DeferredParameterCount
+        {
+            get { return ActiveBatchDictionary?.Values.Sum(d => d.Count) ?? 0; }
+        }
+
+        /// <summary>
+        /// INTERFACE IMPLEMENTATION: IParameterBatchingService.IsBatchingEnabled
+        /// Check if batching is enabled via optimization flags.
+        /// </summary>
+        public bool IsBatchingEnabled
+        {
+            get { return OptimizationFlags.UseBatchedParameterWrites; }
+        }
+
+        #endregion
     }
 }

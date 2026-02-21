@@ -12,11 +12,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public static class SleeveLogManager
     {
         // Log file paths
-        private static readonly string SummaryLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_Summary.log");
-        private static readonly string PipeLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_Pipes.log");
-        private static readonly string DuctLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_Ducts.log");
-        private static readonly string CableTrayLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_CableTrays.log");
-        private static readonly string DebugLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveManager_Debug.log");
+        // Log filenames
+        private static readonly string SummaryLogName = "SleeveManager_Summary.log";
+        private static readonly string PipeLogName = "SleeveManager_Pipes.log";
+        private static readonly string DuctLogName = "SleeveManager_Ducts.log";
+        private static readonly string CableTrayLogName = "SleeveManager_CableTrays.log";
+        private static readonly string DebugLogName = "SleeveManager_Debug.log";
 
         // Statistics tracking
         private static int _totalPipesWithWalls = 0;
@@ -46,10 +47,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // Create header for each log
                 string header = $"===== JSE MEP SLEEVE PLACEMENT LOG {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\r\n";
-        {
-            if (!DebugLogger.IsEnabled) return;
-            // ...existing code...
-        }
                 _totalDuctsWithWalls = 0;
                 _totalDuctSleevesPLaced = 0;
                 _totalCableTraysWithWalls = 0;
@@ -64,11 +61,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _allModelCableTrays.Clear();
 
                 // Create/overwrite each log file
-                File.WriteAllText(SummaryLogPath, header + "SUMMARY LOG\r\n\r\n");
-                File.WriteAllText(PipeLogPath, header + "PIPE SLEEVE LOG\r\n\r\n");
-                File.WriteAllText(DuctLogPath, header + "DUCT SLEEVE LOG\r\n\r\n");
-                File.WriteAllText(CableTrayLogPath, header + "CABLE TRAY SLEEVE LOG\r\n\r\n");
-                File.WriteAllText(DebugLogPath, header + "DETAILED DEBUG LOG\r\n\r\n");
+                // Create/overwrite each log file header
+                SafeFileLogger.SafeAppendTextAlways(SummaryLogName, header + "SUMMARY LOG\n");
+                SafeFileLogger.SafeAppendTextAlways(PipeLogName, header + "PIPE SLEEVE LOG\n");
+                SafeFileLogger.SafeAppendTextAlways(DuctLogName, header + "DUCT SLEEVE LOG\n");
+                SafeFileLogger.SafeAppendTextAlways(CableTrayLogName, header + "CABLE TRAY SLEEVE LOG\n");
+                SafeFileLogger.SafeAppendTextAlways(DebugLogName, header + "DETAILED DEBUG LOG\n");
             }
             catch (Exception ex)
             {
@@ -87,7 +85,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             foreach (var id in ductIds) _allModelDucts.Add(id);
             foreach (var id in cableTrayIds) _allModelCableTrays.Add(id);
 
-            AppendToLog(DebugLogPath, $"Registered model elements - Pipes: {_allModelPipes.Count}, Ducts: {_allModelDucts.Count}, CableTrays: {_allModelCableTrays.Count}");
+            AppendToLog(DebugLogName, $"Registered model elements - Pipes: {_allModelPipes.Count}, Ducts: {_allModelDucts.Count}, CableTrays: {_allModelCableTrays.Count}");
 
             // Log all pipe IDs for debugging
             StringBuilder pipeIds_str = new StringBuilder("Registered pipe IDs: ");
@@ -95,7 +93,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 pipeIds_str.Append($"{id}, ");
             }
-            AppendToLog(DebugLogPath, pipeIds_str.ToString());
+            AppendToLog(DebugLogName, pipeIds_str.ToString());
         }
         /// <summary>
         /// Log a found pipe wall intersection
@@ -108,16 +106,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             string wallInfo = wallId > 0 ? $"wall {wallId}" : "wall";
             string message = $"Found pipe {elementId} intersecting {wallInfo} at {FormatXYZ(location)}, diameter: {FormatMM(diameter)}mm";
-            AppendToLog(PipeLogPath, message);
+            AppendToLog(PipeLogName, message);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
-            AppendToLog(DebugLogPath, $"  Location: {FormatXYZ(location)}");
+            AppendToLog(DebugLogName, $"PIPE-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
+            AppendToLog(DebugLogName, $"  Location: {FormatXYZ(location)}");
             if (wallOrientation != null)
             {
-                AppendToLog(DebugLogPath, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
+                AppendToLog(DebugLogName, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
             }
-            AppendToLog(DebugLogPath, $"  Pipe diameter: {FormatMM(diameter)}mm");
+            AppendToLog(DebugLogName, $"  Pipe diameter: {FormatMM(diameter)}mm");
         }
 
         /// <summary>
@@ -129,12 +127,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _totalPipeSleevesPLaced++;
 
             string message = $"SUCCESS: Placed sleeve {sleeveId} for pipe {elementId}, sleeve diameter: {FormatMM(sleeveDiameter)}mm";
-            AppendToLog(PipeLogPath, message);
+            AppendToLog(PipeLogName, message);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE SLEEVE PLACED - Pipe: {elementId}, Sleeve: {sleeveId}");
-            AppendToLog(DebugLogPath, $"  Final position: {FormatXYZ(sleevePosition)}");
-            AppendToLog(DebugLogPath, $"  Sleeve diameter: {FormatMM(sleeveDiameter)}mm");
+            AppendToLog(DebugLogName, $"PIPE SLEEVE PLACED - Pipe: {elementId}, Sleeve: {sleeveId}");
+            AppendToLog(DebugLogName, $"  Final position: {FormatXYZ(sleevePosition)}");
+            AppendToLog(DebugLogName, $"  Sleeve diameter: {FormatMM(sleeveDiameter)}mm");
         }
 
         /// <summary>
@@ -145,12 +143,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string message = $"FAILED: Could not place sleeve for pipe {elementId}. Reason: {reason}";
-            AppendToLog(PipeLogPath, message);
+            AppendToLog(PipeLogName, message);
             _missingPipes.Add($"Pipe {elementId}: {reason}");
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE SLEEVE FAILED - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Reason: {reason}");
+            AppendToLog(DebugLogName, $"PIPE SLEEVE FAILED - Element: {elementId}");
+            AppendToLog(DebugLogName, $"  Reason: {reason}");
         }
 
         /// <summary>
@@ -163,16 +161,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _processedElements.Add(elementId);
             string wallInfo = wallId > 0 ? $"wall {wallId}" : "wall";
             string message = $"Found duct {elementId} intersecting {wallInfo} at {FormatXYZ(location)}, size: {FormatMM(width)}mm × {FormatMM(height)}mm";
-            AppendToLog(DuctLogPath, message);
+            AppendToLog(DuctLogName, message);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"DUCT-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
-            AppendToLog(DebugLogPath, $"  Location: {FormatXYZ(location)}");
+            AppendToLog(DebugLogName, $"DUCT-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
+            AppendToLog(DebugLogName, $"  Location: {FormatXYZ(location)}");
             if (wallOrientation != null)
             {
-                AppendToLog(DebugLogPath, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
+                AppendToLog(DebugLogName, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
             }
-            AppendToLog(DebugLogPath, $"  Duct size: {FormatMM(width)}mm × {FormatMM(height)}mm");
+            AppendToLog(DebugLogName, $"  Duct size: {FormatMM(width)}mm × {FormatMM(height)}mm");
         }
 
         /// <summary>
@@ -184,12 +182,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _totalDuctSleevesPLaced++;
 
             string message = $"SUCCESS: Placed sleeve {sleeveId} for duct {elementId}, sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm";
-            AppendToLog(DuctLogPath, message);
+            AppendToLog(DuctLogName, message);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"DUCT SLEEVE PLACED - Duct: {elementId}, Sleeve: {sleeveId}");
-            AppendToLog(DebugLogPath, $"  Final position: {FormatXYZ(sleevePosition)}");
-            AppendToLog(DebugLogPath, $"  Sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm");
+            AppendToLog(DebugLogName, $"DUCT SLEEVE PLACED - Duct: {elementId}, Sleeve: {sleeveId}");
+            AppendToLog(DebugLogName, $"  Final position: {FormatXYZ(sleevePosition)}");
+            AppendToLog(DebugLogName, $"  Sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm");
         }
 
         /// <summary>
@@ -200,12 +198,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string message = $"FAILED: Could not place sleeve for duct {elementId}. Reason: {reason}";
-            AppendToLog(DuctLogPath, message);
+            AppendToLog(DuctLogName, message);
             _missingDucts.Add($"Duct {elementId}: {reason}");
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"DUCT SLEEVE FAILED - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Reason: {reason}");
+            AppendToLog(DebugLogName, $"DUCT SLEEVE FAILED - Element: {elementId}");
+            AppendToLog(DebugLogName, $"  Reason: {reason}");
         }
 
         /// <summary>
@@ -219,16 +217,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             string wallInfo = wallId > 0 ? $"wall {wallId}" : "wall";
             string message = $"Found cable tray {elementId} intersecting {wallInfo} at {FormatXYZ(location)}, size: {FormatMM(width)}mm × {FormatMM(height)}mm";
-            AppendToLog(CableTrayLogPath, message);
+            AppendToLog(CableTrayLogName, message);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"CABLETRAY-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
-            AppendToLog(DebugLogPath, $"  Location: {FormatXYZ(location)}");
+            AppendToLog(DebugLogName, $"CABLETRAY-WALL INTERSECTION - Element: {elementId}, Wall: {(wallId > 0 ? wallId.ToString() : "unknown")}");
+            AppendToLog(DebugLogName, $"  Location: {FormatXYZ(location)}");
             if (wallOrientation != null)
             {
-                AppendToLog(DebugLogPath, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
+                AppendToLog(DebugLogName, $"  Wall orientation: {FormatXYZ(wallOrientation)}");
             }
-            AppendToLog(DebugLogPath, $"  Cable tray size: {FormatMM(width)}mm × {FormatMM(height)}mm");
+            AppendToLog(DebugLogName, $"  Cable tray size: {FormatMM(width)}mm × {FormatMM(height)}mm");
         }
 
         /// <summary>
@@ -240,12 +238,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _totalCableTraySleevesPLaced++;
 
             string message = $"SUCCESS: Placed sleeve {sleeveId} for cable tray {elementId}, sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm";
-            AppendToLog(CableTrayLogPath, message);
+            AppendToLog(CableTrayLogName, message);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"CABLETRAY SLEEVE PLACED - Cable Tray: {elementId}, Sleeve: {sleeveId}");
-            AppendToLog(DebugLogPath, $"  Final position: {FormatXYZ(sleevePosition)}");
-            AppendToLog(DebugLogPath, $"  Sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm");
+            AppendToLog(DebugLogName, $"CABLETRAY SLEEVE PLACED - Cable Tray: {elementId}, Sleeve: {sleeveId}");
+            AppendToLog(DebugLogName, $"  Final position: {FormatXYZ(sleevePosition)}");
+            AppendToLog(DebugLogName, $"  Sleeve size: {FormatMM(sleeveWidth)}mm × {FormatMM(sleeveHeight)}mm");
         }
 
         /// <summary>
@@ -256,12 +254,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string message = $"FAILED: Could not place sleeve for cable tray {elementId}. Reason: {reason}";
-            AppendToLog(CableTrayLogPath, message);
+            AppendToLog(CableTrayLogName, message);
             _missingCableTrays.Add($"Cable Tray {elementId}: {reason}");
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"CABLETRAY SLEEVE FAILED - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Reason: {reason}");
+            AppendToLog(DebugLogName, $"CABLETRAY SLEEVE FAILED - Element: {elementId}");
+            AppendToLog(DebugLogName, $"  Reason: {reason}");
         }
 
         /// <summary>
@@ -270,11 +268,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void LogCableTraySleeveInfo(int elementId, string info)
         {
             if (!DebugLogger.IsEnabled) return;
-            string message = $"INFO: Cable tray {elementId}: {info}";
-            AppendToLog(CableTrayLogPath, message);
+            AppendToLog(CableTrayLogName, info);
             // Also log to debug for traceability
-            AppendToLog(DebugLogPath, $"CABLETRAY SLEEVE INFO - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Info: {info}");
+            AppendToLog(DebugLogName, $"CABLETRAY SLEEVE INFO - Element: {elementId}");
+            AppendToLog(DebugLogName, $"  Info: {info}");
         }
 
         /// <summary>
@@ -285,11 +282,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DebugLogger.IsEnabled) return;
             _warnings.Add(message);
             string formattedMessage = $"WARNING: {message}";
-            AppendToLog(SummaryLogPath, formattedMessage);
-            AppendToLog(PipeLogPath, formattedMessage);
-            AppendToLog(DuctLogPath, formattedMessage);
-            AppendToLog(CableTrayLogPath, formattedMessage);
-            AppendToLog(DebugLogPath, formattedMessage);
+            AppendToLog(SummaryLogName, formattedMessage);
+            AppendToLog(PipeLogName, formattedMessage);
+            AppendToLog(DuctLogName, formattedMessage);
+            AppendToLog(CableTrayLogName, formattedMessage);
+            AppendToLog(DebugLogName, formattedMessage);
         }
 
         /// <summary>
@@ -300,11 +297,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string logMessage = $"INSPECT: Pipe {elementId} - {message}";
-            AppendToLog(PipeLogPath, logMessage);
+            AppendToLog(PipeLogName, logMessage);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"PIPE INSPECTION - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Note: {message}");
+            AppendToLog(DebugLogName, $"PIPE INSPECTION - Element: {elementId}");
+            AppendToLog(DebugLogName, $"  Note: {message}");
         }
 
         /// <summary>
@@ -315,11 +312,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DebugLogger.IsEnabled) return;
             _processedElements.Add(elementId);
             string logMessage = $"INSPECT: Duct {elementId} - {message}";
-            AppendToLog(DuctLogPath, logMessage);
+            AppendToLog(DuctLogName, logMessage);
 
             // More detailed info in debug log
-            AppendToLog(DebugLogPath, $"DUCT INSPECTION - Element: {elementId}");
-            AppendToLog(DebugLogPath, $"  Note: {message}");
+            AppendToLog(DebugLogName, $"DUCT INSPECTION - Element: {elementId}");
+            AppendToLog(DebugLogName, $"  Note: {message}");
         }
 
         /// <summary>
@@ -333,22 +330,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Log to both element-specific and debug logs
             if (elementType.Equals("Pipe", StringComparison.OrdinalIgnoreCase))
             {
-                AppendToLog(PipeLogPath, message);
+                AppendToLog(PipeLogName, message);
             }
             else if (elementType.Equals("Duct", StringComparison.OrdinalIgnoreCase))
             {
-                AppendToLog(DuctLogPath, message);
+                AppendToLog(DuctLogName, message);
             }
             else if (elementType.Equals("CableTray", StringComparison.OrdinalIgnoreCase))
             {
-                AppendToLog(CableTrayLogPath, message);
+                AppendToLog(CableTrayLogName, message);
             }
 
             // Detailed debug info
-            AppendToLog(DebugLogPath, $"WALL PROXIMITY - {elementType}: {elementId}, Wall: {wallId}");
-            AppendToLog(DebugLogPath, $"  Distance: {FormatMM(distance)}mm");
-            AppendToLog(DebugLogPath, $"  Element point: {FormatXYZ(elementPoint)}");
-            AppendToLog(DebugLogPath, $"  Wall point: {FormatXYZ(wallPoint)}");
+            AppendToLog(DebugLogName, $"WALL PROXIMITY - {elementType}: {elementId}, Wall: {wallId}");
+            AppendToLog(DebugLogName, $"  Distance: {FormatMM(distance)}mm");
+            AppendToLog(DebugLogName, $"  Element point: {FormatXYZ(elementPoint)}");
+            AppendToLog(DebugLogName, $"  Wall point: {FormatXYZ(wallPoint)}");
         }
 
         /// <summary>
@@ -357,7 +354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static void LogDebug(string message)
         {
             if (!DebugLogger.IsEnabled) return;
-            AppendToLog(DebugLogPath, $"DEBUG: {message}");
+            AppendToLog(DebugLogName, $"DEBUG: {message}");
         }
 
         /// <summary>
@@ -425,16 +422,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Write summary to all log files
                 string summaryText = summary.ToString();
-                AppendToLog(SummaryLogPath, summaryText);
-                AppendToLog(PipeLogPath, summaryText);
-                AppendToLog(DuctLogPath, summaryText);
-                AppendToLog(CableTrayLogPath, summaryText);
-                AppendToLog(DebugLogPath, summaryText);
+                AppendToLog(SummaryLogName, summaryText);
+                AppendToLog(PipeLogName, summaryText);
+                AppendToLog(DuctLogName, summaryText);
+                AppendToLog(CableTrayLogName, summaryText);
+                AppendToLog(DebugLogName, summaryText);
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"Failed to finalize log files: {ex.Message}");
+                DebugLogger.Error($"Failed to finalize log files: {ex.Message}");
             }
         }
 
@@ -450,8 +446,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     string message = $"Pipe {pipeId}: COMPLETELY MISSED - No wall intersection detected";
                     _missingPipes.Add(message);
-                    AppendToLog(PipeLogPath, $"MISSED: {message}");
-                    AppendToLog(DebugLogPath, $"UNPROCESSED ELEMENT: {message}");
+                    AppendToLog(PipeLogName, $"MISSED: {message}");
+                    AppendToLog(DebugLogName, $"UNPROCESSED ELEMENT: {message}");
                 }
             }
 
@@ -462,8 +458,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     string message = $"Duct {ductId}: COMPLETELY MISSED - No wall intersection detected";
                     _missingDucts.Add(message);
-                    AppendToLog(DuctLogPath, $"MISSED: {message}");
-                    AppendToLog(DebugLogPath, $"UNPROCESSED ELEMENT: {message}");
+                    AppendToLog(DuctLogName, $"MISSED: {message}");
+                    AppendToLog(DebugLogName, $"UNPROCESSED ELEMENT: {message}");
                 }
             }
 
@@ -474,8 +470,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     string message = $"Cable Tray {trayId}: COMPLETELY MISSED - No wall intersection detected";
                     _missingCableTrays.Add(message);
-                    AppendToLog(CableTrayLogPath, $"MISSED: {message}");
-                    AppendToLog(DebugLogPath, $"UNPROCESSED ELEMENT: {message}");
+                    AppendToLog(CableTrayLogName, $"MISSED: {message}");
+                    AppendToLog(DebugLogName, $"UNPROCESSED ELEMENT: {message}");
                 }
             }
         }
@@ -493,20 +489,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return UnitUtils.ConvertFromInternalUnits(value, UnitTypeId.Millimeters).ToString("F2");
         }
 
-        private static void AppendToLog(string logPath, string message)
+        private static void AppendToLog(string logName, string message)
         {
             try
             {
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\r\n");
-                }
+                // ✅ PERFORMANCE: Consolidate to SafeFileLogger
+                SafeFileLogger.SafeAppendText(logName, message);
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"Failed to write to log {Path.GetFileName(logPath)}: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"Failed to write to log {logName}: {ex.Message}");
             }
         }
     }

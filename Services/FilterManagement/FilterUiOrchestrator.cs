@@ -558,7 +558,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FilterManagement
                 
                 var loadedFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int dbLoadedCount = 0;
-                int xmlLoadedCount = 0;
+                // int xmlLoadedCount = 0; // FIX: CS0219 - commented to fix critical warning
                 
                 // ✅ STEP 1: Load from DATABASE FIRST (primary source)
                 try

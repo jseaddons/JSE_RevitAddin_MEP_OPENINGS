@@ -9,7 +9,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     public class ClusterSleeve
     {
         public int ClusterSleeveId { get; set; }
-        public int ClusterInstanceId { get; set; }
+        public long ClusterInstanceId { get; set; }
         public string Category { get; set; } = string.Empty;
         
         // Corners 1-4 X/Y/Z

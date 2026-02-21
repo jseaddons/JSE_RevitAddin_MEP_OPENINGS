@@ -49,6 +49,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Switch
                     OptimizationFlags.UseDiagnosticMode = true;
                     DeploymentConfiguration.DeploymentMode = false;
                     OptimizationFlags.LogPerformanceMetrics = true;
+                    OptimizationFlags.DisableVerboseLogging = false; // ✅ ENABLE VERBOSE LOGGING
                     
                     // Use System.Diagnostics.Debug to avoid logging overhead when enabling logging
                     System.Diagnostics.Debug.WriteLine("[MasterSwitch] ✅ DiagnosticLogging = true: Diagnostic logging ENABLED (WARNING: 3x slower performance)");
@@ -60,6 +61,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Switch
                     OptimizationFlags.UseDiagnosticMode = false;
                     DeploymentConfiguration.DeploymentMode = true;
                     OptimizationFlags.LogPerformanceMetrics = false;
+                    OptimizationFlags.DisableVerboseLogging = true;  // ✅ DISABLE VERBOSE LOGGING
                     
                     System.Diagnostics.Debug.WriteLine("[MasterSwitch] ⚠️ DiagnosticLogging = false: Diagnostic logging DISABLED, Deployment mode ENABLED (FASTER performance)");
                 }

@@ -23,8 +23,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         private readonly Action<string> _logger;
         private bool _disposed;
         
-        // ⚡ OPTIMIZATION: Session-level guard to skip schema verification after first DB context creation
-        private static bool _schemaVerifiedOnce = false;
 
         /// <summary>
         /// ✅ IST TIMEZONE: Convert UTC to IST (Indian Standard Time = UTC+5:30)
@@ -58,6 +56,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 var assemblyDirectory = Path.GetDirectoryName(assemblyLocation) ?? string.Empty;
 
                 _logger($"[SQLite] Assembly directory: {assemblyDirectory}");
+
+#if NET8_0_OR_GREATER
+                // ✅ CRITICAL: Initialize SQLitePCL for .NET 8 (Revit 2025+)
+                // This resolves the "You need to call SQLitePCL.raw.SetProvider()" error in Revit plugins.
+                try { SQLitePCL.Batteries_V2.Init(); } catch (Exception pex) { _logger($"[SQLite] ⚠️ SQLitePCL Init Warning: {pex.Message}"); }
+#endif
+
 #if !NET8_0_OR_GREATER
                 // System.Data.SQLite native DLL verification (not needed for Microsoft.Data.Sqlite on NET8+)
                 VerifyDependency("System.Data.SQLite.dll", assemblyDirectory);
@@ -142,29 +147,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     cmd.ExecuteNonQuery();
                 }
 
-                // ⚡ OPTIMIZATION: Skip schema verification after first context creation in session
-                if (OptimizationFlags.UseOneTimeDbVerificationDuringSession)
-                {
-                    if (!_schemaVerifiedOnce)
-                    {
-                        EnsureSchemaCreated();
-                        EnsureSchemaUpgraded();
-                        CheckRTreeSupport();
-                        _schemaVerifiedOnce = true;
-                    }
-                    else
-                    {
-                        if (!OptimizationFlags.DisableVerboseLogging)
-                            _logger("[SQLite] ⏭️ Skipping schema verification (session-cached)");
-                    }
-                }
-                else
-                {
-                    // Legacy path: always verify schema
-                    EnsureSchemaCreated();
-                    EnsureSchemaUpgraded();
-                    CheckRTreeSupport();
-                }
+                // ⚡ OPTIMIZATION: Verify schema on context creation
+                // We use IF NOT EXISTS and ColumnExists checks which are efficient.
+                EnsureSchemaCreated();
+                EnsureSchemaUpgraded();
+                CheckRTreeSupport();
 
                 if (File.Exists(_databasePath))
                 {
@@ -176,6 +163,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             {
                 _logger($"[SQLite] ❌ Error during initialization: {ex.Message}");
                 _logger($"[SQLite] Stack trace: {ex.StackTrace}");
+                
+                // Show user-friendly error before throwing
+                var userMessage = $"Database connection failed:\n\n{ex.Message}\n\n" +
+                    "This can happen when:\n" +
+                    "• SQLite DLLs are missing (x64\\SQLite.Interop.dll)\n" +
+                    "• Database file is locked by another Revit instance\n" +
+                    "• Antivirus is blocking file access\n\n" +
+                    "Check the log file for details.";
+                    
+                System.Windows.Forms.MessageBox.Show(
+                    userMessage,
+                    "❌ Database Connection Failed",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Error);
+                
                 throw;
             }
         }
@@ -192,6 +194,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             _databasePath = databasePath;
 
 #if NET8_0_OR_GREATER
+            // ✅ CRITICAL: Initialize SQLitePCL for .NET 8 (Revit 2025+)
+            try { SQLitePCL.Batteries_V2.Init(); } catch (Exception pex) { _logger($"[SQLite] ⚠️ SQLitePCL Init Warning: {pex.Message}"); }
             _connection = new SQLiteConnection($"Data Source={_databasePath}");
 #else
             var builder = new SQLiteConnectionStringBuilder
@@ -419,6 +423,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             MepSystemName TEXT,
                             MepServiceType TEXT,
                             ElevationFromLevel REAL DEFAULT 0.0,
+                            MepCategory TEXT,
+                            StructuralType TEXT,
+                            HostOrientation TEXT,
+                            WallDirectionType TEXT,
+                            MepOrientationDirection TEXT,
+                            MepOrientationX REAL,
+                            MepOrientationY REAL,
+                            MepOrientationZ REAL,
+                            MepRotationAngleRad REAL,
+                            MepRotationAngleDeg REAL,
+                            MepAngleToXRad REAL,
+                            MepAngleToXDeg REAL,
+                            MepAngleToYRad REAL,
+                            MepAngleToYDeg REAL,
+                            MepWidth REAL,
+                            MepHeight REAL,
+                            MepElementLevelName TEXT,
+                            MepElementLevelElevation REAL DEFAULT 0.0,
+                            WallCenterlinePointX REAL DEFAULT 0.0,
+                            WallCenterlinePointY REAL DEFAULT 0.0,
+                            WallCenterlinePointZ REAL DEFAULT 0.0,
+                            PlacementStatus TEXT DEFAULT 'NotReady',
+                            CalculatedSleeveWidth REAL,
+                            CalculatedSleeveHeight REAL,
+                            CalculatedSleeveDiameter REAL,
+                            CalculatedSleeveDepth REAL,
+                            CalculatedRotation REAL,
+                            CalculatedPlacementX REAL,
+                            CalculatedPlacementY REAL,
+                            CalculatedPlacementZ REAL,
+                            CalculatedFamilyName TEXT,
+                            ValidationStatus TEXT DEFAULT 'Valid',
+                            ValidationMessage TEXT,
+                            CalculationBatchId TEXT,
+                            CalculatedAt TEXT,
+                            PlacedAt TEXT,
+                            IsCurrentClashFlag INTEGER NOT NULL DEFAULT 0,
+                            ReadyForPlacementFlag INTEGER NOT NULL DEFAULT 0,
+                            IsResolvedFlag INTEGER NOT NULL DEFAULT 0,
+                            IsClusterResolvedFlag INTEGER NOT NULL DEFAULT 0,
+                            IsCombinedResolved INTEGER NOT NULL DEFAULT 0,
+                            IsClusteredFlag INTEGER NOT NULL DEFAULT 0,
+                            MarkedForClusterProcess INTEGER,
+                            AfterClusterSleeveId INTEGER NOT NULL DEFAULT -1,
+                            CombinedClusterSleeveInstanceId INTEGER,
+                            HasDamperNearbyFlag INTEGER NOT NULL DEFAULT 0,
+                            HasMepConnector INTEGER DEFAULT 0,
+                            DamperConnectorSide TEXT DEFAULT '',
+                            IsInsulated INTEGER DEFAULT 0,
+                            InsulationThickness REAL DEFAULT 0.0,
+                            MepParameterValuesJson TEXT,
+                            HostParameterValuesJson TEXT,
+                            MepElementTypeName TEXT,
+                            MepElementFamilyName TEXT,
+                            MepElementSizeParameterValue TEXT DEFAULT '',
+                            SourceDocKey TEXT,
+                            HostDocKey TEXT,
+                            MepElementUniqueId TEXT,
                             UpdatedAt     DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             FOREIGN KEY(ComboId) REFERENCES FileCombos(ComboId) ON DELETE CASCADE,
                             UNIQUE(ComboId, MepElementId, HostElementId, IntersectionX, IntersectionY, IntersectionZ)
@@ -648,7 +710,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "MepOrientationY", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepOrientationZ", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepRotationAngleRad", "REAL", transaction);
-                    AddColumnIfMissing("ClashZones", "MepRotationAngleDeg", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepRotationAngleDeg", "REAL", transaction);
                     
                     // ✅ UNIFIED BATCH MODE (PHASE 3): New columns for individual sleeve calculation & persistence
@@ -1081,6 +1142,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     
                     // ✅ USER REQUEST: Add MepSystemName to ClashZones
                     AddColumnIfMissing("ClashZones", "MepSystemName", "TEXT", transaction);
+                    
+                    // ✅ USER REQUEST: Add WallDirectionType for wall-aligned rotation logic
+                    if (AddColumnIfMissing("ClashZones", "WallDirectionType", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added WallDirectionType column to ClashZones");
 
                     transaction.Commit();
                 }
@@ -1166,6 +1231,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_sleeve ON SleeveSnapshots(SleeveInstanceId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_cluster ON SleeveSnapshots(ClusterInstanceId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_guid ON SleeveSnapshots(ClashZoneGuid)", transaction);
+
+            // ✅ MIGRATION: Add CombinedInstanceId column if missing (Phase 4 Combined Sleeves)
+            AddColumnIfMissing("SleeveSnapshots", "CombinedInstanceId", "INTEGER", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_combined ON SleeveSnapshots(CombinedInstanceId)", transaction);
         }
 
         /// <summary>
@@ -1497,8 +1566,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         {
             if (!_disposed)
             {
-                _connection?.Close();
-                _connection?.Dispose();
+                if (_connection != null)
+                {
+                    _connection.Close();
+#if NET8_0_OR_GREATER
+                    // ✅ CRITICAL: Clear pool for .NET 8/Microsoft.Data.Sqlite to prevent file locks
+                    SQLiteConnection.ClearPool(_connection);
+#endif
+                    _connection.Dispose();
+                }
                 _disposed = true;
             }
         }
@@ -1737,6 +1813,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves_v2", "MepServiceTypes", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves_v2", "MepElementIds", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves_v2", "IsRotated", "INTEGER DEFAULT 0", transaction);
+            
+            // ✅ CRITICAL: Ensure ClusterInstanceId exists for mapping after placement
+            // This connects the Revit Element to the pre-calculated cluster data.
+            AddColumnIfMissing("ClusterSleeves_v2", "ClusterInstanceId", "INTEGER DEFAULT -1", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "ComboId", "INTEGER", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "FilterId", "INTEGER", transaction);
 
             // ✅ BOUNDING BOXES: Add bounding box columns for Stage 2 Cleanup
             AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMinX", "REAL DEFAULT 0.0", transaction);
@@ -1902,12 +1984,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         /// </summary>
         public void ClearAllTables()
         {
+#if NET8_0_OR_GREATER
+            // ✅ CRITICAL: In Microsoft.Data.Sqlite (.NET 8), PRAGMA foreign_keys cannot be toggled INSIDE a transaction.
+            using (var fkOffCmd = _connection.CreateCommand())
+            {
+                fkOffCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                fkOffCmd.ExecuteNonQuery();
+            }
+#endif
+
             using (var transaction = _connection.BeginTransaction())
             {
                 try
                 {
-                    // Disable foreign keys temporarily to avoid constraint violations during clear
+#if !NET8_0_OR_GREATER
+                    // Legacy behavior for System.Data.SQLite
                     ExecuteCommand("PRAGMA foreign_keys = OFF;", transaction);
+#endif
 
                     // Clear tables in dependency order (reverse creation order roughly)
                     ExecuteCommand("DELETE FROM SleeveEvents;", transaction);
@@ -1926,11 +2019,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // Reset auto-increment counters
                     ExecuteCommand("DELETE FROM sqlite_sequence WHERE name IN ('SleeveEvents', 'ClashZones', 'ClusterSleeves', 'ClusterSleeves_v2', 'SleeveSnapshots', 'ParameterTransferFlags', 'CategoryProcessingMarkers', 'Conditions', 'FileCombos', 'Filters');", transaction);
 
-                    // Re-enable foreign keys
+#if !NET8_0_OR_GREATER
+                    // Re-enable foreign keys inside transaction for System.Data.SQLite
                     ExecuteCommand("PRAGMA foreign_keys = ON;", transaction);
+#endif
 
                     transaction.Commit();
-                    _logger("[SQLite] ✅ All tables cleared successfully.");
                 }
                 catch (Exception ex)
                 {
@@ -1939,6 +2033,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     throw;
                 }
             }
+
+#if NET8_0_OR_GREATER
+            // Re-enable foreign keys OUTSIDE the transaction for .NET 8
+            using (var fkOnCmd = _connection.CreateCommand())
+            {
+                fkOnCmd.CommandText = "PRAGMA foreign_keys = ON;";
+                fkOnCmd.ExecuteNonQuery();
+            }
+#endif
+            _logger("[SQLite] ✅ All tables cleared successfully.");
         }
     }
 }

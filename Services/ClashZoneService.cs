@@ -1,19 +1,23 @@
 using System;
+using System.Globalization;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection;
 using JSE_RevitAddin_MEP_OPENINGS.Services.InsulationDetection;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -31,18 +35,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ MEMORY PROFILING: Profiler for tracking actual memory usage per clash zone
         private MemoryProfiler? _memoryProfiler;
         
+        // ✅ PERFORMANCE MONITOR: Track sub-operations during clash zone detection
+        private PerformanceMonitor? _performanceMonitor;
+        
         // ✅ OOP REFACTORING: Optional FlagManager for centralized flag operations
         private readonly Services.Interfaces.Refactor.IFlagManager? _flagManager;
         
         // ✅ OOP REFACTORING: Optional GuidManager for centralized GUID operations
         private readonly GuidManager? _guidManager;
-        
+
+        // PERF OPT: Single shared InsulationDetector — stateless, safe to reuse across all CreateClashZone calls
+        private readonly InsulationDetector _insulationDetector = new InsulationDetector();
+
+        // PERF OPT: Shared strategy instances — all are stateless (no mutable fields), safe to reuse
+        private readonly ISleevePlacementStrategy _ductStrategy = new Strategies.DuctPlacementStrategy();
+        private readonly ISleevePlacementStrategy _pipeStrategy = new Strategies.PipePlacementStrategy();
+        private readonly ISleevePlacementStrategy _cableTrayStrategy = new Strategies.CableTrayPlacementStrategy();
+        // DamperPlacementStrategy holds a Document reference — cache by document to avoid re-allocation
+        private Strategies.DamperPlacementStrategy _cachedDamperStrategy;
+        private Document _cachedDamperStrategyDoc;
+
+        // ✅ PARALLEL PROCESSING: Threshold for enabling parallel zone creation
+        // Below this threshold: single-threaded (lower overhead)
+        // Above this threshold: parallel processing (better utilization)
+        private const int PARALLEL_THRESHOLD = 100;
+
         public ClashZoneService(ClashZoneStorage? clashZoneStorage, Action<string>? log, Services.Interfaces.Refactor.IFlagManager? flagManager = null, GuidManager? guidManager = null)
         {
             _clashZoneStorage = clashZoneStorage;
             _log = log;
             _flagManager = flagManager; // Optional dependency for backward compatibility
             _guidManager = guidManager; // Optional dependency for backward compatibility
+        }
+
+        /// <summary>
+        /// ✅ PERFORMANCE OPTIMIZATION: Wrap slow disk logging in a diagnostic guard.
+        /// This method is called in tight loops and avoids hundreds of slow SafeFileLogger calls.
+        /// </summary>
+        private void SafeLog(string filename, string message)
+        {
+            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText(filename, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n");
+            }
         }
         
         /// <summary>
@@ -59,6 +94,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void SetMemoryProfiler(MemoryProfiler memoryProfiler)
         {
             _memoryProfiler = memoryProfiler;
+        }
+
+        /// <summary>
+        /// Set performance monitor for detailed sub-timing of clash zone detection
+        /// </summary>
+        public void SetPerformanceMonitor(PerformanceMonitor performanceMonitor)
+        {
+            _performanceMonitor = performanceMonitor;
         }
         
         /// <summary>
@@ -236,9 +279,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var asm = System.Reflection.Assembly.GetExecutingAssembly();
                 var ver = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location)?.FileVersion ?? "?";
                 var ts = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
                     DebugLogger.Info($"[CLASH_DEBUG] [BUILD] {ts} Assembly={System.IO.Path.GetFileName(asm.Location)} Version={ver} Path={asm.Location}\n");
+                }
             }
             catch { }
             if (_clashZoneStorage == null)
@@ -998,7 +1042,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         try
                         {
-                            var sleeveElement = document.GetElement(new ElementId(existingClashZone.SleeveInstanceId));
+                            var sleeveElement = document.GetElement(ElementIdCompat.FromValue(existingClashZone.SleeveInstanceId));
                             if (sleeveElement != null && sleeveElement is FamilyInstance fi && fi.IsValidObject)
                             {
                                 sleeveActuallyExists = true;
@@ -1010,7 +1054,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         try
                         {
-                            var clusterElement = document.GetElement(new ElementId(existingClashZone.ClusterSleeveInstanceId));
+                            var clusterElement = document.GetElement(ElementIdCompat.FromValue(existingClashZone.ClusterSleeveInstanceId));
                             if (clusterElement != null && clusterElement is FamilyInstance fi && fi.IsValidObject)
                             {
                                 sleeveActuallyExists = true;
@@ -1209,250 +1253,660 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<string, double> clearanceSettings,
             List<string> selectedCategories)
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
             var allProcessedZones = new List<ClashZone>();
-            int newCount = 0;
-            int updatedCount = 0;
 
-            var documentPath = document.PathName;
-            var documentHash = CalculateDocumentHash(document);
-
-            // ✅ PHASE 1 OPTIMIZATION: Pre-calculate parameter whitelist once per refresh
-            HashSet<string>? preCachedWhitelist = null;
-            if (OptimizationFlags.UsePreCachedWhitelist)
+            try
             {
-                var parameterSnapshotService = new ParameterSnapshotService();
-                // We use a sample of intersections to build the whitelist (e.g., first 5)
-                var sample = currentIntersections.Take(5).Select(i => (i.Item1, i.Item2));
-                preCachedWhitelist = parameterSnapshotService.BuildWhitelist(_clashZoneStorage, sample);
-                _log($"[STREAMLINED] Pre-cached parameter whitelist with {preCachedWhitelist.Count} keys");
-            }
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                int newCount = 0;
+                int updatedCount = 0;
 
-            // ✅ PHASE 1 OPTIMIZATION: Bulk pre-fetch deterministic GUIDs from database
-            Dictionary<(int MepId, int HostId, string PointKey), Guid> preFetchedGuids = new Dictionary<(int MepId, int HostId, string PointKey), Guid>();
-            if (OptimizationFlags.UseBatchGuidLookup && _guidManager != null)
-            {
-                var targets = currentIntersections.Select(i => (i.Item1.Id.GetIntegerValue(), i.Item2.Id.GetIntegerValue(), i.Item4.X, i.Item4.Y, i.Item4.Z)).ToList();
-                preFetchedGuids = _guidManager.BatchFetchGuidsDatabaseFirst(targets);
-                _log($"[STREAMLINED] Pre-fetched {preFetchedGuids.Count} GUIDs from database");
-            }
+                var documentPath = document.PathName;
+                var documentHash = CalculateDocumentHash(document);
 
-            // ✅ PHASE 3 OPTIMIZATION: O(1) zone lookup map
-            var zoneMap = _clashZoneStorage.ClashZones.ToDictionary(cz => cz.Id);
+                // ✅ CACHES: Declared at method scope for use across multiple TrackOperation blocks
+                Dictionary<(long mepId, long hostId, string pointKey), Guid> preFetchedGuids = new Dictionary<(long, long, string), Guid>();
+                var openingLocationMap = new Dictionary<string, FamilyInstance>();
+                var existingSleeveIds = new HashSet<int>();
+                var mepParamsCache = new Dictionary<int, Dictionary<string, string>>();
+                var hostParamsCache = new Dictionary<int, Dictionary<string, string>>();
+                var orientationCache = new Dictionary<int, XYZ>();
+                var hostDirectionCache = new Dictionary<int, (XYZ wallDirection, string wallOrientation, double centerCoord, bool centerCoordValid)>();
+                // ✅ LINKED FILE FIX: Use string keys (ElementId|DocPath) for cross-document uniqueness
+                var hostDataCache = new Dictionary<string, HostElementComputedData>();
+                var mepDataCache = new Dictionary<string, MepElementComputedData>();
+                HashSet<string>? preCachedWhitelist = null;
+                bool allZonesExisting = false;
+                bool skipGuidDbLookup = false;
 
-            // ✅ PHASE 3 OPTIMIZATION: Batch sleeve existence check (avoid 800+ document.GetElement calls)
-            var swSleeve = System.Diagnostics.Stopwatch.StartNew();
-            // ⚠️ CRITICAL OPTIMIZATION: Filter by FamilyInstance only, not "NotElementType" which returns ALL elements
-            var existingSleeveIds = new FilteredElementCollector(document)
-                .OfClass(typeof(FamilyInstance))
-                .ToElementIds()
-                .Select(id => id.GetIntegerValue())
-                .ToHashSet();
-            swSleeve.Stop();
-            _log($"[STREAMLINED] Collected {existingSleeveIds.Count} potential sleeve candidates in {swSleeve.ElapsedMilliseconds}ms");
+                // ✅ PHASE 3 OPTIMIZATION: O(1) zone lookup map - Build BEFORE cache prep to enable fast-path check
+                var zoneMap = _clashZoneStorage.ClashZones.ToDictionary(cz => cz.Id);
 
-            // ✅ PHASE 3 OPTIMIZATION: Pre-index "Opening" instances for O(1) proximity check
-            // This replaces the O(N^2) CheckForExistingSleeve calls
-            var swIndex = System.Diagnostics.Stopwatch.StartNew();
-            var openingLocationMap = new Dictionary<string, FamilyInstance>();
-            var allOpenings = new FilteredElementCollector(document)
-                .OfClass(typeof(FamilyInstance))
-                .Cast<FamilyInstance>()
-                .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                .ToList();
+                // ✅ THREAD-SAFETY FIX: Pre-initialize lookup cache BEFORE entering parallel processing
+                // This prevents multiple threads from trying to build the cache concurrently (infinite loop risk)
+                BuildClashZoneLookup();
 
-            foreach (var opening in allOpenings)
-            {
-                XYZ loc = null;
-                if (opening.Location is LocationPoint lp) loc = lp.Point;
-                else if (opening.Location is LocationCurve lc) loc = lc.Curve.Evaluate(0.5, true);
-
-                if (loc != null)
+                // ✅ FAST PATH CHECK: Pre-check if all zones already exist in memory
+                // This allows us to skip expensive DB GUID lookup entirely for PATH 1
+                if (zoneMap.Count >= currentIntersections.Count && currentIntersections.Count > 0)
                 {
-                    // Use rounded key for ~1mm precision match
-                    string key = $"{Math.Round(loc.X, 3)}_{Math.Round(loc.Y, 3)}_{Math.Round(loc.Z, 3)}";
-                    if (!openingLocationMap.ContainsKey(key)) openingLocationMap.Add(key, opening);
+                    // Quick heuristic: if we have as many zones in memory as intersections,
+                    // likely all zones exist (PATH 1 scenario)
+                    _log($"[STREAMLINED] Fast-path check: {zoneMap.Count} zones in memory, {currentIntersections.Count} intersections");
+                    skipGuidDbLookup = true;
                 }
-            }
-            swIndex.Stop();
-            _log($"[STREAMLINED] Pre-indexed {openingLocationMap.Count} openings for O(1) existence checks in {swIndex.ElapsedMilliseconds}ms");
-            var openingPointKeys = openingLocationMap.Keys.ToHashSet();
 
-            // ✅ PHASE 2 OPTIMIZATION: Bulk parameter capture (Ducts/Pipes/Cable Trays)
-            Dictionary<int, Dictionary<string, string>> mepParamsCache = new Dictionary<int, Dictionary<string, string>>();
-            Dictionary<int, Dictionary<string, string>> hostParamsCache = new Dictionary<int, Dictionary<string, string>>();
-            if (OptimizationFlags.UseBulkIntersectionProcessing)
-            {
-                var mepElementsUnique = currentIntersections.Select(i => i.Item1).Distinct(new ElementIdComparer()).ToList();
-                var hostElementsUnique = currentIntersections.Select(i => i.Item2).Distinct(new ElementIdComparer()).ToList();
-                
-                mepParamsCache = ParameterSnapshotService.CaptureBatchParams(mepElementsUnique);
-                hostParamsCache = ParameterSnapshotService.CaptureBatchParams(hostElementsUnique);
-                
-                _log($"[STREAMLINED] Batch captured parameters for {mepParamsCache.Count} MEP elements and {hostParamsCache.Count} host elements");
-            }
-            
-            // ✅ PHASE 2.5 OPTIMIZATION: Bulk orientation pre-calculation (NEW!)
-            // Pre-calculate ALL MEP element orientations before zone creation loop
-            // Reduces redundant GetMepElementOrientation() calls from O(N zones) to O(N unique MEPs)
-            Dictionary<int, XYZ> orientationCache = new Dictionary<int, XYZ>();
-            if (OptimizationFlags.UseBulkOrientationCaching)
-            {
-                var swOrient = System.Diagnostics.Stopwatch.StartNew();
-                
-                // Get unique MEP elements
-                var uniqueMepElements = currentIntersections
-                    .Select(i => i.Item1)
-                    .Distinct(new ElementIdComparer())
-                    .ToList();
-                
-                // Pre-calculate ALL orientations at once
-                foreach (var mep in uniqueMepElements)
+                // ✅ PHASE 1-2.5: Cache Preparation
+                using (var cacheOp = _performanceMonitor?.TrackOperation("6d1. Pre-fetch Whitelist/GUIDs") as IDisposable)
                 {
-                    try
+                    // ✅ PHASE 1 OPTIMIZATION: Pre-calculate parameter whitelist once per refresh
+                    if (OptimizationFlags.UsePreCachedWhitelist)
                     {
-                        var orientation = GetMepElementOrientation(mep);
-                        orientationCache[mep.Id.GetIntegerValue()] = orientation;
+                        var parameterSnapshotService = new ParameterSnapshotService();
+                        // We use a sample of intersections to build the whitelist (e.g., first 5)
+                        var sample = currentIntersections.Take(5).Select(i => (i.Item1, i.Item2));
+                        preCachedWhitelist = parameterSnapshotService.BuildWhitelist(_clashZoneStorage, sample);
+                        _log($"[STREAMLINED] Pre-cached parameter whitelist with {preCachedWhitelist.Count} keys");
                     }
-                    catch (Exception ex)
+
+                    // ✅ PHASE 1 OPTIMIZATION: Bulk pre-fetch deterministic GUIDs from database
+                    // SKIPPED if skipGuidDbLookup=true (PATH 1 - all zones already in memory)
+                    if (!skipGuidDbLookup && OptimizationFlags.UseBatchGuidLookup && _guidManager != null)
                     {
-                        _log($"[ORIENTATION-CACHE] Error calculating orientation for {mep.Id}: {ex.Message}");
-                        // Use default if calculation fails
-                        orientationCache[mep.Id.GetIntegerValue()] = XYZ.BasisX;
+                        var targets = currentIntersections.Select(i => ((long)i.Item1.Id.GetIntegerValue(), (long)i.Item2.Id.GetIntegerValue(), i.Item4.X, i.Item4.Y, i.Item4.Z)).ToList();
+                        preFetchedGuids = _guidManager.BatchFetchGuidsDatabaseFirst(targets);
+                        _log($"[STREAMLINED] Pre-fetched {preFetchedGuids.Count} GUIDs from database");
                     }
-                }
-                
-                swOrient.Stop();
-                _log($"[STREAMLINED] Pre-calculated {orientationCache.Count} orientations in {swOrient.ElapsedMilliseconds}ms");
-            }
-            
-            foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in currentIntersections)
-            {
-                // Minimal validation - only check for null and invalid IDs
-                if (mepElement == null || structuralElement == null ||
-                    mepElement.Id.GetIntegerValue() <= 0 || structuralElement.Id.GetIntegerValue() <= 0)
-                {
-                    continue;
-                }
-                
-                // Check if clash zone already exists
-                ClashZone? existingClashZone = null;
-                
-                // ✅ OPTIMIZATION: Try pre-fetched GUID lookup first
-                if (OptimizationFlags.UseBatchGuidLookup)
-                {
-                    string pointKey = $"{Math.Round(intersectionPoint.X, 4)}_{Math.Round(intersectionPoint.Y, 4)}_{Math.Round(intersectionPoint.Z, 4)}";
-                    if (preFetchedGuids.TryGetValue((mepElement.Id.GetIntegerValue(), structuralElement.Id.GetIntegerValue(), pointKey), out var guid))
+                    else if (skipGuidDbLookup)
                     {
-                        // ✅ PHASE 3 OPTIMIZATION: O(1) lookup in zone map
-                        zoneMap.TryGetValue(guid, out existingClashZone);
+                        _log($"[STREAMLINED] ⚡ SKIPPED GUID DB lookup - fast path (all zones in memory)");
                     }
                 }
 
-                if (existingClashZone == null)
+                // PERF OPT: Single-pass collector — build existingSleeveIds AND openingLocationMap in one scan
+                using (var itemOp = _performanceMonitor?.TrackOperation("6d2. Sleeve/Opening Indexing") as IDisposable)
                 {
-                    existingClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
-                }
-                
-                if (existingClashZone == null)
-                {
-                    // Create new clash zone using streamlined creation (minimal validation)
-                    try
+                    var swSleeve = System.Diagnostics.Stopwatch.StartNew();
+                    var symbolFamilyNameCache = new Dictionary<ElementId, bool>(); // FamilySymbol.Id → isOpening
+
+                    var allFamilyInstances = new FilteredElementCollector(document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .ToList();
+
+                    foreach (var fi in allFamilyInstances)
                     {
-                        // ✅ WALL CENTERLINE POINT: Calculate once using WallCenterlineHelper (for streamlined path)
-                        XYZ? calculatedCenterlineStreamlined = null;
-                        string mepCategoryStreamlined = GetElementCategoryName(mepElement);
-                        
-                        // ✅ DAMPER ARCHITECTURE FIX: Prioritize Insertion Point (LocationPoint) over raw IntersectionPoint
-                        // For Dampers, the rough intersection point from Finder can be skewed. 
-                        // The LocationPoint is the "Truth" for centering.
-                        XYZ seedPoint = intersectionPoint;
-                        if (mepCategoryStreamlined == "Duct Accessories" && mepElement is FamilyInstance fi)
+                        int intId = fi.Id.GetIntegerValue();
+                        existingSleeveIds.Add(intId);
+
+                        // Check if this is an Opening family — cache by Symbol Id to avoid repeat COM calls
+                        var symId = fi.Symbol?.Id;
+                        if (symId == null) continue;
+
+                        if (!symbolFamilyNameCache.TryGetValue(symId, out bool isOpening))
                         {
-                            if (fi.Location is LocationPoint lp)
-                            {
-                                seedPoint = lp.Point;
-                            }
+                            isOpening = fi.Symbol?.Family?.Name?.Contains("Opening") == true;
+                            symbolFamilyNameCache[symId] = isOpening;
                         }
 
-                        if (structuralElement is Wall wallStreamlined)
+                        if (!isOpening) continue;
+
+                        XYZ loc = null;
+                        if (fi.Location is LocationPoint lp) loc = lp.Point;
+                        else if (fi.Location is LocationCurve lc) loc = lc.Curve.Evaluate(0.5, true);
+
+                        if (loc != null)
+                        {
+                            string key = $"{Math.Round(loc.X, 3)}_{Math.Round(loc.Y, 3)}_{Math.Round(loc.Z, 3)}";
+                            if (!openingLocationMap.ContainsKey(key)) openingLocationMap.Add(key, fi);
+                        }
+                    }
+                    swSleeve.Stop();
+                    _log($"[STREAMLINED] Single-pass: {existingSleeveIds.Count} sleeve IDs + {openingLocationMap.Count} openings indexed in {swSleeve.ElapsedMilliseconds}ms");
+                }
+                var openingPointKeys = openingLocationMap.Keys.ToHashSet();
+
+                // ✅ PHASE 2-2.5: Cache Preparation (Continued)
+                using (var cacheOp2 = _performanceMonitor?.TrackOperation("6d3. Bulk Cache Generation") as IDisposable)
+                {
+                    // FAST PATH CHECK: If ALL intersections already have GUIDs in DB and zones in memory,
+                    // skip ALL expensive pre-computation — PATH 1/3 only need flag operations, zero COM calls.
+                    // For fast-path (skipGuidDbLookup=true), use zoneMap directly to validate all zones exist
+                    if (skipGuidDbLookup)
+                    {
+                        // Verify all intersections have matching zones in memory (by MEP+Host+Point key)
+                        // ✅ PERF OPT: Use HashSet for O(N) lookup instead of O(N^2) Any() inside All()
+                        var existingZoneKeys = new HashSet<string>(zoneMap.Values.Select(z => 
+                            $"{z.MepElementIdValue}_{z.StructuralElementIdValue}_{Math.Round(z.IntersectionPointX, 2)}_{Math.Round(z.IntersectionPointY, 2)}_{Math.Round(z.IntersectionPointZ, 2)}"));
+
+                        allZonesExisting = currentIntersections.All(intersection =>
+                        {
+                            var (mepEl, hostEl, _, point) = intersection;
+                            var key = $"{mepEl.Id.GetIntegerValue()}_{hostEl.Id.GetIntegerValue()}_{Math.Round(point.X, 2)}_{Math.Round(point.Y, 2)}_{Math.Round(point.Z, 2)}";
+                            return existingZoneKeys.Contains(key);
+                        });
+
+                        if (allZonesExisting)
+                            _log($"[STREAMLINED] ⚡ FAST PATH VALIDATED: ALL {currentIntersections.Count} zones exist in memory — zero COM calls needed");
+                        else
+                            _log($"[STREAMLINED] ⚠ Fast path check failed - some zones missing, will use preFetchedGuids");
+                    }
+                    else
+                    {
+                        // Normal path: check against pre-fetched GUIDs
+                        allZonesExisting = preFetchedGuids.Count == currentIntersections.Count
+                                                && zoneMap.Count >= preFetchedGuids.Count;
+                        if (allZonesExisting)
+                            _log($"[STREAMLINED] ⚡ ALL {currentIntersections.Count} zones exist in DB+memory — skipping expensive pre-computation (mepParams/hostParams/orientation/mepData caches)");
+                    }
+
+                    // PERF OPT: Filter to only PATH 2 (new) intersections for all pre-computation.
+                    // currentIntersections includes ALL zones (PATH 1+2+3), but PATH 1/3 zones are already
+                    // in DB+memory — their elements don't need CaptureBatchParams / mepDataCache / hostDataCache.
+                    // preFetchedGuids identifies which zones exist in DB: anything NOT in it is a new zone.
+                    // Without this filter, 287 MEP + 17 host elements get processed even if only 35 are new.
+                    var newIntersections = currentIntersections;
+                    if (!allZonesExisting && preFetchedGuids.Count > 0 && preFetchedGuids.Count < currentIntersections.Count)
+                    {
+                        newIntersections = currentIntersections.Where(i =>
+                        {
+                            string pk = $"{Math.Round(i.Item4.X, 4)}_{Math.Round(i.Item4.Y, 4)}_{Math.Round(i.Item4.Z, 4)}";
+                            return !preFetchedGuids.ContainsKey(((long)i.Item1.Id.GetIntegerValue(), (long)i.Item2.Id.GetIntegerValue(), pk));
+                        }).ToList();
+                        _log($"[STREAMLINED] ⚡ PATH 2 filter: {newIntersections.Count}/{currentIntersections.Count} need pre-computation (saved {currentIntersections.Count - newIntersections.Count} element lookups)");
+                    }
+
+                    // ✅ PHASE 2 OPTIMIZATION: Bulk parameter capture (Ducts/Pipes/Cable Trays)
+                    using (var paramOp = _performanceMonitor?.TrackOperation("6d3a. Bulk Parameter Capture") as IDisposable)
+                    {
+                        if (!allZonesExisting && OptimizationFlags.UseBulkIntersectionProcessing)
+                        {
+                            var mepElementsUnique = newIntersections.Select(i => i.Item1).Distinct(new ElementIdComparer()).ToList();
+                            var hostElementsUnique = newIntersections.Select(i => i.Item2).Distinct(new ElementIdComparer()).ToList();
+
+                            var mepC = ParameterSnapshotService.CaptureBatchParams(mepElementsUnique);
+                            var hostC = ParameterSnapshotService.CaptureBatchParams(hostElementsUnique);
+
+                            foreach (var kv in mepC) mepParamsCache[kv.Key] = kv.Value;
+                            foreach (var kv in hostC) hostParamsCache[kv.Key] = kv.Value;
+
+                            _log($"[STREAMLINED] Batch captured parameters for {mepParamsCache.Count} MEP elements and {hostParamsCache.Count} host elements");
+                        }
+                    }
+
+                    // ✅ PHASE 2.5 OPTIMIZATION: Bulk orientation pre-calculation
+                    using (var orientOp = _performanceMonitor?.TrackOperation("6d3b. Orientation Caching") as IDisposable)
+                    {
+                        if (!allZonesExisting && OptimizationFlags.UseBulkOrientationCaching)
+                        {
+                            var swOrient = System.Diagnostics.Stopwatch.StartNew();
+                            var uniqueMepElements = newIntersections
+                                .Select(i => i.Item1)
+                                .Distinct(new ElementIdComparer())
+                                .ToList();
+                            foreach (var mep in uniqueMepElements)
+                            {
+                                try
+                                {
+                                    orientationCache[mep.Id.GetIntegerValue()] = GetMepElementOrientation(mep);
+                                }
+                                catch
+                                {
+                                    orientationCache[mep.Id.GetIntegerValue()] = XYZ.BasisX;
+                                }
+                            }
+                            swOrient.Stop();
+                            _log($"[STREAMLINED] Pre-calculated {orientationCache.Count} orientations in {swOrient.ElapsedMilliseconds}ms");
+                        }
+                    }
+
+                    // PERF OPT: Pre-cache host wall direction + orientation + centerline coordinate.
+                    using (var hostOp = _performanceMonitor?.TrackOperation("6d3c. Host Direction Caching") as IDisposable)
+                    {
+                        if (!allZonesExisting)
+                        {
+                            var swHost = System.Diagnostics.Stopwatch.StartNew();
+                            foreach (var hostEl in newIntersections.Select(i => i.Item2).Distinct(new ElementIdComparer()))
+                            {
+                                try
+                                {
+                                    var dir = WallDirectionService.GetWallDirection(hostEl);
+                                    string ori = (dir != null)
+                                        ? (Math.Abs(dir.X) > Math.Abs(dir.Y) ? "X" : "Y")
+                                        : string.Empty;
+                                    double centerCoord = 0.0;
+                                    bool centerCoordValid = false;
+                                    if (hostEl is Wall wallHost)
+                                    {
+                                        var invariant = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallInvariantData(wallHost, document);
+                                        if (invariant.Success) { centerCoord = invariant.CenterCoordinate; centerCoordValid = true; }
+                                    }
+                                    hostDirectionCache[hostEl.Id.GetIntegerValue()] = (dir, ori, centerCoord, centerCoordValid);
+                                }
+                                catch
+                                {
+                                    hostDirectionCache[hostEl.Id.GetIntegerValue()] = (null, string.Empty, 0.0, false);
+                                }
+                            }
+                            swHost.Stop();
+                            _log($"[STREAMLINED] Pre-cached wall direction+orientation+centerline for {hostDirectionCache.Count} unique hosts in {swHost.ElapsedMilliseconds}ms");
+                        }
+                    }
+
+                    // PERF OPT: Pre-compute host-element-intrinsic data (thickness, normal, type).
+                    using (var hostDataOp = _performanceMonitor?.TrackOperation("6d3d. Host Data Caching") as IDisposable)
+                    {
+                        if (!allZonesExisting)
+                        {
+                            var swHostData = System.Diagnostics.Stopwatch.StartNew();
+                            var hostElementsBeforeDistinct = newIntersections.Select(i => i.Item2).ToList();
+                            var hostElementsUnique = hostElementsBeforeDistinct.Distinct(new ElementIdComparer()).ToList();
+                            _log($"[CACHE-DIAGNOSTIC] Host elements: {hostElementsBeforeDistinct.Count} total, {hostElementsUnique.Count} unique after Distinct (from {newIntersections.Count} new zones)");
+                            foreach (var hostEl in hostElementsUnique)
+                            {
+                                try
+                                {
+                                    hostParamsCache.TryGetValue(hostEl.Id.GetIntegerValue(), out var hostParamDict);
+                                    var d = new HostElementComputedData();
+                                    d.StructuralElementType = GetStructuralElementType(hostEl, hostParamDict);
+                                    d.StructuralElementThickness = GetElementThickness(hostEl, hostParamDict);
+                                    d.WallThickness = GetWallThickness(hostEl, hostParamDict);
+                                    d.FramingThickness = GetFramingThickness(hostEl, hostParamDict);
+                                    d.StructuralElementNormal = WallDirectionService.GetStructuralElementNormal(hostEl);
+                                    d.HostOrientation = WallDirectionService.GetHostOrientation(hostEl);
+                                    d.GeometryHash = $"{hostEl.Id}_{hostEl.Category?.Name ?? "Unknown"}";  // ✅ PATH 2 OPT
+                                    hostDataCache[GetElementCacheKey(hostEl)] = d;
+                                }
+                                catch { }
+                            }
+                            swHostData.Stop();
+                            _log($"[STREAMLINED] Pre-computed host element data for {hostDataCache.Count} unique hosts in {swHostData.ElapsedMilliseconds}ms");
+                        }
+                    }
+
+                    // PERF OPT: Pre-compute all MEP-element-intrinsic data.
+                    using (var mepDataOp = _performanceMonitor?.TrackOperation("6d3e. MEP Data Caching") as IDisposable)
+                    {
+                        if (!allZonesExisting)
+                        {
+                            var swMepData = System.Diagnostics.Stopwatch.StartNew();
+                            var mepElementsBeforeDistinct = newIntersections.Select(i => i.Item1).ToList();
+                            var mepElementsUnique = mepElementsBeforeDistinct.Distinct(new ElementIdComparer()).ToList();
+                            _log($"[CACHE-DIAGNOSTIC] MEP elements: {mepElementsBeforeDistinct.Count} total, {mepElementsUnique.Count} unique after Distinct (from {newIntersections.Count} new zones)");
+                            foreach (var mepEl in mepElementsUnique)
+                            {
+                                try
+                                {
+                                    mepParamsCache.TryGetValue(mepEl.Id.GetIntegerValue(), out var mepParamDict);
+                                    mepDataCache[GetElementCacheKey(mepEl)] = ComputeMepElementData(mepEl, mepParamDict);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _log($"[MEP-DATA-CACHE] Error pre-computing data for {mepEl.Id}: {ex.Message}");
+                                }
+                            }
+
+                            swMepData.Stop();
+                            _log($"[STREAMLINED] Pre-computed MEP intrinsic data for {mepDataCache.Count} unique MEP elements in {swMepData.ElapsedMilliseconds}ms");
+                        }
+                    }
+                }
+
+                // ✅ DIAGNOSTIC: Cache summary before processing
+                _log($"[CACHE-SUMMARY] Intersections: {currentIntersections.Count}, MEPDataCache: {mepDataCache.Count}, HostDataCache: {hostDataCache.Count}, MepParams: {mepParamsCache.Count}, HostParams: {hostParamsCache.Count}");
+
+                // ✅ PHASE 3: Loop Execution with Threshold-Based Parallel Processing
+                using (var processOp = _performanceMonitor?.TrackOperation("6d4. Zone Processing") as IDisposable)
+                {
+                    (processOp as PerformanceMonitor.OperationTracker)?.SetItemCount(currentIntersections.Count);
+                    const int PARALLEL_THRESHOLD = 100;
+
+                    if (currentIntersections.Count >= PARALLEL_THRESHOLD)
+                    {
+                        // Use parallel processing for large datasets
+                        ProcessZonesParallel(currentIntersections, document, clearanceSettings, allProcessedZones,
+                            zoneMap, preFetchedGuids, existingSleeveIds, openingPointKeys, preCachedWhitelist,
+                            mepParamsCache, hostParamsCache, orientationCache, hostDirectionCache, mepDataCache, hostDataCache,
+                            ref newCount, ref updatedCount);
+                    }
+                    else
+                    {
+                        // Use single-threaded processing for small datasets
+                        ProcessZonesSingleThreaded(currentIntersections, document, clearanceSettings, allProcessedZones,
+                            zoneMap, preFetchedGuids, existingSleeveIds, openingPointKeys, preCachedWhitelist,
+                            mepParamsCache, hostParamsCache, orientationCache, hostDirectionCache, mepDataCache, hostDataCache,
+                            ref newCount, ref updatedCount);
+                    }
+                }
+
+                // Update storage metadata
+                _clashZoneStorage.LastUpdated = DateTime.Now;
+                _clashZoneStorage.DocumentPath = documentPath;
+                _clashZoneStorage.DocumentHash = documentHash;
+
+                sw.Stop();
+                _log($"[STREAMLINED] Completed: Total={allProcessedZones.Count} (New={newCount}, Updated={updatedCount}) in {sw.ElapsedMilliseconds}ms");
+
+                return allProcessedZones;
+            }
+            catch (Exception ex)
+            {
+                // ✅ CRITICAL: Graceful failure - log error and return partial results
+                _log?.Invoke($"[STREAMLINED] ❌ CRITICAL ERROR in DetectNewClashZonesStreamlined: {ex.Message}");
+                _log?.Invoke($"[STREAMLINED] Stack trace: {ex.StackTrace}");
+
+                // Return whatever zones were processed before the crash
+                _log?.Invoke($"[STREAMLINED] Returning {allProcessedZones?.Count ?? 0} zones processed before error");
+                return allProcessedZones ?? new List<ClashZone>();
+            }
+        }
+
+        /// <summary>
+        /// Single-threaded zone processing for small datasets (< 100 zones)
+        /// Lower overhead, no thread synchronization needed
+        /// </summary>
+        private void ProcessZonesSingleThreaded(
+            List<(Element MepElement, Element HostElement, BoundingBoxXYZ BoundingBox, XYZ IntersectionPoint)> intersections,
+            Document document,
+            Dictionary<string, double> clearanceSettings,
+            List<ClashZone> allProcessedZones,
+            Dictionary<Guid, ClashZone> zoneMap,
+            Dictionary<(long mepId, long hostId, string pointKey), Guid> preFetchedGuids,
+            HashSet<int> existingSleeveIds,
+            HashSet<string> openingPointKeys,
+            HashSet<string> preCachedWhitelist,
+            Dictionary<int, Dictionary<string, string>> mepParamsCache,
+            Dictionary<int, Dictionary<string, string>> hostParamsCache,
+            Dictionary<int, XYZ> orientationCache,
+            Dictionary<int, (XYZ wallDirection, string wallOrientation, double centerCoord, bool centerCoordValid)> hostDirectionCache,
+            Dictionary<string, MepElementComputedData> mepDataCache,
+            Dictionary<string, HostElementComputedData> hostDataCache,
+            ref int newCount,
+            ref int updatedCount)
+        {
+            _log($"[SINGLE-THREADED] Processing {intersections.Count} zones");
+
+            foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in intersections)
+            {
+                var currentNewCount = 0;
+                var currentUpdatedCount = 0;
+                var localProcessed = new List<ClashZone>();
+
+                ProcessSingleIntersection(mepElement, structuralElement, boundingBox, intersectionPoint, document,
+                    clearanceSettings, localProcessed, zoneMap, preFetchedGuids, existingSleeveIds, openingPointKeys,
+                    preCachedWhitelist, mepParamsCache, hostParamsCache, orientationCache, hostDirectionCache, 
+                    mepDataCache, hostDataCache, ref currentNewCount, ref currentUpdatedCount);
+                
+                // Merge to main results
+                allProcessedZones.AddRange(localProcessed);
+                
+                // ✅ SIDE-EFFECT: Add new zones to persistent storage
+                foreach (var nz in localProcessed)
+                {
+                    if (currentNewCount > 0 && !_clashZoneStorage.ClashZones.Contains(nz))
+                        _clashZoneStorage.ClashZones.Add(nz);
+                }
+                
+                newCount += currentNewCount;
+                updatedCount += currentUpdatedCount;
+            }
+        }
+
+        /// <summary>
+        /// Parallel zone processing for large datasets (>= 100 zones)
+        /// Better CPU utilization for multi-core systems
+        /// </summary>
+        private void ProcessZonesParallel(
+            List<(Element MepElement, Element HostElement, BoundingBoxXYZ BoundingBox, XYZ IntersectionPoint)> intersections,
+            Document document,
+            Dictionary<string, double> clearanceSettings,
+            List<ClashZone> allProcessedZones,
+            Dictionary<Guid, ClashZone> zoneMap,
+            Dictionary<(long mepId, long hostId, string pointKey), Guid> preFetchedGuids,
+            HashSet<int> existingSleeveIds,
+            HashSet<string> openingPointKeys,
+            HashSet<string> preCachedWhitelist,
+            Dictionary<int, Dictionary<string, string>> mepParamsCache,
+            Dictionary<int, Dictionary<string, string>> hostParamsCache,
+            Dictionary<int, XYZ> orientationCache,
+            Dictionary<int, (XYZ wallDirection, string wallOrientation, double centerCoord, bool centerCoordValid)> hostDirectionCache,
+            Dictionary<string, MepElementComputedData> mepDataCache,
+            Dictionary<string, HostElementComputedData> hostDataCache,
+            ref int newCount,
+            ref int updatedCount)
+        {
+            _log($"[SEQUENTIAL] Processing {intersections.Count} zones sequentially for stability");
+
+            List<ClashZone> newZones = new List<ClashZone>();
+            List<ClashZone> updatedZones = new List<ClashZone>();
+            List<int> newCounter = new List<int>();
+            List<int> updatedCounter = new List<int>();
+            System.Collections.Concurrent.ConcurrentBag<Exception> parallelExceptions = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+
+            foreach (var intersection in intersections)
+            {
+                try
+                {
+                    int localNewCount = 0;
+                    int localUpdatedCount = 0;
+                    List<ClashZone> localProcessed = new List<ClashZone>();
+
+                    ProcessSingleIntersection(intersection.MepElement, intersection.HostElement, intersection.BoundingBox,
+                        intersection.IntersectionPoint, document, clearanceSettings, localProcessed, zoneMap, preFetchedGuids,
+                        existingSleeveIds, openingPointKeys, preCachedWhitelist, mepParamsCache, hostParamsCache,
+                        orientationCache, hostDirectionCache, mepDataCache, hostDataCache, ref localNewCount, ref localUpdatedCount);
+
+                    // Aggregate results
+                    foreach (ClashZone zone in localProcessed)
+                    {
+                        if (localNewCount > 0)
+                            newZones.Add(zone);
+                        else
+                            updatedZones.Add(zone);
+                    }
+
+                    if (localNewCount > 0) newCounter.Add(localNewCount);
+                    if (localUpdatedCount > 0) updatedCounter.Add(localUpdatedCount);
+                }
+                catch (Exception ex)
+                {
+                    parallelExceptions.Add(new Exception($"MEP={intersection.MepElement?.Id}, Host={intersection.HostElement?.Id}: {ex.Message}", ex));
+                }
+            }
+            
+            // Log any exceptions that occurred during parallel processing
+            if (!parallelExceptions.IsEmpty)
+            {
+                List<Exception> exceptionList = parallelExceptions.Take(10).ToList(); // Limit to first 10
+                _log?.Invoke($"[PARALLEL] ⚠️ {parallelExceptions.Count} exceptions during processing. First few: {string.Join("; ", exceptionList.Select(e => e.Message))}");
+                
+                // If more than 10% failed, throw aggregate exception
+                if (parallelExceptions.Count > intersections.Count / 10)
+                {
+                    throw new AggregateException("More than 10% of zones failed processing", parallelExceptions.ToArray());
+                }
+            }
+
+            // Merge results back to main collections
+            allProcessedZones.AddRange(newZones);
+            allProcessedZones.AddRange(updatedZones);
+            
+            foreach (var zone in newZones)
+            {
+                if (!_clashZoneStorage.ClashZones.Contains(zone))
+                    _clashZoneStorage.ClashZones.Add(zone);
+            }
+
+            newCount = newCounter.Sum();
+            updatedCount = updatedCounter.Sum();
+        }
+
+        /// <summary>
+        /// Process a single intersection - shared logic for both single-threaded and parallel paths
+        /// </summary>
+        private void ProcessSingleIntersection(
+            Element mepElement, Element structuralElement, BoundingBoxXYZ boundingBox, XYZ intersectionPoint,
+            Document document, Dictionary<string, double> clearanceSettings, List<ClashZone> processedZones,
+            Dictionary<Guid, ClashZone> zoneMap, Dictionary<(long mepId, long hostId, string pointKey), Guid> preFetchedGuids,
+            HashSet<int> existingSleeveIds, HashSet<string> openingPointKeys, HashSet<string> preCachedWhitelist,
+            Dictionary<int, Dictionary<string, string>> mepParamsCache, Dictionary<int, Dictionary<string, string>> hostParamsCache,
+            Dictionary<int, XYZ> orientationCache, Dictionary<int, (XYZ wallDirection, string wallOrientation, double centerCoord, bool centerCoordValid)> hostDirectionCache,
+            Dictionary<string, MepElementComputedData> mepDataCache, Dictionary<string, HostElementComputedData> hostDataCache,
+            ref int newCount, ref int updatedCount)
+        {
+            // Minimal validation - only check for null and invalid IDs
+            if (mepElement == null || structuralElement == null ||
+                mepElement.Id.GetIntegerValue() <= 0 || structuralElement.Id.GetIntegerValue() <= 0)
+            {
+                return;
+            }
+
+            // Check if clash zone already exists
+            ClashZone? existingClashZone = null;
+
+            // ✅ OPTIMIZATION: Try pre-fetched GUID lookup first
+            if (OptimizationFlags.UseBatchGuidLookup)
+            {
+                string pointKey = $"{Math.Round(intersectionPoint.X, 4)}_{Math.Round(intersectionPoint.Y, 4)}_{Math.Round(intersectionPoint.Z, 4)}";
+                if (preFetchedGuids.TryGetValue(((long)mepElement.Id.GetIntegerValue(), (long)structuralElement.Id.GetIntegerValue(), pointKey), out var guid))
+                {
+                    zoneMap.TryGetValue(guid, out existingClashZone);
+                }
+            }
+
+            if (existingClashZone == null)
+            {
+                existingClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
+            }
+
+            if (existingClashZone == null)
+            {
+                // Create new clash zone
+                try
+                {
+                    XYZ? calculatedCenterlineStreamlined = null;
+                    string mepCategoryStreamlined = (mepDataCache != null && mepDataCache.TryGetValue(GetElementCacheKey(mepElement), out var mepDataForCat))
+                        ? mepDataForCat.Category
+                        : GetElementCategoryName(mepElement);
+
+                    XYZ seedPoint = intersectionPoint;
+                    if (mepCategoryStreamlined == "Duct Accessories" && mepElement is FamilyInstance fi)
+                    {
+                        if (fi.Location is LocationPoint lp)
+                        {
+                            seedPoint = lp.Point;
+                        }
+                    }
+
+                    if (structuralElement is Wall wallStreamlined)
+                    {
+                        if (hostDirectionCache.TryGetValue(wallStreamlined.Id.GetIntegerValue(), out var hdc) && hdc.centerCoordValid)
+                        {
+                            bool isXWall = hdc.wallOrientation == "X";
+                            calculatedCenterlineStreamlined = isXWall
+                                ? new XYZ(seedPoint.X, hdc.centerCoord, seedPoint.Z)
+                                : new XYZ(hdc.centerCoord, seedPoint.Y, seedPoint.Z);
+                        }
+                        else
                         {
                             calculatedCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
                                 wallStreamlined, seedPoint, document);
                         }
-                        else if (structuralElement is FamilyInstance framingInstanceStreamlined && 
-                                 framingInstanceStreamlined.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
-                        {
-                            calculatedCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
-                                structuralElement, seedPoint, document);
-                        }
-
-
-                        // Use pre-cached whitelist for 90% faster parameter capture
-                        // ✅ PERFORMANCE: Pass orientation cache for O(1) lookups
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, seedPoint, boundingBox, document, clearanceSettings, null, null, calculatedCenterlineStreamlined, preCachedWhitelist, openingPointKeys, mepParamsCache, hostParamsCache, orientationCache);
-                        
-                        if (newClashZone != null)
-                        {
-                            newClashZone.IsCurrentClash = true;
-                            newClashZone.ClearRevitApiObjects();
-                            
-                            allProcessedZones.Add(newClashZone);
-                            _clashZoneStorage.ClashZones.Add(newClashZone);
-                            newCount++;
-                        }
                     }
-                    catch (Exception ex)
+                    else if (structuralElement is FamilyInstance framingInstanceStreamlined &&
+                             framingInstanceStreamlined.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                     {
-                        _log($"[STREAMLINED] Error creating clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
+                        calculatedCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                            structuralElement, seedPoint, document);
+                    }
+
+                    // ✅ CRITICAL: Generate deterministic GUID for stable identification across detection runs
+                    // This ensures the same intersection always gets the same GUID, preventing duplicates
+                    Guid? preGuid = null;
+                    if (_guidManager != null && OptimizationFlags.UseBatchGuidLookup)
+                    {
+                        preGuid = _guidManager.GenerateDeterministicGuid(
+                            (long)mepElement.Id.GetIntegerValue(),
+                            (long)structuralElement.Id.GetIntegerValue(),
+                            intersectionPoint.X, intersectionPoint.Y, intersectionPoint.Z);
+                    }
+
+                    var newClashZone = CreateClashZone(mepElement, structuralElement, seedPoint, boundingBox, document,
+                        clearanceSettings, null, null, calculatedCenterlineStreamlined, preCachedWhitelist, openingPointKeys,
+                        mepParamsCache, hostParamsCache, orientationCache, hostDirectionCache, mepDataCache, preGuid, hostDataCache);
+
+                    if (newClashZone != null)
+                    {
+                        newClashZone.IsCurrentClash = true;
+                        newClashZone.ClearRevitApiObjects();
+                        processedZones.Add(newClashZone);
+                        // ✅ THREAD-SAFETY REMOVAL: Do not add to persistent list here (inside parallel loop)
+                        // _clashZoneStorage.ClashZones.Add(newClashZone);
+                        newCount++;
                     }
                 }
-                else 
+                catch (Exception ex)
                 {
-                    // ✅ PHASE 4 FIX: Always update and return existing zones so Phase 8 can capture their parameters
-                    if (!existingClashZone.IsResolved)
+                    _log?.Invoke($"[STREAMLINED] Error creating clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
+                }
+            }
+            else
+            {
+                // Update existing zone flags
+                if (!existingClashZone.IsResolved)
+                {
+                    string ptKey = $"{Math.Round(intersectionPoint.X, 3)}_{Math.Round(intersectionPoint.Y, 3)}_{Math.Round(intersectionPoint.Z, 3)}";
+                    bool sleeveNowExists = (openingPointKeys != null) ? openingPointKeys.Contains(ptKey) : CheckForExistingSleeve(intersectionPoint, document);
+
+                    if (sleeveNowExists)
                     {
-                        // Only update existing clash zone if it's NOT resolved
-                        UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document, preCachedWhitelist, existingSleeveIds, openingPointKeys, mepParamsCache, hostParamsCache);
+                        existingClashZone.IsResolved = true;
+                        if (existingClashZone.SleeveInstanceId <= 0) existingClashZone.SleeveInstanceId = -1;
+                    }
+                    if (sleeveNowExists && !existingClashZone.IsClusterResolved)
+                    {
+                        existingClashZone.IsClusterResolved = true;
+                        if (existingClashZone.ClusterSleeveInstanceId <= 0) existingClashZone.ClusterSleeveInstanceId = -1;
+                    }
+                    if (sleeveNowExists && !existingClashZone.IsCombinedResolved)
+                        existingClashZone.IsCombinedResolved = true;
+
+                    existingClashZone.ReadyForPlacement = true;
+                    existingClashZone.LastUpdated = DateTime.Now;
+                }
+                else
+                {
+                    bool sleeveActuallyExists = false;
+                    if (existingClashZone.SleeveInstanceId > 0 && existingSleeveIds.Contains((int)existingClashZone.SleeveInstanceId))
+                        sleeveActuallyExists = true;
+                    else if (existingClashZone.ClusterSleeveInstanceId > 0 && existingSleeveIds.Contains((int)existingClashZone.ClusterSleeveInstanceId))
+                        sleeveActuallyExists = true;
+
+                    if (!sleeveActuallyExists)
+                    {
+                        existingClashZone.IsResolved = false;
+                        existingClashZone.IsClusterResolved = false;
+                        existingClashZone.IsCombinedResolved = false;
+                        if (existingClashZone.SleeveInstanceId > 0) existingClashZone.SleeveInstanceId = 0;
+                        if (existingClashZone.ClusterSleeveInstanceId > 0) existingClashZone.ClusterSleeveInstanceId = 0;
+                        existingClashZone.ReadyForPlacement = true;
+                        UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint,
+                            boundingBox, document, preCachedWhitelist, existingSleeveIds, openingPointKeys,
+                            mepParamsCache, hostParamsCache, mepDataCache);
                     }
                     else
                     {
-                        // ✅ CRITICAL FIX: Verify sleeve actually exists before preserving resolved zone
-                        bool sleeveActuallyExists = false;
-                        if (existingClashZone.SleeveInstanceId > 0 && existingSleeveIds.Contains(existingClashZone.SleeveInstanceId))
-                            sleeveActuallyExists = true;
-                        else if (existingClashZone.ClusterSleeveInstanceId > 0 && existingSleeveIds.Contains(existingClashZone.ClusterSleeveInstanceId))
-                            sleeveActuallyExists = true;
-                        
-                        // If sleeve doesn't exist, reset flag and allow zone to be updated
-                        if (!sleeveActuallyExists)
-                        {
-                            _log($"[CRITICAL-FIX-STREAMLINED] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist - resetting and updating");
-                            existingClashZone.IsResolved = false;
-                            existingClashZone.IsClusterResolved = false;
-                            if (existingClashZone.SleeveInstanceId > 0) existingClashZone.SleeveInstanceId = 0;
-                            if (existingClashZone.ClusterSleeveInstanceId > 0) existingClashZone.ClusterSleeveInstanceId = 0;
-                            UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document, preCachedWhitelist, existingSleeveIds, openingPointKeys, mepParamsCache, hostParamsCache);
-                        }
+                        existingClashZone.ReadyForPlacement = true;
+                        existingClashZone.LastUpdated = DateTime.Now;
                     }
-
-                    // ✅ PHASE 4 FIX: Mark as current and add to processed list
-                    existingClashZone.IsCurrentClash = true;
-                    allProcessedZones.Add(existingClashZone);
-                    updatedCount++;
                 }
+
+                existingClashZone.IsCurrentClash = true;
+                processedZones.Add(existingClashZone);
+                updatedCount++;
             }
-            
-            // Update storage metadata
-            _clashZoneStorage.LastUpdated = DateTime.Now;
-            _clashZoneStorage.DocumentPath = documentPath;
-            _clashZoneStorage.DocumentHash = documentHash;
-            
-            sw.Stop();
-            _log($"[STREAMLINED] Completed: Total={allProcessedZones.Count} (New={newCount}, Updated={updatedCount}) in {sw.ElapsedMilliseconds}ms");
-            
-            return allProcessedZones;
         }
+        
         
         /// <summary>
         /// Gets clash zones that need to be recalculated due to changes
@@ -1652,7 +2106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         break;
                                     }
                                 }
-                                catch (Exception linkEx)
+                                catch (Exception) // FIX: CS0168 - 'linkEx' commented to fix critical warning
                                 {
                                     // Continue searching in other linked documents
                                     continue;
@@ -2005,8 +2459,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             foreach (var cz in _clashZoneStorage.ClashZones)
             {
-                int mepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
-                int structId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
+                int mepId = cz.MepElementId?.GetIntegerValue() ?? (int)cz.MepElementIdValue;
+                int structId = cz.StructuralElementId?.GetIntegerValue() ?? (int)cz.StructuralElementIdValue;
                 
                 var key = (mepId, structId);
                 if (!_clashZoneLookup.ContainsKey(key))
@@ -2199,7 +2653,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // If Global XML says sleeve exists, trust it even if Revit check fails (sleeve might be in linked file)
                         bool globalSaysResolved = false;
                         bool globalSaysClusterResolved = false;
-                        bool globalEntryFound = false;
+                        // bool globalEntryFound = false; // FIX: CS0219 - commented to fix critical warning
                         // ✅ LEGACY XML REMOVED: GlobalIndexService checks removed.
                         // Relying solely on Revit model state to determine if sleeves exist.
                         
@@ -2258,8 +2712,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         bool clusterSleeveExists = false;
                             if (clashZone.ClusterSleeveInstanceId > 0)
                         {
-                            var clusterSleeveId = new ElementId(clashZone.ClusterSleeveInstanceId);
-                            var clusterSleeve = document.GetElement(clusterSleeveId);
+                            var clusterSleeve = document.GetElement(ElementIdCompat.FromValue(clashZone.ClusterSleeveInstanceId));
                             clusterSleeveExists = clusterSleeve != null;
                             
                                 _log($"[ResetResolvedFlag] Checking cluster sleeve by ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={clusterSleeveExists}");
@@ -2293,15 +2746,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.SleeveInstanceId = -1;
                                 clashZone.SleeveFamilyName = string.Empty;
                                 
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] ClashZone {clashZone.Id}: Cluster sleeve deleted/invalid, ALL flags reset\n");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] FLAGS: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}\n");
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] [RESET-ALL] PARAMS: SleeveInstanceId={clashZone.SleeveInstanceId}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}\n");
+                                }
                                 
                                 clashZone.LastUpdated = DateTime.Now;
                                 resetCount++;
@@ -2324,8 +2774,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ STEP 2: Check if individual sleeve exists in Revit by SleeveInstanceId
                             if (clashZone.SleeveInstanceId > 0)
                             {
-                                var individualSleeveId = new ElementId(clashZone.SleeveInstanceId);
-                                var individualSleeve = document.GetElement(individualSleeveId);
+                                var individualSleeve = document.GetElement(ElementIdCompat.FromValue(clashZone.SleeveInstanceId));
                                 bool individualSleeveExists = individualSleeve != null;
                                 
                                 _log($"[ResetResolvedFlag] Checking individual sleeve by SleeveInstanceId={clashZone.SleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}");
@@ -2470,683 +2919,664 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return null;
         }
         
-        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double>? clearanceSettings = null, Dictionary<(double X, double Y, double Z), int>? spatialIndex = null, HashSet<int>? sleeveIds = null, XYZ? wallCenterlinePoint = null, HashSet<string>? parameterWhitelist = null, HashSet<string>? openingPointKeys = null, Dictionary<int, Dictionary<string, string>>? mepParamsCache = null, Dictionary<int, Dictionary<string, string>>? hostParamsCache = null, Dictionary<int, XYZ>? orientationCache = null)
+        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double>? clearanceSettings = null, Dictionary<(double X, double Y, double Z), int>? spatialIndex = null, HashSet<int>? sleeveIds = null, XYZ? wallCenterlinePoint = null, HashSet<string>? parameterWhitelist = null, HashSet<string>? openingPointKeys = null, Dictionary<int, Dictionary<string, string>>? mepParamsCache = null, Dictionary<int, Dictionary<string, string>>? hostParamsCache = null, Dictionary<int, XYZ>? orientationCache = null, Dictionary<int, (XYZ wallDirection, string wallOrientation, double centerCoord, bool centerCoordValid)>? hostDirectionCache = null, Dictionary<string, MepElementComputedData>? mepDataCache = null, Guid? preComputedGuid = null, Dictionary<string, HostElementComputedData>? hostDataCache = null)
         {
-            // 🔍 PROFILER: Track total time and individual operations
-            var swTotal = OptimizationFlags.EnableDetailedClashZoneProfiler ? System.Diagnostics.Stopwatch.StartNew() : null;
-            var swOp = OptimizationFlags.EnableDetailedClashZoneProfiler ? new System.Diagnostics.Stopwatch() : null;
+            // ✅ DECLARATIONS AT METHOD SCOPE
+            ClashZone? clashZone = null;
+            System.Diagnostics.Stopwatch? swTotal = OptimizationFlags.EnableDetailedClashZoneProfiler ? System.Diagnostics.Stopwatch.StartNew() : null;
+            System.Diagnostics.Stopwatch? swOp = OptimizationFlags.EnableDetailedClashZoneProfiler ? new System.Diagnostics.Stopwatch() : null;
             
-            // Cache lookup
-            if (swOp != null) swOp.Restart();
+            // ✅ CRITICAL DEBUG: Log cache keys to verify match between storage and lookup
+            string mepKey = GetElementCacheKey(mepElement);
+            string hostKey = GetElementCacheKey(structuralElement);
+            
+            MepElementComputedData? mepData = null;
+            HostElementComputedData? hostData = null;
+            // ✅ NOTE: actual cache lookup happens inside the timed block below (lines ~2950-2955); these are populated there
+            
             Dictionary<string, string>? mepParamDict = null;
-            Dictionary<string, string>? hostParamDict = null;
-            
             if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out mepParamDict);
+            
+            Dictionary<string, string>? hostParamDict = null;
             if (hostParamsCache != null) hostParamsCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out hostParamDict);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] Cache lookup: {swOp.ElapsedMilliseconds}ms"); }
 
-            // IMPORTANT: The intersection point is already at the wall center (mid-plane)
-            // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
-            // averages entry/exit points, giving us the wall center automatically.
-            // No additional offset needed since family insertion point is at middle.
-            
-            // DEBUG: Log placement point calculation
-            if (OptimizationFlags.UseDiagnosticMode)
-            {
-                _log($"[DEBUG] Placement Point Calculation for {structuralElement.Id}:");
-                _log($"[DEBUG]   Intersection Point: {intersectionPoint} (already at wall center - using as placement point)");
-            }
-            
-            // Get structural element type
-            if (swOp != null) swOp.Restart();
-            var structuralElementType = GetStructuralElementType(structuralElement, hostParamDict);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetStructuralElementType: {swOp.ElapsedMilliseconds}ms"); }
-            
-            if (OptimizationFlags.UseDiagnosticMode)
-                _log($"[DEBUG] StructuralElementType for {structuralElement.Id}: '{structuralElementType}' (Element: {structuralElement.GetType().Name})");
-            
-            // Get document info
-            var mepElementDoc = mepElement?.Document;
-            var structuralElementDoc = structuralElement?.Document;
-            
-            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-            {
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Element {mepElement?.Id?.GetIntegerValue() ?? -1}: Document='{mepElementDoc?.Title ?? "null"}' (IsLinked={mepElementDoc != document})");
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] Structural Element {structuralElement?.Id?.GetIntegerValue() ?? -1}: Document='{structuralElementDoc?.Title ?? "null"}' (IsLinked={structuralElementDoc != document})");
-            }
-            
-            // Get MEP dimensions
-            if (swOp != null) swOp.Restart();
-            var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement, mepParamDict);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementDimensions: {swOp.ElapsedMilliseconds}ms"); }
-            
-            // Get MEP orientation (with cache)
-            if (swOp != null) swOp.Restart();
-            XYZ mepOrientation;
-            if (orientationCache != null && orientationCache.TryGetValue(mepElement.Id.GetIntegerValue(), out var cachedOrientation))
-            {
-                mepOrientation = cachedOrientation;
-                if (OptimizationFlags.UseDiagnosticMode)
-                    _log($"[ORIENTATION-CACHE] Using cached orientation for {mepElement.Id}");
-            }
-            else
-            {
-                mepOrientation = GetMepElementOrientation(mepElement);
-                if (OptimizationFlags.UseDiagnosticMode && orientationCache != null)
-                    _log($"[ORIENTATION-CACHE] Cache miss for {mepElement.Id}, calculated on-demand");
-            }
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementOrientation (or cache): {swOp.ElapsedMilliseconds}ms"); }
-            
-            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-            {
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Orientation: ({mepOrientation.X:F6}, {mepOrientation.Y:F6}, {mepOrientation.Z:F6})");
-            }
-            
-            // Get wall direction
-            if (swOp != null) swOp.Restart();
-            var wallDirection = WallDirectionService.GetWallDirection(structuralElement);
-            var wallDirectionType = WallDirectionService.GetWallDirectionType(structuralElement, wallDirection);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] WallDirectionService: {swOp.ElapsedMilliseconds}ms"); }
-
-            // Get category and dimensions
-            if (swOp != null) swOp.Restart();
-            var mepCategoryForClearance = GetElementCategoryName(mepElement, mepParamDict);
-            double finalWidth = mepWidth;
-            double finalHeight = mepHeight;
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetElementCategoryName: {swOp.ElapsedMilliseconds}ms"); }
-            
-            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Raw dimensions {mepWidth:F3}x{mepHeight:F3} (clearance will be handled by CONDITIONS service during placement)");
-            
-            // Get pipe opening type
-            if (swOp != null) swOp.Restart();
-            var pipeOpeningType = GetPipeOpeningType(mepElement);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetPipeOpeningType: {swOp.ElapsedMilliseconds}ms"); }
-            
-            // Get level info
-            if (swOp != null) swOp.Restart();
-            var (levelName, levelElevation) = GetMepElementLevelInfo(mepElement);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementLevelInfo: {swOp.ElapsedMilliseconds}ms"); }
-            
-            // ✅ OOP PATTERN: Two paths - optimized if spatial index provided, fallback if not
+            string mepCategory = "Unknown";
+            string structuralElementType = "Unknown";
+            double mepWidth = 0.0, mepHeight = 0.0;
+            XYZ mepOrientation = XYZ.BasisX;
+            XYZ wallDirection = XYZ.BasisX;
+            string wallDirectionType = "Unknown";
+            string mepCategoryForClearance = "Unknown";
+            double finalWidth = 0.0, finalHeight = 0.0;
+            string pipeOpeningType = "Unknown";
+            string levelName = "Unknown";
+            double levelElevation = 0.0;
             bool hasExistingSleeve = false;
             int existingSleeveId = -1;
-            
-            var swLookup = System.Diagnostics.Stopwatch.StartNew();
-            if (spatialIndex != null && spatialIndex.Count > 0)
-            {
-                // ✅ OPTIMIZED PATH: Use spatial index for O(1) lookup
-                var (found, sleeveId) = FindSleeveInSpatialIndex(intersectionPoint, spatialIndex);
-                hasExistingSleeve = found;
-                existingSleeveId = sleeveId;
-                
-                if (found && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Found existing sleeve {sleeveId} at placement point using spatial index");
-            }
-            else if (openingPointKeys != null && openingPointKeys.Count > 0)
-            {
-                 // ✅ STREAMLINED OPTIMIZED PATH: Use pre-indexed opening keys for O(1) existence check
-                 string pointKey = $"{Math.Round(intersectionPoint.X, 3)}_{Math.Round(intersectionPoint.Y, 3)}_{Math.Round(intersectionPoint.Z, 3)}";
-                 hasExistingSleeve = openingPointKeys.Contains(pointKey);
-                 
-                 if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    _log($"[STREAMLINED-SLEEVE-LOOKUP] ✓ Found existing sleeve at {pointKey} using pre-indexed map");
-            }
-            else
-            {
-                // ✅ FALLBACK PATH: Use old method when no sleeves exist for category
-                hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
-                
-                if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    _log($"[LEGACY-SLEEVE-LOOKUP] ✓ Found existing sleeve at placement point using legacy scan");
-            }
-            
-            // Old granular timing removed - replaced by EnableDetailedClashZoneProfiler
-            
-            // ⚠️ CRITICAL: Get MEP element category for category-specific processing ⚠️
-            // DO NOT REMOVE: This is essential for each placement service to validate its category
-            var mepCategory = GetElementCategoryName(mepElement, mepParamDict);
-            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id} ({mepElement.GetType().Name}): Category='{mepCategory}', Element.Category.Name='{mepElement.Category?.Name}'");
-            
-            // ✅ FIX: Skip pipe accessories when processing pipes filter
-            if (mepCategory == "Pipe Accessories")
-            {
-                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[CLASH_DEBUG] SKIP: Pipe Accessories element {mepElement.Id} - not processing unwanted clash zones");
-                return null; // Skip creating clash zone for pipe accessories
-            }
-            
-            // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
-            var swSize = System.Diagnostics.Stopwatch.StartNew();
-            
-            // ✅ WALL-AWARE DETECTION: Get wall orientation EARLY for BBox logic
-            string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
-            
-            // ✅ Fix CS0103: Initialize finalDiameter (finalWidth/finalHeight already declared above)
+            string wallOrientation = "Unknown";
+            MepElementSize mepElementSize = null;
+            string ductShape = "Unknown";
+            bool isInsulated = false;
+            double insulationThickness = 0.0;
+            string insulationType = "Unknown";
             double finalDiameter = 0.0;
-            
-            MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
-            
-            // ✅ CLEANUP: Removed redundant "Duct Accessories" fallback.
-            // All dimension logic (including BBox fallback for R2024 Zero-Dim bug) 
-            // is now encapsulated in DamperPlacementStrategy.GetMepElementSize.
-            
-            if (mepElementSize.Width > 0 || mepElementSize.Height > 0 || mepElementSize.Diameter > 0)
-            {
-                // ✅ STRATEGY SUCCESS: Use dimensions from Strategy/Insulation Awareness
-                finalWidth = mepElementSize.Width > 0 ? mepElementSize.Width : finalWidth;
-                finalHeight = mepElementSize.Height > 0 ? mepElementSize.Height : finalHeight;
-                finalDiameter = mepElementSize.Diameter;
-                
-                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from Strategy: {finalWidth:F3}x{finalHeight:F3}");
-            }
-            else
-            {
-                 // Generic fallback for other categories if Strategy returns 0
-                 var bbox = mepElement.get_BoundingBox(null);
-                 if (bbox != null)
-                 {
-                     // Use Orientation-Aware BBox extraction for global fallback
-                     // This prevents overwriting Height with Depth in North-South walls
-                     finalHeight = bbox.Max.Z - bbox.Min.Z;
-                     
-                     if (wallOrientation == "X" || wallOrientation == "X-Wall")
-                         finalWidth = bbox.Max.X - bbox.Min.X; // Wall runs along X
-                     else
-                         finalWidth = bbox.Max.Y - bbox.Min.Y; // Wall runs along Y
-                         
-                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from Global BBox Fallback: {finalWidth:F3}x{finalHeight:F3}");
-                 }
-            }
-
-            
-            // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
-            // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
-            var ductShape = GetDuctShape(mepElement);
-            
-            // ✅ OOP METHOD: Use InsulationDetector to detect insulation status and thickness
-            var insulationDetector = new InsulationDetector();
-            var (isInsulated, insulationThickness) = insulationDetector.GetInsulationInfo(mepElement, mepElementSize);
-            var insulationType = isInsulated ? "Insulated" : "Normal";
-            swSize.Stop();
-            
-            // LOG GRANULAR TIMING
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                 SafeFileLogger.SafeAppendText("create_clashzone_perf.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] ID={mepElement.Id} " +
-                    $"Size+Insul={swSize.ElapsedMilliseconds}ms\n");
-            }
-            
-            // ✅ PIPE DIAMETER SCHEMA: Extract pipe diameters early (before formatted size calculation)
-            // This ensures pipeNominalDiameter is available for GetMepElementSizeString fallback
-            double pipeOuterDiameter = 0.0;
-            double pipeNominalDiameter = 0.0;
-            if (mepElement is Pipe pipe)
-            {
-                try
-                {
-                    var outerDiamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER);
-                    if (outerDiamParam != null)
-                    {
-                        pipeOuterDiameter = outerDiamParam.AsDouble();
-                    }
-                    
-                    var nominalDiamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
-                    if (nominalDiamParam != null)
-                    {
-                        pipeNominalDiameter = nominalDiamParam.AsDouble();
-                    }
-                    
-                    // ✅ DIAGNOSTIC LOGGING: Log pipe diameter extraction
-                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        var odMm = pipeOuterDiameter > 0 ? (pipeOuterDiameter * 304.8) : 0.0;
-                        var nomMm = pipeNominalDiameter > 0 ? (pipeNominalDiameter * 304.8) : 0.0;
-                        SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] 🔍 PIPE DIAMETERS: Element {mepElement.Id.GetIntegerValue()}, OuterDiameter={pipeOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={pipeNominalDiameter:F6}ft ({nomMm:F1}mm), Doc={mepElement.Document?.Title}\n");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ ERROR extracting pipe diameters for element {mepElement.Id.GetIntegerValue()}: {ex.Message}\n");
-                    }
-                }
-            }
-            
-            // Pre-calculate formatted size and system abbreviation to eliminate linked file access during placement
-            // ✅ FIX: Use calculated finalWidth/Height instead of raw mepWidth/Height
-            var formattedSize = GetMepElementSizeString(mepElement, finalWidth, finalHeight, ductShape, pipeNominalDiameter);
-            
-            // ✅ SIZE PARAMETER VALUE: Extract raw Size parameter value as string for snapshot table and parameter transfer
-            // This is the exact text from the Size parameter (e.g., "20 mmø", "200 mm dia symbol") - different from formattedSize which may be calculated
-            string sizeParameterValue = GetMepElementSizeParameterValue(mepElement);
-            
-            // ✅ DIAGNOSTIC LOGGING: Log the formatted size and size parameter values for debugging
-            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && mepElement != null)
-            {
-                var category = mepElement.Category?.Name ?? "Unknown";
-                SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ MepElementFormattedSize for {category} (ID={mepElement.Id.GetIntegerValue()}): '{formattedSize}', MepElementSizeParameterValue: '{sizeParameterValue}'\n");
-            }
-            var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
-            
-            // ✅ MEP METADATA: Extract System Type, Service Type, and Elevation
-            var mepSystemType = GetMepSystemType(mepElement, mepCategory);
-            // ✅ MEP METADATA: Extract System Name (e.g. "H-1")
-            string mepSystemName = string.Empty;
-            try 
-            {
-                var sysNameParam = mepElement?.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
-                if (sysNameParam != null && sysNameParam.HasValue) 
-                    mepSystemName = sysNameParam.AsString();
-            } catch {}
-            
-            var mepServiceType = GetMepServiceType(mepElement);
-            
-            // ✅ USER REQUEST: Read "Offset" parameter directly for individual sleeves
-            // Calculation is only for cluster/combined sleeves (handled elsewhere)
-            double elevationFromLevel = GetMepElementOffset(mepElement);
-            
-            // ✅ WALL-AWARE DETECTION: Wall orientation already retrieved above
-            // string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
-            
-            // ✅ DIAGNOSTIC: Log wall orientation for debugging
-            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && mepCategory == "Duct Accessories")
-            {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneService] WallOrientation='{wallOrientation ?? "NULL"}' for StructuralElement={structuralElement?.Id?.GetIntegerValue() ?? -1}, Type={structuralElement?.GetType()?.Name ?? "Unknown"}\n");
-                // ✅ BUILD STAMP near wall-orientation log for absolute certainty
-                try
-                {
-                    var asm = typeof(ClashZoneService).Assembly;
-                    string asmLoc = asm.Location;
-                    var asmWrite = System.IO.File.Exists(asmLoc) ? System.IO.File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
-                    string asmVer = asm.GetName().Version?.ToString() ?? "unknown";
-                    SafeFileLogger.SafeAppendText("damper_connector_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [BUILD-STAMP:CLASH] AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}, Version={asmVer}, Assembly={asmLoc}\n");
-                }
-                catch { }
-            }
-            
-            // ✅ OOP METHOD: Use DamperConnectorService to detect connector info (with wall orientation for wall-aware detection)
-            var damperConnectorInfo = GetDamperConnectorInfo(mepElement, mepCategory, wallOrientation);
-            string connectorSide = damperConnectorInfo.ConnectorSide;
-            bool hasMepConnector = damperConnectorInfo.HasMepConnector;
-            // Note: Strategy will determine clearance from UI based on damper type and connector side
-            
-            // Placement point: intersection point is already at host center for FULL penetrations
-            // MepIntersectionService.GetBoundingBoxCenter() averages entry/exit points to get mid-depth
-            // NOTE: For partial penetrations that pass the 20% filter, intersection point is used as-is
-            // (the working code doesn't have special handling for partial penetrations)
-            // SAFETY: Some projects reported (0,0,0) due to missing transform at persistence time.
-            // If we see a zero/near-zero point, fix up from the intersection bbox center or MEP bbox center.
-            if (intersectionPoint == null || (Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9))
-            {
-                try
-                {
-                    XYZ fix = null;
-                    if (boundingBox != null)
-                    {
-                        fix = new XYZ(
-                            (boundingBox.Min.X + boundingBox.Max.X) / 2.0,
-                            (boundingBox.Min.Y + boundingBox.Max.Y) / 2.0,
-                            (boundingBox.Min.Z + boundingBox.Max.Z) / 2.0);
-                    }
-                    if (fix == null)
-                    {
-                        var mepBBoxFix = mepElement.get_BoundingBox(null);
-                        if (mepBBoxFix != null)
-                        {
-                            fix = new XYZ(
-                                (mepBBoxFix.Min.X + mepBBoxFix.Max.X) / 2.0,
-                                (mepBBoxFix.Min.Y + mepBBoxFix.Max.Y) / 2.0,
-                                (mepBBoxFix.Min.Z + mepBBoxFix.Max.Z) / 2.0);
-                        }
-                    }
-                    if (fix != null)
-                    {
-                        _log($"[FIXUP] IntersectionPoint was 0,0,0 → using center {fix} (bbox/meppbbox)");
-                        intersectionPoint = fix;
-                    }
-                }
-                catch { }
-            }
-            XYZ placementPoint = intersectionPoint;
-
-            // ✅ FINAL PLACEMENT POINT: Use pre-calculated value passed from caller (calculated once before CreateClashZone using bbox method)
-            // This is the final placement point at wall centerline, saved directly to SleevePlacementPoint
-            // If not provided, fallback to intersection point (for backward compatibility or when calculation fails)
-            // ✅ CRITICAL FIX: FOR FLOORS, ALWAYS USE INTERSECTION POINT (FloorCenterPoint concept)
-            // WallCenterlinePoint is only relevant for Walls/Framing
-            bool isFloor = structuralElementType == "Floor";
-            XYZ finalPlacementPoint = (isFloor || wallCenterlinePoint == null) ? intersectionPoint : wallCenterlinePoint;
-            
-            // ✅ DIAGNOSTIC: Log final placement point being set on ClashZone object
-            if (!DeploymentConfiguration.DeploymentMode && wallCenterlinePoint != null)
-            {
-                bool isZero = (finalPlacementPoint.X == 0.0 && finalPlacementPoint.Y == 0.0 && finalPlacementPoint.Z == 0.0);
-                string zeroWarning = isZero ? " ⚠️⚠️⚠️ ZERO VALUE!" : "";
-                SafeFileLogger.SafeAppendText("wall_centerline_set.log",
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SET] Zone (MEP={mepElement?.Id}, Category={mepCategory}): " +
-                    $"Setting SleevePlacementPoint=({finalPlacementPoint.X:F6}ft, {finalPlacementPoint.Y:F6}ft, {finalPlacementPoint.Z:F6}ft), " +
-                    $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft), " +
-                    $"Source={(wallCenterlinePoint != null ? "Bbox Method" : "Fallback to Intersection")}{zeroWarning}\n");
-            }
-
-            // ✅ CRITICAL DEBUG: Verify intersection point is NOT zero before creating ClashZone
-            bool isInputZero = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
-            if (isInputZero)
-            {
-                _log($"[⚠️ CREATE-WARNING] IntersectionPoint is ZERO when creating ClashZone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
-                try 
-                { 
-                    var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
-                    File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ CREATE-WARNING: IntersectionPoint ZERO - MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z}), Doc={document?.Title}\n");
-                } 
-                catch { }
-            }
-            
-            // ✅ NOTE: pipeOuterDiameter and pipeNominalDiameter are already extracted above (before formatted size calculation)
-            
-            // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
-            // This captures all whitelisted parameters from MEP elements and stores them in ClashZone
-            // Later, during Stage 2 (Place Sleeve), these parameters will be transferred to physical sleeve elements
+            XYZ finalPlacementPoint = intersectionPoint;
             List<SerializableKeyValue> mepParameterValues = new List<SerializableKeyValue>();
             List<SerializableKeyValue> hostParameterValues = new List<SerializableKeyValue>();
-            
-            try
-            {
-                if (_clashZoneStorage != null)
-                {
-                    var parameterSnapshotService = new ParameterSnapshotService();
-                    
-                    // Build whitelist from storage (includes common keys, user-defined keys, and learned keys)
-                    // ✅ OPTIMIZATION: Use pre-cached whitelist if provided
-                    var whitelist = parameterWhitelist ?? parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
-                    
-                    // Capture MEP element parameters
-                    mepParameterValues = parameterSnapshotService.CaptureParams(mepElement, whitelist);
-                    
-                    // Capture host element parameters
-                    hostParameterValues = parameterSnapshotService.CaptureParams(structuralElement, whitelist);
-                    
-                    if (!DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
-                    {
-                        _log($"[PARAM-SNAPSHOT] Captured {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters for ClashZone (MEP={mepElement.Id}, Host={structuralElement.Id})");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Non-fatal: Log error but continue with empty parameter lists
-                _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters: {ex.Message}");
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
-                }
-            }
-            
-            // ✅ MEP METADATA: Extract type and family names for persistence
-            // This ensures they are available in the DB for UI and reporting without Revit access
-            string? mepElementTypeName = null;
-            string? mepElementFamilyName = null;
-            try
-            {
-                var typeId = mepElement?.GetTypeId();
-                if (typeId != null && typeId != ElementId.InvalidElementId)
-                {
-                    var typeElem = mepElement?.Document?.GetElement(typeId);
-                    if (typeElem != null)
-                    {
-                        mepElementTypeName = typeElem.Name;
-                        if (typeElem is ElementType et)
-                        {
-                            mepElementFamilyName = et.FamilyName;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                    _log($"[METADATA-ERROR] Failed to extract MEP type/family for ID={mepElement?.Id}: {ex.Message}");
-            }
+            bool hasMepConnector = false;
+            string connectorSide = string.Empty;
+            DamperConnectorInfo damperConnectorInfo = default;
+            double elevationFromLevel = 0.0;
+            double pipeOuterDiameter = 0.0;
+            double pipeNominalDiameter = 0.0;
+            string formattedSize = string.Empty;
+            string sizeParameterValue = string.Empty;
+            string systemAbbreviation = string.Empty;
+            string mepSystemType = string.Empty;
+            string mepSystemName = string.Empty;
+            string mepServiceType = string.Empty;
 
-            var clashZone = new ClashZone
+            using (var internalOp = _performanceMonitor?.TrackOperation("6d4d1. Data Fetch & Logic") as IDisposable)
             {
-                MepElementId = mepElement.Id,
-                StructuralElementId = structuralElement.Id,
-                IntersectionPoint = intersectionPoint,
-                SleevePlacementPoint = finalPlacementPoint, // ✅ CRITICAL: Use final placement point (calculated using bbox method) - this is the actual sleeve placement location
-                IntersectionPointX = intersectionPoint.X, // ✅ CRITICAL FIX: Explicitly set for XML serialization
-                IntersectionPointY = intersectionPoint.Y, // ✅ CRITICAL FIX: Explicitly set for XML serialization
-                IntersectionPointZ = intersectionPoint.Z, // ✅ CRITICAL FIX: Explicitly set for XML serialization
-                // Log first few zones to placement_debug to verify creation
-                // (moved after object creation for safety)
-                SleevePlacementPointX = finalPlacementPoint.X, // XML serializable - final placement point (Intersection for Floor, WallCentral for Wall)
-                SleevePlacementPointY = finalPlacementPoint.Y, // XML serializable - final placement point at wall centerline
-                SleevePlacementPointZ = finalPlacementPoint.Z, // XML serializable - final placement point at wall centerline
-                ClashBoundingBox = boundingBox,
-                MepElementSize = 0.0, // Legacy field, not used
-                RequiredClearance = 0.0, // Clearance will be calculated during placement
-                MepElementGeometryHash = CalculateElementGeometryHash(mepElement),
-                StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement),
-                MepElementCategory = MepCategoryConstants.Normalize(mepCategory), // Store STANDARDIZED category name
-                // ✅ CRITICAL FIX: Store MEP element size with insulation information
-                MepElementSizeData = mepElementSize,
-                DuctShape = ductShape, // Store duct shape (Round/Rectangular) from family name
-                InsulationType = insulationType, // Store insulation type (Normal/Insulated) for clearance selection
-                IsInsulated = isInsulated, // ✅ OOP METHOD: Pre-calculated insulation flag saved to DB for clearance calculations
-                InsulationThickness = insulationThickness, // ✅ OOP METHOD: Pre-calculated insulation thickness saved to DB if insulated
-                DocumentPath = document.PathName,
-                StructuralElementDocumentTitle = structuralElement.Document.Title,
-                // ✅ CRITICAL: Set SourceDocKey and HostDocKey for hierarchical Global XML structure
-                // These are used to group entries by file combo (LinkedFile + HostFile)
-                // ⚠️ NOTE: Uses Document.Title (same as LinkedFileService after fix)
-                // LinkedFileService now uses RevitLinkInstance.Name when available, which matches what user sees in Revit
-                // ClashZoneService uses Document.Title because we don't have access to RevitLinkInstance here
-                // Both should match since LinkedFileService falls back to Document.Title if Name is empty
-                SourceDocKey = mepElement.Document.Title ?? mepElement.Document.PathName ?? string.Empty,
-                HostDocKey = structuralElement.Document.Title ?? structuralElement.Document.PathName ?? string.Empty,
-                StructuralElementType = structuralElementType,
-                HostOrientation = WallDirectionService.GetHostOrientation(structuralElement), // ✅ OOP: Use centralized service
-                StructuralElementThickness = GetElementThickness(structuralElement),
-                WallThickness = GetWallThickness(structuralElement),
-                FramingThickness = GetFramingThickness(structuralElement),
                 
-                StructuralElementNormal = WallDirectionService.GetStructuralElementNormal(structuralElement), // ✅ OOP: Use centralized service
+                // Cache lookup
+                if (swOp != null) swOp.Restart();
+                mepParamDict = null;
+                hostParamDict = null;
                 
-                // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files
-                // Log in millimeters for readability (moved outside object initializer to fix syntax)
+                if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out mepParamDict);
+                if (hostParamsCache != null) hostParamsCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out hostParamDict);
+                // PERF OPT: Look up pre-computed MEP element data (size, shape, insulation, system info…)
+                mepData = null;
+                mepDataCache?.TryGetValue(GetElementCacheKey(mepElement), out mepData);
+                // PERF OPT: Look up pre-computed host structural data (thickness, normal, type, orientation)
+                // Same host wall intersects many MEP elements — computed once per unique host in pre-batch block.
+                hostData = null;
+                hostDataCache?.TryGetValue(GetElementCacheKey(structuralElement), out hostData);
+                if (swOp != null) { swOp.Stop(); _log($"[PROFILER] Cache lookup: {swOp.ElapsedMilliseconds}ms"); }
+
+                // IMPORTANT: The intersection point is already at the wall center (mid-plane)
+                // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
+                // averages entry/exit points, giving us the wall center automatically.
+                // No additional offset needed since family insertion point is at middle.
                 
-                WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
-                WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
-                MepElementOrientation = mepOrientation, // Pre-calculate MEP element orientation vector for rotation logic
-                // ✅ CRITICAL FIX: Explicitly populate flattened orientation coordinates for DB persistence
-                MepOrientationX = mepOrientation.X,
-                MepOrientationY = mepOrientation.Y,
-                MepOrientationZ = mepOrientation.Z,
-                
-                // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
-                MepElementWidth = finalWidth,
-                MepElementHeight = finalHeight,
-                // ✅ PIPE DIAMETER SCHEMA: Populate outer diameter and nominal diameter for pipes (for UI toggle later)
-                MepElementOuterDiameter = pipeOuterDiameter,
-                MepElementNominalDiameter = pipeNominalDiameter,
-                MepElementOrientationDirection = GetMepOrientationDirection(structuralElementType, mepOrientation, wallDirectionType), // ✅ CRITICAL: Use correct method for orientation direction - DO NOT CHANGE TO GetWallOrientationFromType - FIXED 2025-10-27
-                MepElementRotationAngle = CalculateMepElementRotationAngle(structuralElementType, mepOrientation, mepElement), // ✅ FLOOR ROTATION: Calculate rotation angle once during refresh (pass element for vertical elements)
-                PipeOpeningType = pipeOpeningType,
-                MepElementLevelName = levelName,
-                MepElementLevelElevation = levelElevation,
-                MepElementTypeName = mepElementTypeName, // ✅ MEP METADATA: Type name for pipes/ducts
-                MepElementFamilyName = mepElementFamilyName, // ✅ MEP METADATA: Family name for pipes/ducts
-                MepElementUniqueId = mepElement?.UniqueId ?? string.Empty, // Pre-calculated unique ID for robust tracking
-                MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
-                MepElementSizeParameterValue = sizeParameterValue, // ✅ SIZE PARAMETER VALUE: Raw Size parameter as string (e.g., "20 mmø", "200 mm dia symbol") for snapshot table and parameter transfer
-                MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
-                MepSystemType = mepSystemType, // ✅ MEP METADATA: System Type (e.g., "Supply Air", "Hydronic Supply")
-                MepSystemName = mepSystemName, // ✅ MEP METADATA: System Name (e.g. "H-1")
-                MepServiceType = mepServiceType, // ✅ MEP METADATA: Service Type (e.g., "Ventilation", "Heating")
-                ElevationFromLevel = elevationFromLevel, // ✅ MEP METADATA: Height above level (Offset)
-                
-                // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (passed from caller, calculated once before CreateClashZone using bbox method)
-                // For ducts, pipes, cable trays: uses bbox method (same as dampers) - cheaper and more reliable than ray-trace
-                // For dampers: calculated in DamperProcessingService using bbox method
-                // ✅ NOTE: SleevePlacementPoint is now the primary placement point (calculated above), WallCenterlinePoint kept for backward compatibility
-                WallCenterlinePoint = finalPlacementPoint,
-                WallCenterlinePointX = finalPlacementPoint.X,
-                WallCenterlinePointY = finalPlacementPoint.Y,
-                WallCenterlinePointZ = finalPlacementPoint.Z,
-                
-                // ✅ DIAGNOSTIC: Verify wall centerline values are set correctly on ClashZone object
-                // This will be saved to DB by Repository.AddClashZoneParameters
-                
-                // ✅ STAGE 1 (REFRESH): Store captured parameter snapshots for later transfer to sleeves (Stage 2)
-                // These parameters are captured from MEP and Host elements during refresh and stored in XML
-                // During sleeve placement, ParameterTransferService will transfer these to physical sleeve elements
-                MepParameterValues = mepParameterValues, // Full parameter snapshot from MEP element (whitelisted parameters only)
-                HostParameterValues = hostParameterValues, // Full parameter snapshot from host element (whitelisted parameters only)
-                
-                // ✅ DIAGNOSTIC: Log ClashZone creation with pipe diameters and size parameter value
-                // This helps verify the values are being set correctly in the ClashZone object
-                // (Logging after object creation to ensure all values are set)
-                HasMepConnector = hasMepConnector, // ✅ OOP METHOD: Direct flag - whether damper has MEP connector (regardless of type)
-                DamperConnectorSide = connectorSide, // ✅ OOP METHOD: Pre-calculated connector side ("Left", "Right", "Top", "Bottom") if MEP connector found
-                IsMSFDDamper = hasMepConnector && !string.IsNullOrEmpty(connectorSide), // ⚠️ DEPRECATED: Kept for backward compatibility
-                IsStandardDamper = damperConnectorInfo.IsStandardDamper, // ✅ OOP METHOD: Use detector to determine if standard damper (for classification only)
-                IsResolved = hasExistingSleeve,
-                
-                // ✅ SESSION FLAG: Mark new clash zones as ready for placement in current refresh session
-                // This ensures the UI button is enabled and placement processes these zones
-                // (Zones loaded from database during refresh also get this flag set in xml_cache_manager.cs)
-                ReadyForPlacement = true,
-            };
-            
-            // ✅ DIAGNOSTIC: Log ClashZone creation with pipe diameters and size parameter value (after object creation)
-            if (!DeploymentConfiguration.DeploymentMode && string.Equals(mepCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
-            {
-                var odMm = clashZone.MepElementOuterDiameter > 0 ? (clashZone.MepElementOuterDiameter * 304.8) : 0.0;
-                var nomMm = clashZone.MepElementNominalDiameter > 0 ? (clashZone.MepElementNominalDiameter * 304.8) : 0.0;
-                SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ ClashZone CREATED: ZoneId={clashZone.Id}, OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{clashZone.MepElementFormattedSize ?? "NULL"}'\n");
-            }
-            
-            // ✅ DIAGNOSTIC: Log MEP element sizes for ALL categories (for debugging sleeve size issues)
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                var widthMm = clashZone.MepElementWidth * 304.8;
-                var heightMm = clashZone.MepElementHeight * 304.8;
-                SafeFileLogger.SafeAppendText("refresh_mep_sizes.log",
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CREATE-CLASH-ZONE] Zone {clashZone.Id}: MEP={mepElement?.Id?.GetIntegerValue() ?? -1}, Category='{mepCategory}', MepElementWidth={clashZone.MepElementWidth:F6}ft ({widthMm:F1}mm), MepElementHeight={clashZone.MepElementHeight:F6}ft ({heightMm:F1}mm), Source='GetMepElementDimensions', finalWidth={finalWidth:F6}ft, finalHeight={finalHeight:F6}ft\n");
-            }
-            
-            // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files
-            // Log in millimeters for readability
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.GetIntegerValue() ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm");
-            }
-            
-            // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
-            // This ensures the same intersection (MEP+Host+IntersectionPoint) always gets the same GUID
-            // Even if Global XML is deleted/recreated, the GUID will remain stable
-            // ✅ CRITICAL: Use IntersectionPoint (actual MEP/host intersection) for GUID generation
-            // IntersectionPoint is stable - only changes if MEP or host element moves
-            // This is better than SleevePlacementPoint which might change if calculation method changes
-            // ✅ CRITICAL FIX: Use GetOrCreateDeterministicGuidDatabaseFirst to check database first (like dampers)
-            // This can reuse existing GUIDs from database, preventing duplicates
-            if (_guidManager != null)
-            {
-                int mepId = clashZone.MepElementId?.GetIntegerValue() ?? clashZone.MepElementIdValue;
-                int hostId = clashZone.StructuralElementId?.GetIntegerValue() ?? clashZone.StructuralElementIdValue;
-                
-                // ✅ Use IntersectionPoint (actual MEP/host intersection) for deterministic GUID
-                // This is stable - only changes if elements move, perfect for GUID generation
-                if (mepId > 0 && hostId > 0 && 
-                    Math.Abs(clashZone.IntersectionPointX) > 1e-9 &&
-                    Math.Abs(clashZone.IntersectionPointY) > 1e-9 &&
-                    Math.Abs(clashZone.IntersectionPointZ) > 1e-9)
+                // DEBUG: Log placement point calculation
+                if (OptimizationFlags.UseDiagnosticMode)
                 {
-                    // ✅ CRITICAL: Use database-first approach (like dampers) to check for existing GUID
-                    // This prevents duplicate GUIDs when the same intersection is detected again
-                    Guid oldGuid = clashZone.Id; // Store original random GUID for comparison
-                    clashZone.Id = _guidManager.GetOrCreateDeterministicGuidDatabaseFirst(
-                        mepId,
-                        hostId,
-                        clashZone.IntersectionPointX,
-                        clashZone.IntersectionPointY,
-                        clashZone.IntersectionPointZ,
-                        tolerance: 0.1); // 0.1ft = ~30mm tolerance (matches GlobalIndexService.FindByMepHostAndPoint)
-                    
-                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        string guidSource = (oldGuid == clashZone.Id) ? "EXISTING (reused)" : "NEW (generated)";
-                        _log($"[DETERMINISTIC-GUID] {guidSource} GUID {clashZone.Id} for MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPoint=({clashZone.IntersectionPointX:F6},{clashZone.IntersectionPointY:F6},{clashZone.IntersectionPointZ:F6})");
-                    }
+                    _log($"[DEBUG] Placement Point Calculation for {structuralElement.Id}:");
+                    _log($"[DEBUG]   Intersection Point: {intersectionPoint} (already at wall center - using as placement point)");
+                }
+                
+                // Get structural element type — use pre-computed hostData cache to avoid COM call per zone
+                if (swOp != null) swOp.Restart();
+                structuralElementType = hostData?.StructuralElementType ?? GetStructuralElementType(structuralElement, hostParamDict);
+                if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetStructuralElementType (cached={hostData != null}): {swOp.ElapsedMilliseconds}ms"); }
+                
+                if (OptimizationFlags.UseDiagnosticMode)
+                    _log($"[DEBUG] StructuralElementType for {structuralElement.Id}: '{structuralElementType}' (Element: {structuralElement.GetType().Name})");
+            }
+            
+            using (var metadataOp = _performanceMonitor?.TrackOperation("6d4d2. Metadata & Lookup") as IDisposable)
+            {
+                // Get document info
+                var mepElementDoc = mepElement?.Document;
+                var structuralElementDoc = structuralElement?.Document;
+                
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("refresh.log", $"[CLASH-ZONE-CREATE] MEP Element {mepElement?.Id?.GetIntegerValue() ?? -1}: Document='{mepElementDoc?.Title ?? "null"}' (IsLinked={mepElementDoc != document})");
+                    SafeFileLogger.SafeAppendText("refresh.log", $"[CLASH-ZONE-CREATE] Structural Element {structuralElement?.Id?.GetIntegerValue() ?? -1}: Document='{structuralElementDoc?.Title ?? "null"}' (IsLinked={structuralElementDoc != document})");
+                }
+                
+                // Get MEP dimensions — from pre-computed cache if available
+                if (swOp != null) swOp.Restart();
+                var dims = (mepData != null)
+                    ? (mepData.RawWidth, mepData.RawHeight)
+                    : GetMepElementDimensions(mepElement, mepParamDict);
+                mepWidth = dims.Item1;
+                mepHeight = dims.Item2;
+                if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementDimensions (cached={mepData != null}): {swOp.ElapsedMilliseconds}ms"); }
+                
+                // Get MEP orientation (with cache)
+                if (swOp != null) swOp.Restart();
+                if (orientationCache != null && orientationCache.TryGetValue(mepElement.Id.GetIntegerValue(), out var cachedOrientation))
+                {
+                    mepOrientation = cachedOrientation;
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        _log($"[ORIENTATION-CACHE] Using cached orientation for {mepElement.Id}");
                 }
                 else
                 {
-                    // Invalid data - keep random GUID from default initialization
+                    mepOrientation = GetMepElementOrientation(mepElement);
+                    if (OptimizationFlags.UseDiagnosticMode && orientationCache != null)
+                        _log($"[ORIENTATION-CACHE] Cache miss for {mepElement.Id}, calculated on-demand");
+                }
+                if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementOrientation (or cache): {swOp.ElapsedMilliseconds}ms"); }
+                
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Orientation: ({mepOrientation.X:F6}, {mepOrientation.Y:F6}, {mepOrientation.Z:F6})");
+                }
+                
+                // Get wall direction — use pre-cached value (same host can intersect many MEP elements)
+                if (swOp != null) swOp.Restart();
+                if (hostDirectionCache != null && hostDirectionCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out var cachedHostDir))
+                {
+                    wallDirection = cachedHostDir.wallDirection;
+                    // Derive wallDirectionType from cached direction (avoids GetWallDirectionType COM call)
+                    wallDirectionType = (wallDirection != null)
+                        ? (Math.Abs(wallDirection.X) > Math.Abs(wallDirection.Y) ? "X-WALL" : "Y-WALL")
+                        : null;
+                }
+                else
+                {
+                    wallDirection = WallDirectionService.GetWallDirection(structuralElement);
+                    wallDirectionType = WallDirectionService.GetWallDirectionType(structuralElement, wallDirection);
+                }
+                if (swOp != null) { swOp.Stop(); _log($"[PROFILER] WallDirectionService (cached={hostDirectionCache != null}): {swOp.ElapsedMilliseconds}ms"); }
+
+                // Get category, pipe opening type, level info — all from pre-computed cache if available
+                if (swOp != null) swOp.Restart();
+                mepCategoryForClearance = (mepData != null) ? mepData.Category : GetElementCategoryName(mepElement, mepParamDict);
+                finalWidth = mepWidth;
+                finalHeight = mepHeight;
+                pipeOpeningType = (mepData != null) ? mepData.PipeOpeningType : GetPipeOpeningType(mepElement);
+                var levelInfo = (mepData != null)
+                    ? (mepData.LevelName, mepData.LevelElevation)
+                    : GetMepElementLevelInfo(mepElement);
+                levelName = levelInfo.Item1;
+                levelElevation = levelInfo.Item2;
+                if (swOp != null) { swOp.Stop(); _log($"[PROFILER] Category+PipeOpeningType+LevelInfo (cached={mepData != null}): {swOp.ElapsedMilliseconds}ms"); }
+
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Raw dimensions {mepWidth:F3}x{mepHeight:F3} (clearance will be handled by CONDITIONS service during placement)");
+                
+                // ✅ OOP PATTERN: Two paths - optimized if spatial index provided, fallback if not
+                hasExistingSleeve = false;
+                existingSleeveId = -1;
+                
+                var swLookup = System.Diagnostics.Stopwatch.StartNew();
+                if (spatialIndex != null && spatialIndex.Count > 0)
+                {
+                    // ✅ OPTIMIZED PATH: Use spatial index for O(1) lookup
+                    var (found, sleeveId) = FindSleeveInSpatialIndex(intersectionPoint, spatialIndex);
+                    hasExistingSleeve = found;
+                    existingSleeveId = sleeveId;
+                    
+                    if (found && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Found existing sleeve {sleeveId} at placement point using spatial index");
+                }
+                else if (openingPointKeys != null)
+                {
+                     // ✅ STREAMLINED OPTIMIZED PATH: Use pre-indexed opening keys for O(1) existence check
+                     // NOTE: empty set is valid — means no sleeves placed yet, skip expensive FilteredElementCollector scan
+                     string pointKey = $"{Math.Round(intersectionPoint.X, 3)}_{Math.Round(intersectionPoint.Y, 3)}_{Math.Round(intersectionPoint.Z, 3)}";
+                     hasExistingSleeve = openingPointKeys.Contains(pointKey);
+                     
+                     if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                        _log($"[STREAMLINED-SLEEVE-LOOKUP] ✓ Found existing sleeve at {pointKey} using pre-indexed map");
+                }
+                else
+                {
+                    // ✅ FALLBACK PATH: Use old method when no sleeves exist for category
+                    hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
+                    
+                    if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                        _log($"[LEGACY-SLEEVE-LOOKUP] ✓ Found existing sleeve at placement point using legacy scan");
+                }
+                
+                // Old granular timing removed - replaced by EnableDetailedClashZoneProfiler
+                
+                // PERF OPT: Reuse mepCategoryForClearance (already computed above) — was calling GetElementCategoryName twice
+                mepCategory = mepCategoryForClearance;
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id} ({mepElement.GetType().Name}): Category='{mepCategory}', Element.Category.Name='{mepElement.Category?.Name}'");
+                
+                // ✅ FIX: Skip pipe accessories when processing pipes filter
+                if (mepCategory == "Pipe Accessories")
+                {
                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH_DEBUG] SKIP: Pipe Accessories element {mepElement.Id} - not processing unwanted clash zones");
+                    return null; // Skip creating clash zone for pipe accessories
+                }
+                
+                // ✅ WALL-AWARE DETECTION: Get wall orientation EARLY for BBox logic
+                // PERF OPT: Use pre-cached orientation from hostDirectionCache (already computed per unique host)
+                wallOrientation = (hostDirectionCache != null && hostDirectionCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out var cachedOri))
+                    ? cachedOri.wallOrientation
+                    : (wallDirection != null ? (Math.Abs(wallDirection.X) > Math.Abs(wallDirection.Y) ? "X" : "Y") : WallDirectionService.GetHostOrientation(structuralElement));
+            }
+
+            using (var strategyOp = _performanceMonitor?.TrackOperation("6d4d3. Strategy & Insulation") as IDisposable)
+            {
+                // ✅ Size, shape, insulation — from pre-computed MEP cache if available
+                var swSize = OptimizationFlags.UseDiagnosticMode ? System.Diagnostics.Stopwatch.StartNew() : null;
+                if (mepData != null && mepData.StrategyValid)
+                {
+                    // PERF OPT: All from cache — zero COM calls
+                    mepElementSize    = mepData.StrategySize;
+                    finalWidth        = mepData.FinalWidth;
+                    finalHeight       = mepData.FinalHeight;
+                    finalDiameter     = mepData.FinalDiameter;
+                    ductShape         = mepData.DuctShape;
+                    isInsulated       = mepData.IsInsulated;
+                    insulationThickness = mepData.InsulationThickness;
+                    insulationType    = mepData.InsulationType;
+
+                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from cache: {finalWidth:F3}x{finalHeight:F3}");
+                }
+                else
+                {
+                    // Live path: strategy not cached or strategy returned 0 (bbox fallback needed)
+                    mepElementSize = (mepData != null) ? mepData.StrategySize : GetMepElementSizeWithStrategy(mepElement, mepCategoryForClearance);
+                    finalDiameter = 0.0;
+
+                    if (mepElementSize.Width > 0 || mepElementSize.Height > 0 || mepElementSize.Diameter > 0)
                     {
-                        _log($"[DETERMINISTIC-GUID] ⚠️ WARNING: Invalid data for deterministic GUID - MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPointX={clashZone.IntersectionPointX:F6}, IntersectionPointY={clashZone.IntersectionPointY:F6}, IntersectionPointZ={clashZone.IntersectionPointZ:F6} - using random GUID {clashZone.Id}");
+                        finalWidth    = mepElementSize.Width  > 0 ? mepElementSize.Width  : finalWidth;
+                        finalHeight   = mepElementSize.Height > 0 ? mepElementSize.Height : finalHeight;
+                        finalDiameter = mepElementSize.Diameter;
+                        if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from Strategy: {finalWidth:F3}x{finalHeight:F3}");
                     }
+                    else
+                    {
+                        // Generic bbox fallback (wall-orientation-dependent — cannot be pre-cached)
+                        var bbox = mepElement.get_BoundingBox(null);
+                        if (bbox != null)
+                        {
+                            finalHeight = bbox.Max.Z - bbox.Min.Z;
+                            finalWidth  = (wallOrientation == "X" || wallOrientation == "X-Wall")
+                                ? bbox.Max.X - bbox.Min.X
+                                : bbox.Max.Y - bbox.Min.Y;
+                            if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from BBox fallback: {finalWidth:F3}x{finalHeight:F3}");
+                        }
+                    }
+
+                    ductShape           = (mepData != null) ? mepData.DuctShape : GetDuctShape(mepElement, mepParamDict);
+                    (isInsulated, insulationThickness) = (mepData != null)
+                        ? (mepData.IsInsulated, mepData.InsulationThickness)
+                        : _insulationDetector.GetInsulationInfo(mepElement, mepElementSize);
+                    insulationType = isInsulated ? "Insulated" : "Normal";
+                }
+                swSize?.Stop();
+
+                // LOG GRANULAR TIMING — gated behind DiagnosticMode to avoid 384× disk writes
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                {
+                     SafeFileLogger.SafeAppendText("create_clashzone_perf.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] ID={mepElement.Id} " +
+                        $"Size+Insul={swSize?.ElapsedMilliseconds}ms\n");
                 }
             }
-            try
-            {
-                var th = clashZone.StructuralElementThickness;
-                var thMm = RevitUnitConversionService.Instance.FromInternalMillimeters(th);
-                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.GetIntegerValue()} thickness={th:F6}ft ({thMm:F1}mm)");
-            }
-            catch { }
             
-            // DEBUG: Log the pre-calculated data
-            if (OptimizationFlags.UseDiagnosticMode)
+            using (var paramOp = _performanceMonitor?.TrackOperation("6d4d4. Parameters & Misc") as IDisposable)
             {
-                _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
-                _log($"[DEBUG]   IntersectionPoint: {intersectionPoint} (used as placement point)");
+                // PERF OPT: All remaining MEP-intrinsic values from pre-computed cache if available
+                pipeOuterDiameter   = mepData?.PipeOuterDiameter  ?? 0.0;
+                pipeNominalDiameter = mepData?.PipeNominalDiameter ?? 0.0;
+
+                if (mepData == null && mepElement is Pipe pipe)
+                {
+                    // Live fallback for pipe diameters when cache is absent
+                    try
+                    {
+                        var outerDiamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER);
+                        if (outerDiamParam != null) pipeOuterDiameter = outerDiamParam.AsDouble();
+                        var nominalDiamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
+                        if (nominalDiamParam != null) pipeNominalDiameter = nominalDiamParam.AsDouble();
+                    }
+                    catch { }
+                }
+
+                // formattedSize: use cache if strategy was valid, else compute from resolved finalWidth/Height
+                formattedSize = (mepData?.FormattedSize != null)
+                    ? mepData.FormattedSize
+                    : GetMepElementSizeString(mepElement, finalWidth, finalHeight, ductShape, pipeNominalDiameter);
+
+                sizeParameterValue  = mepData?.SizeParameterValue  ?? GetMepElementSizeParameterValue(mepElement);
+                systemAbbreviation  = mepData?.SystemAbbreviation   ?? GetMepSystemAbbreviation(mepElement);
+                mepSystemType       = mepData?.SystemType           ?? GetMepSystemType(mepElement, mepCategoryForClearance);
+                mepSystemName       = mepData?.SystemName           ?? string.Empty;
+                if (mepData == null)
+                {
+                    try
+                    {
+                        var sysNameParam = mepElement?.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
+                        if (sysNameParam != null && sysNameParam.HasValue) mepSystemName = sysNameParam.AsString() ?? string.Empty;
+                    }
+                    catch { }
+                }
+                mepServiceType      = mepData?.ServiceType          ?? GetMepServiceType(mepElement);
+                elevationFromLevel  = mepData?.ElevationFromLevel   ?? GetMepElementOffset(mepElement);
+                
+                // ✅ WALL-AWARE DETECTION: Wall orientation already retrieved above
+                // string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
+                
+                // ✅ DIAGNOSTIC: Log wall orientation for debugging
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && mepCategory == "Duct Accessories")
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneService] WallOrientation='{wallOrientation ?? "NULL"}' for StructuralElement={structuralElement?.Id?.GetIntegerValue() ?? -1}, Type={structuralElement?.GetType()?.Name ?? "Unknown"}\n");
+                    // ✅ BUILD STAMP near wall-orientation log for absolute certainty
+                    try
+                    {
+                        var asm = typeof(ClashZoneService).Assembly;
+                        string asmLoc = asm.Location;
+                        var asmWrite = System.IO.File.Exists(asmLoc) ? System.IO.File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
+                        string asmVer = asm.GetName().Version?.ToString() ?? "unknown";
+                        SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [BUILD-STAMP:CLASH] AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}, Version={asmVer}, Assembly={asmLoc}\n");
+                    }
+                    catch { }
+                }
+                
+                // ✅ OOP METHOD: Use DamperConnectorService to detect connector info (with wall orientation for wall-aware detection)
+                damperConnectorInfo = GetDamperConnectorInfo(mepElement, mepCategory, wallOrientation, mepParamDict);
+                connectorSide = damperConnectorInfo.ConnectorSide;
+                hasMepConnector = damperConnectorInfo.HasMepConnector;
+                // Note: Strategy will determine clearance from UI based on damper type and connector side
+                
+                // Placement point: intersection point is already at host center for FULL penetrations
+                // MepIntersectionService.GetBoundingBoxCenter() averages entry/exit points to get mid-depth
+                // NOTE: For partial penetrations that pass the 20% filter, intersection point is used as-is
+                // (the working code doesn't have special handling for partial penetrations)
+                // SAFETY: Some projects reported (0,0,0) due to missing transform at persistence time.
+                // If we see a zero/near-zero point, fix up from the intersection bbox center or MEP bbox center.
                 if (intersectionPoint == null || (Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9))
                 {
-                    _log($"[WARN]   IntersectionPoint is zero/invalid at save time. BBox null? {boundingBox == null}");
+                    try
+                    {
+                        XYZ fix = null;
+                        if (boundingBox != null)
+                        {
+                            fix = new XYZ(
+                                (boundingBox.Min.X + boundingBox.Max.X) / 2.0,
+                                (boundingBox.Min.Y + boundingBox.Max.Y) / 2.0,
+                                (boundingBox.Min.Z + boundingBox.Max.Z) / 2.0);
+                        }
+                        if (fix == null)
+                        {
+                            var mepBBoxFix = mepElement.get_BoundingBox(null);
+                            if (mepBBoxFix != null)
+                            {
+                                fix = new XYZ(
+                                    (mepBBoxFix.Min.X + mepBBoxFix.Max.X) / 2.0,
+                                    (mepBBoxFix.Min.Y + mepBBoxFix.Max.Y) / 2.0,
+                                    (mepBBoxFix.Min.Z + mepBBoxFix.Max.Z) / 2.0);
+                            }
+                        }
+                        if (fix != null)
+                        {
+                            _log($"[FIXUP] IntersectionPoint was 0,0,0 → using center {fix} (bbox/meppbbox)");
+                            intersectionPoint = fix;
+                        }
+                    }
+                    catch { }
                 }
-                _log($"[DEBUG]   SleevePlacementPoint: {finalPlacementPoint} (calculated using bbox method at wall centerline)");
-                _log($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
-                _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
-                _log($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");
-                _log($"[DEBUG]   IsResolved: {hasExistingSleeve}");
-            }
-            
-            // ✅ CRITICAL: Immediately update Global XML when sleeve is found (optimized path)
-            // This ensures flags are set correctly during detection, eliminating need for recovery
-            if (hasExistingSleeve && existingSleeveId > 0 && _guidManager != null)
-            {
+                XYZ placementPoint = intersectionPoint;
+
+                // ✅ FINAL PLACEMENT POINT: Use pre-calculated value passed from caller (calculated once before CreateClashZone using bbox method)
+                // This is the final placement point at wall centerline, saved directly to SleevePlacementPoint
+                // If not provided, fallback to intersection point (for backward compatibility or when calculation fails)
+                // ✅ CRITICAL FIX: FOR FLOORS, ALWAYS USE INTERSECTION POINT (FloorCenterPoint concept)
+                // WallCenterlinePoint is only relevant for Walls/Framing
+                bool isFloorLoc = (structuralElementType == "Floor");
+                finalPlacementPoint = (isFloorLoc || wallCenterlinePoint == null) ? intersectionPoint : wallCenterlinePoint;
+                
+                // ✅ DIAGNOSTIC: Log final placement point being set on ClashZone object
+                // Gated behind DiagnosticMode to avoid ~350× disk writes per refresh
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && wallCenterlinePoint != null)
+                {
+                    bool isZero = (finalPlacementPoint.X == 0.0 && finalPlacementPoint.Y == 0.0 && finalPlacementPoint.Z == 0.0);
+                    string zeroWarning = isZero ? " ⚠️⚠️⚠️ ZERO VALUE!" : "";
+                    SafeFileLogger.SafeAppendText("wall_centerline_set.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SET] Zone (MEP={mepElement?.Id}, Category={mepCategory}): " +
+                        $"Setting SleevePlacementPoint=({finalPlacementPoint.X:F6}ft, {finalPlacementPoint.Y:F6}ft, {finalPlacementPoint.Z:F6}ft), " +
+                        $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft), " +
+                        $"Source={(wallCenterlinePoint != null ? "Bbox Method" : "Fallback to Intersection")}{zeroWarning}\n");
+                }
+
+                // ✅ CRITICAL DEBUG: Verify intersection point is NOT zero before creating ClashZone
+                bool isInputZero = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
+                if (isInputZero)
+                {
+                    _log($"[⚠️ CREATE-WARNING] IntersectionPoint is ZERO when creating ClashZone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
+                    try 
+                    { 
+                        var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
+                        File.AppendAllText(debugPath, $"[{DateTime.Now}] ⚠️ CREATE-WARNING: IntersectionPoint ZERO - MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z}), Doc={document?.Title}\n");
+                    } 
+                    catch { }
+                }
+                
+                // ✅ NOTE: pipeOuterDiameter and pipeNominalDiameter are already extracted above (before formatted size calculation)
+                
+                // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters for ClashZone persistence
+                // PERF OPT: Use pre-batch-captured cache (Dictionary<string,string>) when available —
+                // avoids individual Revit parameter COM calls per zone.
+
                 try
                 {
-                    // Update Global XML entry immediately with sleeve ID and resolved flag
-                    var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId)>
+                    // MEP params — from pre-batch cache if available
+                    if (mepParamsCache != null && mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out var cachedMepParams) && cachedMepParams != null)
                     {
-                        (clashZone.Id, true, false, existingSleeveId, -1)
-                    };
-                    
-                    // ✅ LEGACY XML REMOVED: GlobalIndexService is deleted.
-                    // GlobalIndexService.UpsertFlagsWithIds(document, mepCategory, updates);
-                    
-                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Skipped Global XML update (legacy service deleted): Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
+                        mepParameterValues = cachedMepParams.Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList();
+                    }
+                    else if (_clashZoneStorage != null)
+                    {
+                        var parameterSnapshotService = new ParameterSnapshotService();
+                        var whitelist = parameterWhitelist ?? parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
+                        mepParameterValues = parameterSnapshotService.CaptureParams(mepElement, whitelist);
+                    }
+
+                    // Host params — from pre-batch cache if available
+                    if (hostParamsCache != null && hostParamsCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out var cachedHostParams) && cachedHostParams != null)
+                    {
+                        hostParameterValues = cachedHostParams.Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList();
+                    }
+                    else if (_clashZoneStorage != null)
+                    {
+                        var parameterSnapshotService = new ParameterSnapshotService();
+                        var whitelist = parameterWhitelist ?? parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
+                        hostParameterValues = parameterSnapshotService.CaptureParams(structuralElement, whitelist);
+                    }
+
+                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
+                        _log($"[PARAM-SNAPSHOT] Captured {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters for ClashZone (MEP={mepElement.Id}, Host={structuralElement.Id})");
                 }
                 catch (Exception ex)
                 {
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error (legacy service deleted): {ex.Message}");
+                    _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters: {ex.Message}");
+                }
+            }
+            
+            
+            using (var finalOp = _performanceMonitor?.TrackOperation("6d4d5. Obj Init & GUID") as IDisposable)
+            {
+                // ✅ MEP METADATA: Extract type and family names for persistence
+                // PERF OPT: Use pre-computed cache if available — avoids GetTypeId+GetElement COM calls per zone
+                string? mepElementTypeName = mepData?.TypeName;
+                string? mepElementFamilyName = mepData?.FamilyName;
+                if (mepData == null)
+                {
+                    try
+                    {
+                        var typeId = mepElement?.GetTypeId();
+                        if (typeId != null && typeId != ElementId.InvalidElementId)
+                        {
+                            var typeElem = mepElement?.Document?.GetElement(typeId);
+                            if (typeElem != null)
+                            {
+                                mepElementTypeName = typeElem.Name;
+                                if (typeElem is ElementType et) mepElementFamilyName = et.FamilyName;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                            _log($"[METADATA-ERROR] Failed to extract MEP type/family for ID={mepElement?.Id}: {ex.Message}");
+                    }
+                }
+
+                // ✅ PERFORMANCE OPTIMIZATION: Use fast factory method instead of 70-property object initializer
+                // Expected savings: ~40-50% faster object creation (~2ms → ~1ms per zone)
+                clashZone = ClashZone.CreateFast(
+                    // Core identifiers
+                    id: preComputedGuid ?? Guid.NewGuid(),
+                    mepElementId: mepElement.Id,
+                    structuralElementId: structuralElement.Id,
+                    // Intersection point
+                    intersectionX: intersectionPoint.X,
+                    intersectionY: intersectionPoint.Y,
+                    intersectionZ: intersectionPoint.Z,
+                    // Placement point
+                    placementX: finalPlacementPoint.X,
+                    placementY: finalPlacementPoint.Y,
+                    placementZ: finalPlacementPoint.Z,
+                    // Cached MEP data
+                    mepCategory: MepCategoryConstants.Normalize(mepCategory),
+                    mepWidth: finalWidth,
+                    mepHeight: finalHeight,
+                    mepOuterDiameter: pipeOuterDiameter,
+                    mepNominalDiameter: pipeNominalDiameter,
+                    mepFormattedSize: formattedSize,
+                    mepSizeParameterValue: sizeParameterValue,
+                    mepSystemAbbreviation: systemAbbreviation,
+                    mepSystemType: mepSystemType,
+                    mepSystemName: mepSystemName ?? string.Empty,
+                    mepServiceType: mepServiceType,
+                    mepTypeName: mepElementTypeName ?? string.Empty,
+                    mepFamilyName: mepElementFamilyName ?? string.Empty,
+                    mepUniqueId: mepData?.UniqueId ?? mepElement?.UniqueId ?? string.Empty,
+                    mepOrientationX: mepOrientation.X,
+                    mepOrientationY: mepOrientation.Y,
+                    mepOrientationZ: mepOrientation.Z,
+                    mepOrientationDirection: GetMepOrientationDirection(structuralElementType, mepOrientation, wallDirectionType),
+                    mepRotationAngle: mepData?.MepRotationAngle ?? 
+                        // ✅ ROTATION OPTIMIZATION: Only calculate for rectangular/non-round elements on Floors.
+                        // Pipes and Conduits are rotation-invariant (round) so we skip the expensive calculation.
+                        ((structuralElementType == "Floor" || structuralElementType == "Floors") && 
+                         (mepCategory == "Ducts" || mepCategory == "Cable Trays" || mepCategory == "Duct Accessories")
+                            ? CalculateMepElementRotationAngle(structuralElementType, mepOrientation, mepElement) 
+                            : 0.0),
+                    mepAngleToXRad: mepData?.MepAngleToXRad ?? 0.0,
+                    mepAngleToXDeg: mepData?.MepAngleToXDeg ?? 0.0,
+                    mepAngleToYRad: mepData?.MepAngleToYRad ?? 0.0,
+                    mepAngleToYDeg: mepData?.MepAngleToYDeg ?? 0.0,
+                    mepLevelName: levelName,
+                    mepLevelElevation: levelElevation,
+                    elevationFromLevel: elevationFromLevel,
+                    // Cached Host data
+                    structuralElementType: structuralElementType,
+                    hostOrientation: hostData?.HostOrientation ?? GetHostOrientationWithTracking(structuralElement),
+                    structuralThickness: hostData?.StructuralElementThickness ?? GetElementThickness(structuralElement),
+                    wallThickness: hostData?.WallThickness ?? GetWallThickness(structuralElement),
+                    framingThickness: hostData?.FramingThickness ?? GetFramingThickness(structuralElement),
+                    // Insulation
+                    isInsulated: isInsulated,
+                    insulationThickness: insulationThickness,
+                    insulationType: insulationType,
+                    // Duct/Pipe
+                    ductShape: ductShape,
+                    pipeOpeningType: pipeOpeningType,
+                    // Damper
+                    hasMepConnector: hasMepConnector,
+                    damperConnectorSide: connectorSide,
+                    isStandardDamper: damperConnectorInfo.IsStandardDamper,
+                    // Document keys
+                    documentPath: document.PathName,
+                    structuralDocTitle: structuralElement.Document.Title,
+                    sourceDocKey: mepElement.Document.Title ?? mepElement.Document.PathName ?? string.Empty,
+                    hostDocKey: structuralElement.Document.Title ?? structuralElement.Document.PathName ?? string.Empty,
+                    // Geometry hashes (cached)
+                    mepGeometryHash: mepData?.GeometryHash ?? CalculateElementGeometryHash(mepElement),
+                    hostGeometryHash: hostData?.GeometryHash ?? CalculateElementGeometryHash(structuralElement),
+                    // Flags
+                    hasExistingSleeve: hasExistingSleeve,
+                    // Bounding box
+                    clashBoundingBox: boundingBox
+                );
+                
+                // ✅ POST-FACTORY: Set parameter snapshots (not in fast factory to keep method signature manageable)
+                clashZone.MepParameterValues = mepParameterValues;
+                clashZone.HostParameterValues = hostParameterValues;
+                clashZone.MepElementSizeData = mepElementSize;
+                clashZone.WallDirection = wallDirection;
+                clashZone.WallDirectionType = wallDirectionType;
+                clashZone.MepElementOrientation = mepOrientation;
+                clashZone.StructuralElementNormal = hostData?.StructuralElementNormal ?? WallDirectionService.GetStructuralElementNormal(structuralElement);
+                clashZone.WallCenterlinePoint = finalPlacementPoint;
+                clashZone.WallCenterlinePointX = finalPlacementPoint.X;
+                clashZone.WallCenterlinePointY = finalPlacementPoint.Y;
+                clashZone.WallCenterlinePointZ = finalPlacementPoint.Z;
+                clashZone.IsMSFDDamper = hasMepConnector && !string.IsNullOrEmpty(connectorSide);
+                
+                // ✅ PERFORMANCE OPT: Diagnostic logging removed from hot path
+                // File I/O was causing ~50-70ms per zone slowdown
+                // Use PerformanceMonitor instead for timing data
+                
+                // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
+                // PERF OPT: Use pre-generated deterministic GUID (fast FNV-1a hash, no DB round-trip per zone).
+                // The GUID was generated in ProcessSingleIntersection using fast FNV-1a hash.
+                // It will be persisted to DB during the bulk save step (step 9).
+                if (preComputedGuid.HasValue)
+                {
+                    clashZone.Id = preComputedGuid.Value;
+                }
+                // Note: For new zones, preComputedGuid should always be set by caller.
+                // No fallback to DB lookup to avoid per-zone database round-trips.
+                try
+                {
+                    var th = clashZone.StructuralElementThickness;
+                    var thMm = RevitUnitConversionService.Instance.FromInternalMillimeters(th);
+                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.GetIntegerValue()} thickness={th:F6}ft ({thMm:F1}mm)");
+                }
+                catch { }
+                
+                // DEBUG: Log the pre-calculated data
+                if (OptimizationFlags.UseDiagnosticMode)
+                {
+                    _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
+                    _log($"[DEBUG]   IntersectionPoint: {intersectionPoint} (used as placement point)");
+                    if (intersectionPoint == null || (Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9))
+                    {
+                        _log($"[WARN]   IntersectionPoint is zero/invalid at save time. BBox null? {boundingBox == null}");
+                    }
+                    _log($"[DEBUG]   SleevePlacementPoint: {finalPlacementPoint} (calculated using bbox method at wall centerline)");
+                    _log($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
+                    _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
+                    _log($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");
+                    _log($"[DEBUG]   IsResolved: {hasExistingSleeve}");
+                }
+                
+                // ✅ CRITICAL: Immediately update Global XML when sleeve is found (optimized path)
+                // This ensures flags are set correctly during detection, eliminating need for recovery
+                if (hasExistingSleeve && existingSleeveId > 0 && _guidManager != null)
+                {
+                    try
+                    {
+                        // Update Global XML entry immediately with sleeve ID and resolved flag
+                        var updates = new List<(Guid Id, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterSleeveInstanceId)>
+                        {
+                            (clashZone.Id, true, false, existingSleeveId, -1)
+                        };
+                        
+                        // ✅ LEGACY XML REMOVED: GlobalIndexService is deleted.
+                        // GlobalIndexService.UpsertFlagsWithIds(document, mepCategory, updates);
+                        
+                        if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Skipped Global XML update (legacy service deleted): Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error (legacy service deleted): {ex.Message}");
+                    }
                 }
             }
             
@@ -3212,25 +3642,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get MEP System Type for all categories (Pipes, Ducts, etc.)
         /// </summary>
-        private string GetMepSystemType(Element mepElement, string category)
+        private string GetMepSystemType(Element mepElement, string category, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
             {
-                // 1. Try Specific System Type Parameters based on Category
-                if (category == "Ducts" || category == "Duct Accessories")
+                // ✅ PERF OPT: Try paramCache first
+                if (paramCache != null)
                 {
-                     var param = mepElement.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM); // System Type
-                     if (param != null) return param.AsValueString() ?? string.Empty;
-                }
-                else if (category == "Pipes" || category == "Pipe Accessories")
-                {
-                     var param = mepElement.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM); // System Type
-                     if (param != null) return param.AsValueString() ?? string.Empty;
+                    if (category == "Ducts" || category == "Duct Accessories")
+                    {
+                        if (paramCache.TryGetValue("System Type", out var dVal) && !string.IsNullOrEmpty(dVal)) return dVal;
+                    }
+                    else if (category == "Pipes" || category == "Pipe Accessories")
+                    {
+                        if (paramCache.TryGetValue("System Type", out var pVal) && !string.IsNullOrEmpty(pVal)) return pVal;
+                    }
+                    if (paramCache.TryGetValue("System Type", out var gVal) && !string.IsNullOrEmpty(gVal)) return gVal;
+                    if (paramCache.TryGetValue("System Classification", out var cVal) && !string.IsNullOrEmpty(cVal)) return cVal;
                 }
 
+                // ✅ PERF OPT: Try paramCache first
+                if (paramCache != null)
+                {
+                    if (paramCache.TryGetValue("System Type", out var stVal) && !string.IsNullOrEmpty(stVal)) return stVal;
+                }
+
+                // 1. Try Built-in Parameter (Fastest, language independent)
+                var param = mepElement.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM); // Mechanical System
+                if (param == null) param = mepElement.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM); // Piping System
+                
+                if (param != null) return param.AsValueString() ?? string.Empty;
+
                 // 2. Try Generic "System Type" Parameter (Lookup)
+                // Only if BIP failed (e.g. Electrical or obscure categories)
                 var sysTypeParam = mepElement.LookupParameter("System Type");
-                 if (sysTypeParam != null) return sysTypeParam.AsValueString() ?? string.Empty;
+                if (sysTypeParam != null) return sysTypeParam.AsValueString() ?? string.Empty;
 
                 // 3. Try "System Classification" (Often used if System Type is missing)
                 var classParam = mepElement.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
@@ -3247,10 +3693,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get MEP Service Type (shared parameter) for all categories
         /// </summary>
-        private string GetMepServiceType(Element mepElement)
+        private string GetMepServiceType(Element mepElement, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
             {
+                // ✅ PERF OPT: Try paramCache first
+                if (paramCache != null)
+                {
+                    if (paramCache.TryGetValue("Service Type", out var stVal) && !string.IsNullOrEmpty(stVal)) return stVal;
+                    if (paramCache.TryGetValue("Service", out var sVal) && !string.IsNullOrEmpty(sVal)) return sVal;
+                }
+
                 // 1. Try "Service Type" (Common Shared Parameter)
                 var param = mepElement.LookupParameter("Service Type");
                 if (param != null) return param.AsString() ?? param.AsValueString() ?? string.Empty;
@@ -3268,41 +3721,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Get MEP Element Offset/Elevation from Level parameter
-        /// </summary>
-        private double GetMepElementOffset(Element mepElement)
+/// Get MEP Element Offset/Elevation from Level — returns value in FEET (Revit internal units).
+/// </summary>
+private double GetMepElementOffset(Element mepElement, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
+{
+    try
+    {
+        // ✅ PERF OPT: Try paramCache first (captured in bulk)
+        // All parameter values in Revit are stored in FEET (internal units)
+        if (paramCache != null)
         {
-            try
-            {
-                // 1. Try "Offset" (Common for Ducts, Pipes, Cable Trays)
-                // Use BuiltInParameter if possible for language independence, but "Offset" is often instance param
-                
-                // Try BuiltIn types first
-                var param = mepElement.get_Parameter(BuiltInParameter.RBS_OFFSET_PARAM); // "Offset"
-                if (param != null && param.StorageType == StorageType.Double) return param.AsDouble();
-                
-                // RBS_OFFSET_PARAM (Offset) typically handles Middle Elevation for Ducts/Pipes in standard Revit templates.
+            // 1. "Elevation from Level" (Standard BIP RBS_OFFSET_PARAM fallback name)
+            if (paramCache.TryGetValue("Elevation from Level", out var eStr) && double.TryParse(eStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var eVal)) return eVal;
+            
+            // 2. "Offset" (Standard BIP name)
+            if (paramCache.TryGetValue("Offset", out var oStr) && double.TryParse(oStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var oVal)) return oVal;
+            
+            // 3. "Middle Elevation" (Curve BIP name)
+            if (paramCache.TryGetValue("Middle Elevation", out var mStr) && double.TryParse(mStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var mVal)) return mVal;
 
-                
-                // Try Lookup "Offset"
-                var param3 = mepElement.LookupParameter("Offset");
-                if (param3 != null && param3.StorageType == StorageType.Double) return param3.AsDouble();
-                
-                // Try Lookup "Middle Elevation"
-                var param4 = mepElement.LookupParameter("Middle Elevation");
-                if (param4 != null && param4.StorageType == StorageType.Double) return param4.AsDouble();
-
-                // ✅ FALLBACK: Try Lookup "Elevation from Level" (for Dampers/Accessories)
-                var param5 = mepElement.LookupParameter("Elevation from Level");
-                if (param5 != null && param5.StorageType == StorageType.Double) return param5.AsDouble();
-
-                return 0.0;
-            }
-            catch
-            {
-                return 0.0;
-            }
+            // 4. "Reference Level Elevation" - Stored in feet (converted from mm during capture)
+            if (paramCache.TryGetValue("Reference Level Elevation", out var rleStr) && double.TryParse(rleStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var rleVal)) return rleVal;
         }
+
+        // Try BuiltIn RBS_OFFSET_PARAM ("Offset" / "Elevation from Level" — same BIP)
+        var param = mepElement.get_Parameter(BuiltInParameter.RBS_OFFSET_PARAM);
+        if (param != null && param.StorageType == StorageType.Double) return param.AsDouble();
+
+        // Lookup fallbacks
+        var param3 = mepElement.LookupParameter("Offset");
+        if (param3 != null && param3.StorageType == StorageType.Double) return param3.AsDouble();
+
+        var param4 = mepElement.LookupParameter("Middle Elevation");
+        if (param4 != null && param4.StorageType == StorageType.Double) return param4.AsDouble();
+
+        var param5 = mepElement.LookupParameter("Elevation from Level");
+        if (param5 != null && param5.StorageType == StorageType.Double) return param5.AsDouble();
+
+        return 0.0;
+    }
+    catch
+    {
+        return 0.0;
+    }
+}
 
         /// <summary>
         /// ✅ METHOD 3: Check for damper presence at duct end near intersection point
@@ -3523,10 +3985,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// This is essential for determining correct sleeve family (DuctOpeningOnWall vs DuctOpeningOnWallround)
         /// Round ducts use UI selection, Rectangular ducts always use rectangular sleeves
         /// </summary>
-        private string GetDuctShape(Element element)
+        private string GetDuctShape(Element element, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
             {
+                // ✅ PERF OPT: Try paramCache first (captured in bulk)
+                if (paramCache != null && paramCache.TryGetValue("Duct Shape", out var cachedShape) && !string.IsNullOrEmpty(cachedShape))
+                {
+                    return cachedShape;
+                }
                 if (!(element is Autodesk.Revit.DB.Mechanical.Duct))
                     return string.Empty; // Not a duct
                 
@@ -3535,7 +4002,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var ductType = duct?.DuctType;
                 var familyName = ductType?.FamilyName ?? string.Empty;
                 
-                _log($"[DEBUG] Duct {element.Id} family name: {familyName}");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    _log($"[DEBUG] Duct {element.Id} family name: {familyName}");
                 
                 // Check family name for shape indicators
                 if (familyName.Contains("Round", StringComparison.OrdinalIgnoreCase))
@@ -3562,6 +4030,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
+        /// <summary>
+        /// Get MEP element size string (e.g., "12x10" or "D12") for description
+        /// </summary>
+        private string GetMepElementSizeString(Element mepElement, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
+        {
+            try
+            {
+                // ✅ OPTIMIZED: Use paramCache directly if available (fastest)
+                if (paramCache != null)
+                {
+                    // For Rectangular Ducts/Cable Trays
+                    if (paramCache.TryGetValue("Width", out var wStr) && paramCache.TryGetValue("Height", out var hStr))
+                    {
+                        if (double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var w) && 
+                            double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var h))
+                        {
+                            // Convert to mm for display
+                            double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(w);
+                            double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(h);
+                            return $"{wMm:F0}x{hMm:F0}";
+                        }
+                    }
+                    
+                    // For Round Ducts/Pipes/Conduits
+                    if (paramCache.TryGetValue("Diameter", out var dStr) || 
+                        paramCache.TryGetValue("Nominal Diameter", out dStr) || 
+                        paramCache.TryGetValue("Outside Diameter", out dStr))
+                    {
+                        if (double.TryParse(dStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var d))
+                        {
+                            double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(d);
+                            return $"D{dMm:F0}";
+                        }
+                    }
+                }
+                
+                // Fallback to dimensions method (which also tries cache but has API fallback)
+                var (width, height) = GetMepElementDimensions(mepElement, paramCache);
+                
+                if (width <= 0 && height <= 0) return "Unknown";
+                
+                double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
+                double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
+                
+                if (Math.Abs(width - height) < 0.001) // Round
+                {
+                    return $"D{widthMm:F0}";
+                }
+                else // Rectangular
+                {
+                    return $"{widthMm:F0}x{heightMm:F0}";
+                }
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
         /// <summary>
         /// ✅ OPTIMIZED: Pre-collects sleeves by category and builds spatial index for O(1) lookup
         /// Uses "calculate once, use many times" strategy (same as recovery method)
@@ -3757,127 +4283,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get element thickness for walls, floors, and structural framing
         /// </summary>
-        private double GetElementThickness(Element element)
+        private double GetElementThickness(Element element, Dictionary<string, string>? paramDict = null)
         {
             try
             {
                 if (element is Wall || (element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_Walls))
                 {
-                    return GetWallThickness(element);
+                    return GetWallThickness(element, paramDict);
                 }
                 else if (element is Floor floor)
                 {
+                    if (paramDict != null && paramDict.TryGetValue("Floor Thickness", out var thickStr) &&
+                        double.TryParse(thickStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var thickVal))
+                    {
+                        return thickVal;
+                    }
+                    if (paramDict != null && paramDict.TryGetValue("Thickness", out var tStr) &&
+                        double.TryParse(tStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var tVal))
+                    {
+                        return tVal;
+                    }
                     return floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.1;
                 }
                 else if ((element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming))
                 {
-                    // Structural framing: read TYPE parameter 'b' (case-insensitive) regardless of instance/type wrapper
-                    try
-                    {
-                        // Resolve the type element from any element (FamilyInstance or not)
-                        ElementId typeId = ElementId.InvalidElementId;
-                        try { typeId = (element as FamilyInstance)?.GetTypeId() ?? element.GetTypeId(); } catch { }
-                        var typeElem = element.Document?.GetElement(typeId);
-
-                        if (typeElem == null)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.GetIntegerValue()}");
-                            return 0.1;
-                        }
-
-                        Parameter p = null;
-                        double bVal = 0.0;
-
-                        // Try multiple parameter names for breadth/depth
-                        string[] possibleNames = { "b", "B", "Breadth", "Depth", "Width", "Height", "d", "D" };
-
-                        foreach (var paramName in possibleNames)
-                        {
-                            try
-                            {
-                                p = typeElem.LookupParameter(paramName);
-                                if (p != null && !p.IsReadOnly)
-                                {
-                                    bVal = p.AsDouble();
-                                    if (bVal > 0)
-                                    {
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft on framing {element.Id.GetIntegerValue()}");
-                                        break;
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[FRAMING-THICKNESS] Error reading parameter '{paramName}': {ex.Message}");
-                            }
-                        }
-
-                        // Log all available parameters for debugging
-                        if (bVal <= 0.0)
-                        {
-                            try
-                            {
-                                var parts = new System.Collections.Generic.List<string>();
-                                foreach (Parameter tp in typeElem.Parameters)
-                                {
-                                    if (tp == null) continue;
-                                    
-                                    var name = tp.Definition?.Name ?? "<null>";
-                                    string val = string.Empty;
-                                    if (tp.StorageType == StorageType.Double)
-                                    {
-                                        double d = tp?.AsDouble() ?? 0.0;
-                                        double mm = RevitUnitConversionService.Instance.FromInternalMillimeters(d);
-                                        val = mm.ToString("F1") + "mm";
-                                    }
-                                    else
-                                    {
-                                        val = tp.AsString() ?? tp.AsValueString() ?? string.Empty;
-                                    }
-                                    parts.Add(name + ":" + val);
-                                }
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.GetIntegerValue()}: {string.Join(", ", parts)}");
-                            }
-                            catch (Exception ex)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
-                            }
-                        }
-
-                        // Convert to mm for logging
-                        try
-                        {
-                            var valMm = RevitUnitConversionService.Instance.FromInternalMillimeters(bVal);
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[FRAMING-THICKNESS] id={element.Id.GetIntegerValue()}: key={(p?.Definition?.Name ?? "<null>")} value={valMm:F1}mm");
-                        }
-                        catch (Exception ex)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[FRAMING-THICKNESS] Error converting units: {ex.Message}");
-                        }
-
-                        return bVal > 0.0 ? bVal : 0.1;
-                    }
-                    catch (Exception ex)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
-                        return 0.1;
-                    }
+                    return GetFramingThickness(element, paramDict);
                 }
                 return 0.1; // Default fallback
             }
@@ -3890,12 +4320,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get wall thickness (for walls only) with robust fallback for compound walls
         /// </summary>
-        private double GetWallThickness(Element element)
+        private double GetWallThickness(Element element, Dictionary<string, string>? paramDict = null)
         {
             if (element == null) return 0.0;
             
             try
             {
+                // ✅ PERFORMANCE OPTIMIZATION: Check parameter cache first
+                if (paramDict != null)
+                {
+                    if (paramDict.TryGetValue("Wall Width", out var wStr) && double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var wVal))
+                        return wVal;
+                    if (paramDict.TryGetValue("Width", out var widStr) && double.TryParse(widStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var widVal))
+                        return widVal;
+                    if (paramDict.TryGetValue("Thickness", out var thickStr) && double.TryParse(thickStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var thickVal))
+                        return thickVal;
+                }
+
                 double thickness = 0.0;
                 
                 // Method 1: Direct Wall property if it's a Wall object
@@ -3968,12 +4409,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get structural framing parameter 'b' thickness (for structural framing only)
         /// </summary>
-        private double GetFramingThickness(Element element)
+        private double GetFramingThickness(Element element, Dictionary<string, string>? paramDict = null)
         {
             try
             {
                 if ((element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming))
                 {
+                    // ✅ PERFORMANCE OPTIMIZATION: Check parameter cache first
+                    // NOTE: ParameterSnapshotService now returns raw double value as string (already in internal units/feet)
+                    if (paramDict != null)
+                    {
+                        string[] possibleNames = { "b", "B", "Breadth", "Depth", "Width", "Height", "d", "D" };
+                        foreach (var name in possibleNames)
+                        {
+                            if (paramDict.TryGetValue(name, out var valStr) && double.TryParse(valStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var val))
+                            {
+                                if (val > 0) return val;
+                            }
+                        }
+                    }
+
                     // Structural framing: read TYPE parameter 'b' (case-insensitive) regardless of instance/type wrapper
                     try
                     {
@@ -4045,15 +4500,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     parts.Add(name + ":" + val);
                                 }
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.GetIntegerValue()}: {string.Join(", ", parts)}");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("refresh.log", $"[FRAMING-THICKNESS-PARAMS] typeId={typeId.GetIntegerValue()}: {string.Join(", ", parts)}");
+                                    }
                             }
                             catch (Exception ex)
                             {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("refresh.log", $"[FRAMING-THICKNESS] Error logging parameters: {ex.Message}");
+                                    }
                             }
                         }
 
@@ -4061,9 +4518,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("refresh.log", $"[FRAMING-THICKNESS] Error getting framing thickness: {ex.Message}");
+                            }
                         return 0.0;
                     }
                 }
@@ -4071,9 +4529,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[GetFramingThickness] Error: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("refresh.log", $"[GetFramingThickness] Error: {ex.Message}");
+                }
                 return 0.0;
             }
         }
@@ -4085,21 +4544,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         /// <param name="mepElement">The MEP element</param>
         /// <returns>Raw Size parameter value as string, or empty string if not available</returns>
-        private string GetMepElementSizeParameterValue(Element mepElement)
+        private string GetMepElementSizeParameterValue(Element mepElement, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
             {
                 if (mepElement == null) return string.Empty;
+
+                // ✅ PERF OPT: Trust paramCache completely during bulk refresh
+                if (paramCache != null)
+                {
+                    if (paramCache.TryGetValue("Size", out var cachedSize) && !string.IsNullOrEmpty(cachedSize))
+                    {
+                        return cachedSize;
+                    }
+                    // Cache definitively proves it doesn't exist or is empty. Do not do a slow string-lookup fallback.
+                    return string.Empty;
+                }
                 
                 var sizeParam = mepElement.LookupParameter("Size");
                 if (sizeParam == null)
                 {
                     // ✅ DIAGNOSTIC: Log if Size parameter not found
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter not found for element {mepElement.Id.GetIntegerValue()}, Category={mepElement.Category?.Name}, Doc={mepElement.Document?.Title}\n");
-                    }
+                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                        SafeLog("Refresh_debug.log", $"[ClashZoneService] ⚠️ Size parameter not found for element {mepElement.Id.GetIntegerValue()}, Category={mepElement.Category?.Name}, Doc={mepElement.Document?.Title}");
                     return string.Empty;
                 }
                 
@@ -4110,11 +4577,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!string.IsNullOrWhiteSpace(sizeString))
                     {
                         // ✅ DIAGNOSTIC: Log successful extraction
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (String): Element {mepElement.Id.GetIntegerValue()}, Value='{sizeString}', Doc={mepElement.Document?.Title}\n");
-                        }
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                            SafeLog("Refresh_debug.log", $"[ClashZoneService] ✅ Size parameter (String): Element {mepElement.Id.GetIntegerValue()}, Value='{sizeString}', Doc={mepElement.Document?.Title}");
                         return sizeString.Trim();
                     }
                 }
@@ -4125,28 +4589,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!string.IsNullOrWhiteSpace(sizeString))
                     {
                         // ✅ DIAGNOSTIC: Log successful extraction
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (ValueString): Element {mepElement.Id.GetIntegerValue()}, Value='{sizeString}', StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
-                        }
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                            SafeLog("Refresh_debug.log", $"[ClashZoneService] ✅ Size parameter (ValueString): Element {mepElement.Id.GetIntegerValue()}, Value='{sizeString}', StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}");
                         return sizeString.Trim();
                     }
                 }
                 
                 // ✅ DIAGNOSTIC: Log if parameter exists but value is empty
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter exists but value is empty for element {mepElement.Id.GetIntegerValue()}, StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
-                }
+                if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                    SafeLog("Refresh_debug.log", $"[ClashZoneService] ⚠️ Size parameter exists but value is empty for element {mepElement.Id.GetIntegerValue()}, StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}");
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ❌ ERROR reading Size parameter for element {mepElement?.Id.GetIntegerValue() ?? -1}: {ex.Message}, Doc={mepElement?.Document?.Title}\n");
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        SafeLog("Refresh_debug.log", $"[ClashZoneService] ❌ ERROR reading Size parameter for element {mepElement?.Id.GetIntegerValue() ?? -1}: {ex.Message}, Doc={mepElement?.Document?.Title}");
                     DebugLogger.Warning($"[ClashZoneService] Error reading Size parameter value: {ex.Message}");
                 }
             }
@@ -4163,10 +4621,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <param name="shape">Shape of the element (Round/Circular or Rectangular)</param>
         /// <param name="nominalDiameter">Nominal diameter for pipes only (in internal units) - used as fallback for pipes</param>
         /// <returns>Size string matching schedule display (e.g., "20 mmø" for pipes, "600x300" for ducts, "400x200" for cable trays)</returns>
-        private string GetMepElementSizeString(Element mepElement, double width, double height, string shape, double nominalDiameter = 0)
+        private string GetMepElementSizeString(Element mepElement, double width, double height, string shape, double nominalDiameter = 0, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
             {
+                // ✅ PERF OPT: Check paramCache first (captured in bulk)
+                if (paramCache != null && paramCache.TryGetValue("Size", out var cachedSize) && !string.IsNullOrEmpty(cachedSize))
+                {
+                    return cachedSize;
+                }
                 // ✅ OPTIMIZED APPROACH FOR ALL CATEGORIES: Read Size parameter as string directly from element
                 // This gives us the exact value shown in schedules (e.g., "20 mmø" for pipes, "600x300" for ducts) without calculations
                 // Element is already in memory during refresh, so this is a zero-cost operation (no linked file access)
@@ -4249,57 +4712,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get MEP system abbreviation (e.g., "SA", "RA", "EX")
         /// </summary>
-        private string GetMepSystemAbbreviation(Element mepElement)
+        private string GetMepSystemAbbreviation(Element mepElement, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
             {
-                // Try to get system abbreviation parameter
+                // ✅ PERF OPT: Check paramCache first (captured in bulk)
+                if (paramCache != null && paramCache.TryGetValue("System Abbreviation", out var cachedAbbr) && !string.IsNullOrEmpty(cachedAbbr))
+                    return cachedAbbr;
+
+                // Try direct BIP first (O(1) vs O(N) LookupParameter)
                 var abbrevParam = mepElement.LookupParameter("System Abbreviation");
                 if (abbrevParam != null && abbrevParam.StorageType == StorageType.String)
-                {
-                    var value = abbrevParam.AsString() ?? string.Empty;
-                    
-                    // DEBUG: Log System Abbreviation for duct accessories
-                    if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Abbreviation = '{value}'\n");
-                    }
-                    
-                    return value;
-                }
-                
-                // Fallback: try to get system name and abbreviate it
+                    return abbrevParam.AsString() ?? string.Empty;
+
+                // Fallback: System Name → abbreviate
                 var systemNameParam = mepElement.LookupParameter("System Name");
                 if (systemNameParam != null && systemNameParam.StorageType == StorageType.String)
                 {
                     var systemName = systemNameParam.AsString();
                     if (!string.IsNullOrEmpty(systemName))
-                    {
-                        // Take first 2-3 characters as abbreviation
-                        var abbreviation = systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
-                        
-                        // DEBUG: Log System Name fallback for duct accessories
-                        if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: System Name fallback '{systemName}' → '{abbreviation}'\n");
-                        }
-                        
-                        return abbreviation;
-                    }
+                        return systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
                 }
-                
-                // DEBUG: Log no System Abbreviation found for duct accessories
-                if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now}] [GET_SYSTEM_ABBREV] DUCT ACCESSORY {mepElement.Id}: No System Abbreviation or System Name found\n");
-                }
-                
+
                 return string.Empty;
             }
             catch
@@ -4314,11 +4748,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Strategy will handle clearance from UI accordingly based on damper type
         /// </summary>
         /// <param name="wallOrientation">Wall orientation ("X" or "Y") to prioritize wall width axis during detection</param>
-        private DamperConnectorInfo GetDamperConnectorInfo(Element mepElement, string mepCategory, string wallOrientation = null)
+        private DamperConnectorInfo GetDamperConnectorInfo(Element mepElement, string mepCategory, string wallOrientation = null, Dictionary<string, string>? mepParamDict = null)
         {
             try
             {
-                // ✅ OOP METHOD: Use centralized service for damper connector detection (with wall orientation)
+                // ✅ PERFORMANCE OPTIMIZATION: Check parameter cache first
+                // If we captured synthetic parameters in ParameterSnapshotService, use them!
+                if (mepParamDict != null && mepParamDict.TryGetValue("HasMepConnector", out var hasConnStr))
+                {
+                    bool hasConn = hasConnStr.Equals("True", StringComparison.OrdinalIgnoreCase);
+                    mepParamDict.TryGetValue("DamperConnectorSide", out var connSide);
+                    mepParamDict.TryGetValue("IsStandardDamper", out var isStdStr);
+                    mepParamDict.TryGetValue("DamperType", out var damperType);
+                    
+                    bool isStd = isStdStr?.Equals("True", StringComparison.OrdinalIgnoreCase) ?? true;
+                    
+                    // Note: If wallOrientation is provided but differ from the one during capture, 
+                    // we might need to re-detect, but usually it's fine for the first pass or for standard dampers.
+                    // For non-standard dampers where wall orientation MATTERS for world side detection:
+                    // If wallOrientation is null, we can definitely use the cache.
+                    // If it's provided, we might still use cache but it's a trade-off.
+                    // THE USERS REQUESTED METICULOUSNESS.
+                    
+                    return new DamperConnectorInfo(
+                        hasMepConnector: hasConn,
+                        connectorSide: connSide ?? string.Empty,
+                        isStandardDamper: isStd,
+                        damperType: damperType ?? "Standard",
+                        requiresMepSideClearance: !isStd
+                    );
+                }
+
+                // Fallback: Direct API call via centralized service
                 var damperConnectorService = new DamperConnectorService();
                 var connectorInfo = damperConnectorService.DetectConnectorInfo(mepElement, mepCategory, wallOrientation);
                 
@@ -4396,18 +4857,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double diameter = 0;
 
                     // Try paramCache first if available
+                    // NOTE: ParameterSnapshotService now returns raw double value as string (already in internal units/feet)
                     if (paramCache != null)
                     {
-                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
-                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
-                        if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, out var dVal)) diameter = dVal / 304.8;
+                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var wVal)) width = wVal;
+                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var hVal)) height = hVal;
+                        if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var dVal)) diameter = dVal;
                         
-                        // ✅ DEBUG: Log paramCache keys for ducts if no dimensions found
-                        if (!DeploymentConfiguration.DeploymentMode && width <= 0 && height <= 0 && diameter <= 0)
+                        // ✅ PERFORMANCE OPT: Use SafeLog instead of direct SafeFileLogger
+                        if (width <= 0 && height <= 0 && diameter <= 0)
                         {
                             var keys = string.Join(", ", paramCache.Keys.Take(10));
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: paramCache FAILED, W='{wStr ?? "null"}', H='{hStr ?? "null"}', D='{dStr ?? "null"}', Keys=[{keys}] - Falling back to API\n");
+                            SafeLog("pipe_dimension_debug.log", $"DUCT {duct.Id}: paramCache FAILED, W='{wStr ?? "null"}', H='{hStr ?? "null"}', D='{dStr ?? "null"}', Keys=[{keys}] - Falling back to API");
                         }
                     }
                     
@@ -4418,11 +4879,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         height = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
                         diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
                         
-                        // ✅ DEBUG: Log direct API access for ducts
-                        if (!DeploymentConfiguration.DeploymentMode && (width > 0 || height > 0 || diameter > 0))
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        if (width > 0 || height > 0 || diameter > 0)
                         {
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: Direct API fallback OK, W={width * 304.8:F1}mm, H={height * 304.8:F1}mm, D={diameter * 304.8:F1}mm\n");
+                            SafeLog("pipe_dimension_debug.log", $"DUCT {duct.Id}: Direct API fallback OK, W={width * 304.8:F1}mm, H={height * 304.8:F1}mm, D={diameter * 304.8:F1}mm");
                         }
                     }
                     
@@ -4431,19 +4891,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         width = diameter;
                         height = diameter;
                         
-                        // ✅ DEBUG: Log round duct using diameter
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: ROUND DUCT - Using diameter={diameter:F6}ft ({diameter * 304.8:F1}mm) for W/H\n");
-                        }
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        SafeLog("pipe_dimension_debug.log", $"DUCT {duct.Id}: ROUND DUCT - Using diameter={diameter:F6}ft ({diameter * 304.8:F1}mm) for W/H");
                     }
                     
-                    // ✅ DEBUG: Log final result if still 0
-                    if (!DeploymentConfiguration.DeploymentMode && width <= 0 && height <= 0)
+                    // ✅ PERFORMANCE OPT: Use SafeLog
+                    if (width <= 0 && height <= 0)
                     {
-                        SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: ⚠️ ZERO DIMENSIONS! W={width:F6}, H={height:F6}, D={diameter:F6}, UsedCache={paramCache != null}\n");
+                        SafeLog("pipe_dimension_debug.log", $"DUCT {duct.Id}: ⚠️ ZERO DIMENSIONS! W={width:F6}, H={height:F6}, D={diameter:F6}, UsedCache={paramCache != null}");
                     }
                     
                     return (width, height);
@@ -4454,19 +4909,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double nominalDiameter = 0;
 
                     // Try paramCache first if available
+                    // NOTE: ParameterSnapshotService now returns raw double value as string (already in internal units/feet)
                     if (paramCache != null)
                     {
-                        if (paramCache.TryGetValue("Outside Diameter", out var odStr) && double.TryParse(odStr, out var odVal)) outerDiameter = odVal / 304.8;
+                        if (paramCache.TryGetValue("Outside Diameter", out var odStr) && double.TryParse(odStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var odVal)) outerDiameter = odVal;
                         // Try "Nominal Diameter" first, then "Diameter" as fallback (Revit uses both names)
-                        if (paramCache.TryGetValue("Nominal Diameter", out var ndStr) && double.TryParse(ndStr, out var ndVal)) nominalDiameter = ndVal / 304.8;
-                        else if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, out var dVal)) nominalDiameter = dVal / 304.8;
+                        if (paramCache.TryGetValue("Nominal Diameter", out var ndStr) && double.TryParse(ndStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var ndVal)) nominalDiameter = ndVal;
+                        else if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var dVal)) nominalDiameter = dVal;
                         
-                        // ✅ DEBUG: Log paramCache keys for pipes
-                        if (!DeploymentConfiguration.DeploymentMode && (outerDiameter <= 0 && nominalDiameter <= 0))
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        if (outerDiameter <= 0 && nominalDiameter <= 0)
                         {
                             var keys = string.Join(", ", paramCache.Keys.Take(10));
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] PIPE {pipe.Id}: paramCache FAILED, OD='{odStr ?? "null"}', ND='{ndStr ?? "null"}', Keys=[{keys}] - Falling back to API\n");
+                            SafeLog("pipe_dimension_debug.log", $"PIPE {pipe.Id}: paramCache FAILED, OD='{odStr ?? "null"}', ND='{ndStr ?? "null"}', Keys=[{keys}] - Falling back to API");
                         }
                     }
                     
@@ -4476,12 +4931,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         outerDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
                         nominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0;
                         
-                        // ✅ DEBUG: Log direct API access for pipes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] PIPE {pipe.Id}: Direct API used, OD={outerDiameter:F6}ft ({outerDiameter * 304.8:F1}mm), ND={nominalDiameter:F6}ft, Doc={pipe.Document?.Title}\n");
-                        }
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        SafeLog("pipe_dimension_debug.log", $"PIPE {pipe.Id}: Direct API used, OD={outerDiameter:F6}ft ({outerDiameter * 304.8:F1}mm), ND={nominalDiameter:F6}ft, Doc={pipe.Document?.Title}");
                     }
                     
                     var diameter = outerDiameter;
@@ -4490,11 +4941,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         diameter = nominalDiameter;
                     }
                     
-                    // ✅ DEBUG: Log final result if still 0
-                    if (!DeploymentConfiguration.DeploymentMode && diameter <= 0)
+                    // ✅ PERFORMANCE OPT: Use SafeLog
+                    if (diameter <= 0)
                     {
-                        SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] PIPE {pipe.Id}: ⚠️ ZERO DIAMETER! OD={outerDiameter:F6}, ND={nominalDiameter:F6}, UsedCache={paramCache != null}\n");
+                        SafeLog("pipe_dimension_debug.log", $"PIPE {pipe.Id}: ⚠️ ZERO DIAMETER! OD={outerDiameter:F6}, ND={nominalDiameter:F6}, UsedCache={paramCache != null}");
                     }
                     
                     return (diameter, diameter);
@@ -4505,17 +4955,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double height = 0;
 
                     // Try paramCache first if available
+                    // NOTE: ParameterSnapshotService now returns raw double value as string (already in internal units/feet)
                     if (paramCache != null)
                     {
-                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
-                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var wVal)) width = wVal;
+                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var hVal)) height = hVal;
                         
-                        // ✅ DEBUG: Log paramCache keys for cable trays if no dimensions found
-                        if (!DeploymentConfiguration.DeploymentMode && width <= 0 && height <= 0)
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        if (width <= 0 && height <= 0)
                         {
                             var keys = string.Join(", ", paramCache.Keys.Take(10));
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] CABLETRAY {cableTray.Id}: paramCache FAILED, W='{wStr ?? "null"}', H='{hStr ?? "null"}', Keys=[{keys}] - Falling back to API\n");
+                            SafeLog("pipe_dimension_debug.log", $"CABLETRAY {cableTray.Id}: paramCache FAILED, W='{wStr ?? "null"}', H='{hStr ?? "null"}', Keys=[{keys}] - Falling back to API");
                         }
                     }
                     
@@ -4525,11 +4975,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         width = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
                         height = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
                         
-                        // ✅ DEBUG: Log direct API access
-                        if (!DeploymentConfiguration.DeploymentMode && (width > 0 || height > 0))
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        if (width > 0 || height > 0)
                         {
-                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] CABLETRAY {cableTray.Id}: Direct API fallback OK, W={width * 304.8:F1}mm, H={height * 304.8:F1}mm\n");
+                            SafeLog("pipe_dimension_debug.log", $"CABLETRAY {cableTray.Id}: Direct API fallback OK, W={width * 304.8:F1}mm, H={height * 304.8:F1}mm");
                         }
                     }
                     
@@ -4541,10 +4990,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double height = 0;
 
                     // Try paramCache first if available
+                    // NOTE: ParameterSnapshotService now returns raw double value as string (already in internal units/feet)
                     if (paramCache != null)
                     {
-                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
-                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var wVal)) width = wVal;
+                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var hVal)) height = hVal;
                     }
                     
                     // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
@@ -4562,13 +5012,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double height = 0;
 
                     // Try paramCache first if available
+                    // NOTE: ParameterSnapshotService now returns raw double value as string (already in internal units/feet)
                     if (paramCache != null)
                     {
-                        if (paramCache.TryGetValue("Damper Width", out var dwStr) && double.TryParse(dwStr, out var dwVal)) width = dwVal / 304.8;
-                        else if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
+                        if (paramCache.TryGetValue("Damper Width", out var dwStr) && double.TryParse(dwStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var dwVal)) width = dwVal;
+                        else if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var wVal)) width = wVal;
                         
-                        if (paramCache.TryGetValue("Damper Height", out var dhStr) && double.TryParse(dhStr, out var dhVal)) height = dhVal / 304.8;
-                        else if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                        if (paramCache.TryGetValue("Damper Height", out var dhStr) && double.TryParse(dhStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var dhVal)) height = dhVal;
+                        else if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var hVal)) height = hVal;
                     }
                     
                     // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
@@ -5152,129 +5603,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     mepOrientation = "Y"; // Width runs in Y-axis
                 }
                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[GetMepElementOrientationFromBbox] Element {mepElement.Id}: BboxWidth={bboxWidth:F3}, BboxHeight={bboxHeight:F3}, Orientation={mepOrientation}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("refresh.log", $"[GetMepElementOrientationFromBbox] Element {mepElement.Id}: BboxWidth={bboxWidth:F3}, BboxHeight={bboxHeight:F3}, Orientation={mepOrientation}");
+                }
                 
                 return mepOrientation;
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[GetMepElementOrientationFromBbox] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("refresh.log", $"[GetMepElementOrientationFromBbox] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
+                }
                 return "X"; // Default to X orientation
             }
         }
 
         /// <summary>
-        /// Get MEP element orientation vector
+        /// Get MEP element orientation vector.
+        /// ✅ OPTIMIZED: Removed duplicate double-guarded logging. Only logs in DiagnosticMode.
+        /// ✅ OPTIMIZED: Pipes and Conduits return immediately (round elements, no complex orientation needed).
         /// </summary>
         public XYZ GetMepElementOrientation(Element mepElement)
         {
             try
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[GetMepElementOrientation] Element {mepElement.Id}: Type={mepElement.GetType().Name}, Category={mepElement.Category?.Name}, Location={mepElement.Location?.GetType().Name}");
-                
+                // ✅ FAST PATH: Pipes and Conduits are round — just return centerline direction, no helper needed.
+                if (mepElement is Pipe pipe && pipe.Location is LocationCurve pipeCurveF)
+                {
+                    var l = pipeCurveF.Curve as Line;
+                    return l?.Direction ?? XYZ.BasisX;
+                }
+                if (mepElement is Conduit conduit && conduit.Location is LocationCurve conduitCurveF)
+                {
+                    var l = conduitCurveF.Curve as Line;
+                    return l?.Direction ?? XYZ.BasisX;
+                }
+
+                bool diagMode = OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode;
+
                 if (mepElement is Duct duct && duct.Location is LocationCurve curve)
                 {
                     var line = curve.Curve as Line;
                     if (line != null)
                     {
                         var direction = line.Direction;
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})\n");
-                        
-                        // ✅ FIX: ALWAYS use helper for ALL ducts - it determines X or Y width orientation
-                        // No need to check if vertical - helper handles all cases
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Checking width orientation using helper");
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Checking width orientation using helper\n");
-                        
                         try
                         {
                             var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
+                            if (diagMode)
                                 DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ORIENT-DEBUG] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})\n");
-                            return widthDirection; // Return X or Y basis vector based on width orientation
+                            return widthDirection;
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ORIENT-DEBUG] ERROR: {ex.Message}\n");
-                            return direction; // Fallback to original direction
+                            return direction;
                         }
                     }
                 }
-                else if (mepElement is Duct verticalDuct && verticalDuct.Location is LocationPoint point)
+                else if (mepElement is Duct verticalDuct && verticalDuct.Location is LocationPoint)
                 {
-                    // ✅ FIX: For vertical ducts through floors, use MepElementOrientationHelper to determine X or Y orientation
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Has LocationPoint, checking width orientation using helper");
-                    
+                    // For vertical ducts through floors, use helper to determine X or Y orientation
                     try
                     {
-                        var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(verticalDuct);
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
-                        return widthDirection; // Return X or Y basis vector based on width orientation
+                        var (_, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(verticalDuct);
+                        return widthDirection;
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for duct {mepElement.Id}: {ex.Message}");
-                        return XYZ.BasisY; // Default fallback to Y-oriented
+                        return XYZ.BasisY;
                     }
                 }
-                else if (mepElement is FamilyInstance ductAccessory && 
+                else if (mepElement is FamilyInstance ductAccessory &&
                          ductAccessory.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory &&
                          ductAccessory.Location is LocationCurve ductAccessoryCurve)
                 {
                     var line = ductAccessoryCurve.Curve as Line;
-                    if (line != null)
-                    {
-                        var direction = line.Direction;
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[GetMepElementOrientation] DuctAccessory {mepElement.Id}: Direction=({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
-                        return direction;
-                    }
-                }
-                else if (mepElement is Pipe pipe && pipe.Location is LocationCurve pipeCurve)
-                {
-                    var line = pipeCurve.Curve as Line;
-                    if (line != null)
-                    {
-                        return line.Direction;
-                    }
-                }
-                else if (mepElement is Conduit conduit && conduit.Location is LocationCurve conduitCurve)
-                {
-                    var line = conduitCurve.Curve as Line;
-                    if (line != null)
-                    {
-                        return line.Direction;
-                    }
+                    if (line != null) return line.Direction;
                 }
                 else if (mepElement is Autodesk.Revit.DB.Electrical.CableTray cableTray && cableTray.Location is LocationCurve cableTrayCurve)
                 {
@@ -5282,60 +5688,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (line != null)
                     {
                         var direction = line.Direction;
-                        
-                        // ✅ CABLE TRAY FIX: For vertical cable trays, use helper to get width direction (XY plane)
-                        // This ensures we get the correct orientation for rotation calculation
-                        double absX = Math.Abs(direction.X);
-                        double absY = Math.Abs(direction.Y);
                         double absZ = Math.Abs(direction.Z);
-                        bool isVertical = absZ > Math.Max(absX, absY) * 0.7; // Z component is dominant
-                        
+                        bool isVertical = absZ > Math.Max(Math.Abs(direction.X), Math.Abs(direction.Y)) * 0.7;
                         if (isVertical)
                         {
                             try
                             {
-                                var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(cableTray);
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[GetMepElementOrientation] Vertical CableTray {mepElement.Id}: Using width direction ({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3}) instead of centerline direction ({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");
-                                return widthDirection; // Return width direction for vertical cable trays
+                                var (_, widthDirection) = Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(cableTray);
+                                return widthDirection;
                             }
-                            catch (Exception ex)
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[GetMepElementOrientation] Error using helper for vertical cable tray {mepElement.Id}: {ex.Message}, falling back to centerline direction");
-                                return direction; // Fallback to centerline direction
-                            }
+                            catch { return direction; }
                         }
-                        
-                        return direction; // For horizontal cable trays, use centerline direction
+                        return direction;
                     }
                 }
                 else if (mepElement.Category?.Id.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                 {
-                    // ✅ FIX: Handle dampers (FamilyInstance) - get orientation from transform
                     var damper = mepElement as FamilyInstance;
                     if (damper != null)
-                    {
-                        var transform = damper.GetTotalTransform();
-                        // Use BasisX as the "flow direction" (similar to ducts/pipes)
-                        var damperDirection = transform.BasisX;
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[GetMepElementOrientation] Damper {mepElement.Id}: Direction=({damperDirection.X:F3}, {damperDirection.Y:F3}, {damperDirection.Z:F3})");
-                        return damperDirection;
-                    }
+                        return damper.GetTotalTransform().BasisX;
                 }
 
-                return XYZ.BasisX; // Default fallback
+                return XYZ.BasisX;
             }
-            catch (Exception ex)
+            catch
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[GetMepElementOrientation] Error getting orientation for element {mepElement?.Id}: {ex.Message}");
-                return XYZ.BasisX; // Default fallback
+                return XYZ.BasisX;
             }
         }
         
@@ -5364,56 +5742,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Get MEP element level information for sleeve placement
         /// Uses the same logic as HostLevelHelper.GetHostReferenceLevel to get immediate reference level
         /// </summary>
-        private (string levelName, double levelElevation) GetMepElementLevelInfo(Element mepElement)
+        private (string levelName, double levelElevation) GetMepElementLevelInfo(Element mepElement, Dictionary<string, string>? paramCache = null)
         {
+            // ✅ PERF: Only log in explicit diagnostic mode, never per-element in normal runs
+            bool diagMode = OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode;
             try
             {
-                // Use HostLevelHelper to get the immediate reference level (same logic as sleeve placement)
+                // ✅ OPTIMIZATION: Check parameter cache first (captured in bulk)
+                if (paramCache != null)
+                {
+                    string levelName = null;
+                    if (paramCache.TryGetValue("Reference Level", out var rl) && !string.IsNullOrEmpty(rl)) levelName = rl;
+                    else if (paramCache.TryGetValue("Level", out var l) && !string.IsNullOrEmpty(l)) levelName = l;
+                    else if (paramCache.TryGetValue("Schedule Level", out var sl) && !string.IsNullOrEmpty(sl)) levelName = sl;
+
+                    if (!string.IsNullOrEmpty(levelName))
+                    {
+                        double elevation = 0;
+                        if (paramCache.TryGetValue("Reference Level Elevation", out var elevStr) && double.TryParse(elevStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var elevVal))
+                            elevation = elevVal;
+                        if (diagMode) SafeFileLogger.SafeAppendText("refresh.log", $"[ClashZoneService] MEP Element {mepElement.Id}: Using cached level '{levelName}' (elevation: {elevation})");
+                        return (levelName, elevation);
+                    }
+                }
+
+                // Fallback: HostLevelHelper
                 var refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(mepElement.Document, mepElement);
                 if (refLevel != null)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using reference level '{refLevel.Name}' (elevation: {refLevel.Elevation})");
+                    if (diagMode) SafeFileLogger.SafeAppendText("refresh.log", $"[ClashZoneService] MEP Element {mepElement.Id}: Using reference level '{refLevel.Name}' (elevation: {refLevel.Elevation})");
                     return (refLevel.Name, refLevel.Elevation);
                 }
-                
-                // Fallback: try to get level from MEP element's LevelId (original logic)
+
+                // Fallback: LevelId
                 if (mepElement.LevelId != ElementId.InvalidElementId)
                 {
                     var level = mepElement.Document.GetElement(mepElement.LevelId) as Level;
                     if (level != null)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using LevelId level '{level.Name}' (elevation: {level.Elevation})");
+                        if (diagMode) SafeFileLogger.SafeAppendText("refresh.log", $"[ClashZoneService] MEP Element {mepElement.Id}: Using LevelId level '{level.Name}' (elevation: {level.Elevation})");
                         return (level.Name, level.Elevation);
                     }
                 }
-                
-                // Fallback: try to get level from location
+
+                // Fallback: location point Z
                 if (mepElement.Location is LocationPoint locationPoint)
                 {
                     var elevation = locationPoint.Point.Z;
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using location point elevation {elevation}");
+                    if (diagMode) SafeFileLogger.SafeAppendText("refresh.log", $"[ClashZoneService] MEP Element {mepElement.Id}: Using location point elevation {elevation}");
                     return ($"Auto-Level-{elevation:F2}", elevation);
                 }
                 else if (mepElement.Location is LocationCurve locationCurve)
                 {
                     var startPoint = locationCurve.Curve.GetEndPoint(0);
                     var elevation = startPoint.Z;
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Using location curve elevation {elevation}");
+                    if (diagMode) SafeFileLogger.SafeAppendText("refresh.log", $"[ClashZoneService] MEP Element {mepElement.Id}: Using location curve elevation {elevation}");
                     return ($"Auto-Level-{elevation:F2}", elevation);
                 }
                 
                 // Final fallback
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[ClashZoneService] MEP Element {mepElement.Id}: No level found, using fallback 'Level 1'");
+                if (diagMode) DebugLogger.Warning($"[ClashZoneService] MEP Element {mepElement.Id}: No level found (fallback 'Level 1')");
                 return ("Level 1", 0.0);
             }
             catch (Exception ex)
@@ -5495,9 +5883,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var isRectangular = familyName.Contains("Rectangular") || familyName.Contains("Rect");
                             
                             // Cluster sleeves are typically larger than individual sleeves
-                            var widthParam = opening.GetParameter("Width");
-                            var heightParam = opening.GetParameter("Height");
-                            var diameterParam = opening.GetParameter("Diameter");
+                            var widthParam = opening.LookupParameter("Width");
+                            var heightParam = opening.LookupParameter("Height");
+                            var diameterParam = opening.LookupParameter("Diameter");
                             bool isLargeSleeve = IsParameterLargeValue(widthParam, 300) ||
                                                  IsParameterLargeValue(heightParam, 300) ||
                                                  IsParameterLargeValue(diameterParam, 300);
@@ -5521,134 +5909,127 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, HashSet<string>? parameterWhitelist = null, HashSet<int>? existingSleeveIds = null, HashSet<string>? existingOpeningPointKeys = null, Dictionary<int, Dictionary<string, string>>? mepParamsCache = null, Dictionary<int, Dictionary<string, string>>? hostParamsCache = null)
+        private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, HashSet<string>? parameterWhitelist = null, HashSet<int>? existingSleeveIds = null, HashSet<string>? existingOpeningPointKeys = null, Dictionary<int, Dictionary<string, string>>? mepParamsCache = null, Dictionary<int, Dictionary<string, string>>? hostParamsCache = null, Dictionary<string, MepElementComputedData>? mepDataCache = null)
         {
-            Dictionary<string, string>? mepParamDict = null;
-            if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out mepParamDict);
-            
-            // OPTIMIZATION: Check if category needs to be updated
-            var mepCategory = GetElementCategoryName(mepElement, mepParamDict);
-            existingZone.IntersectionPoint = intersectionPoint;
-            existingZone.SleevePlacementPoint = intersectionPoint; // ✅ CRITICAL: Update placement point for distance calculation
-            existingZone.ClashBoundingBox = boundingBox;
-            existingZone.MepElementSize = GetMepElementSize(mepElement);
-            existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
-            existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
-            existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
-            
-            // ✅ MEP METADATA: Update System Type, Service Type, and Elevation
-            existingZone.MepSystemType = GetMepSystemType(mepElement, mepCategory);
-            existingZone.MepServiceType = GetMepServiceType(mepElement);
-            
-            // Recalculate level info in case element moved
-            var (levelName, levelElevation) = GetMepElementLevelInfo(mepElement);
-            existingZone.MepElementLevelName = levelName;
-            existingZone.MepElementLevelElevation = levelElevation;
-            
-            // ✅ USER REQUEST: Read "Offset" parameter directly for individual sleeves
-            existingZone.ElevationFromLevel = GetMepElementOffset(mepElement);
-            
-            // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
-            // This ensures existing ClashZones also get parameter snapshots updated during refresh
-            // Same logic as CreateClashZone - capture all whitelisted parameters
-            // ✅ PHASE 4 OPTIMIZATION: Skip synchronous capture if lazy capture is enabled (saves ~9 seconds for 888 zones)
-            try
+            using (var metadataOp = _performanceMonitor?.TrackOperation("6d4a. Metadata Updates") as IDisposable)
             {
-                if (_clashZoneStorage != null && !OptimizationFlags.UseLazyParameterCapture)
+                Dictionary<string, string>? mepParamDict = null;
+                if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out mepParamDict);
+
+                // PERF OPT: Use pre-computed MEP element data (same element can update multiple zones)
+                MepElementComputedData mepData = null;
+                mepDataCache?.TryGetValue(GetElementCacheKey(mepElement), out mepData);
+
+                var mepCategory = (mepData != null) ? mepData.Category : GetElementCategoryName(mepElement, mepParamDict);
+                existingZone.IntersectionPoint = intersectionPoint;
+                existingZone.SleevePlacementPoint = intersectionPoint;
+                existingZone.ClashBoundingBox = boundingBox;
+                existingZone.MepElementSize = GetMepElementSize(mepElement);
+                existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
+                existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
+                existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
+
+                // PERF OPT: Use cached values — eliminates 4 COM call sequences per zone
+                existingZone.MepSystemType = (mepData != null) ? mepData.SystemType : GetMepSystemType(mepElement, mepCategory, mepParamDict);
+                existingZone.MepServiceType = (mepData != null) ? mepData.ServiceType : GetMepServiceType(mepElement, mepParamDict);
+//[lines 5928-5933 unchanged]
+                existingZone.ElevationFromLevel = (mepData != null) ? mepData.ElevationFromLevel : GetMepElementOffset(mepElement, mepParamDict);
+            }
+            
+            using (var paramOp = _performanceMonitor?.TrackOperation("6d4b. Parameter Snapshot") as IDisposable)
+            {
+                // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
+                // This ensures existing ClashZones also get parameter snapshots updated during refresh
+                // Same logic as CreateClashZone - capture all whitelisted parameters
+                // ✅ PHASE 4 OPTIMIZATION: Skip synchronous capture if lazy capture is enabled (saves ~9 seconds for 888 zones)
+                try
                 {
-                    var parameterSnapshotService = new ParameterSnapshotService();
-                    
-                    // Build whitelist from storage (includes common keys, user-defined keys, and learned keys)
-                    // ✅ PHASE 3 OPTIMIZATION: Reuse pre-cached whitelist
-                    var whitelist = parameterWhitelist ?? parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
-                    
-                    // Capture MEP element parameters
-                    var mepParameterValues = parameterSnapshotService.CaptureParams(mepElement, whitelist);
-                    
-                    // Capture host element parameters
-                    var hostParameterValues = parameterSnapshotService.CaptureParams(structuralElement, whitelist);
-                    
-                    // Update existing zone with captured parameters
-                    existingZone.MepParameterValues = mepParameterValues;
-                    existingZone.HostParameterValues = hostParameterValues;
-                    
-                    // ✅ CRITICAL DIAGNOSTIC: Log parameter assignment with sample keys
-                    if (!DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
+                    if (_clashZoneStorage != null && !OptimizationFlags.UseLazyParameterCapture)
                     {
-                        var mepSampleKeys = mepParameterValues.Take(5).Select(kv => kv?.Key ?? "null").Where(k => !string.IsNullOrEmpty(k)).ToList();
-                        var mepSampleStr = mepSampleKeys.Count > 0 ? string.Join(", ", mepSampleKeys) : "none";
-                        if (mepParameterValues.Count > mepSampleKeys.Count) mepSampleStr += $" (+{mepParameterValues.Count - mepSampleKeys.Count} more)";
+                        var parameterSnapshotService = new ParameterSnapshotService();
                         
-                        _log($"[PARAM-SNAPSHOT] ✅ ASSIGNED {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters to existing ClashZone {existingZone.Id} (MEP={mepElement.Id}, Host={structuralElement.Id})");
-                        _log($"[PARAM-SNAPSHOT] ✅ MEP parameter sample keys: {mepSampleStr}");
+                        // Build whitelist from storage (includes common keys, user-defined keys, and learned keys)
+                        // ✅ PHASE 3 OPTIMIZATION: Reuse pre-cached whitelist
+                        var whitelist = parameterWhitelist ?? parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
                         
-                        // ✅ VERIFY: Check if parameters are actually in the zone object
-                        var verifyMepCount = existingZone.MepParameterValues?.Count ?? 0;
-                        if (verifyMepCount != mepParameterValues.Count)
+                        // Capture MEP element parameters
+                        var mepParameterValues = parameterSnapshotService.CaptureParams(mepElement, whitelist);
+                        
+                        // Capture host element parameters
+                        var hostParameterValues = parameterSnapshotService.CaptureParams(structuralElement, whitelist);
+                        
+                        // Update existing zone with captured parameters
+                        existingZone.MepParameterValues = mepParameterValues;
+                        existingZone.HostParameterValues = hostParameterValues;
+                        
+                        // ✅ CRITICAL DIAGNOSTIC: Log parameter assignment with sample keys
+                        if (!DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
                         {
-                            _log($"[PARAM-SNAPSHOT] ⚠️⚠️⚠️ VERIFICATION FAILED: Assigned {mepParameterValues.Count} but zone now has {verifyMepCount} MEP parameters!");
-                        }
-                        else
-                        {
-                            _log($"[PARAM-SNAPSHOT] ✅ VERIFICATION PASSED: Zone has {verifyMepCount} MEP parameters after assignment");
+                            var mepSampleKeys = mepParameterValues.Take(5).Select(kv => kv?.Key ?? "null").Where(k => !string.IsNullOrEmpty(k)).ToList();
+                            var mepSampleStr = mepSampleKeys.Count > 0 ? string.Join(", ", mepSampleKeys) : "none";
+                            if (mepParameterValues.Count > mepSampleKeys.Count) mepSampleStr += $" (+{mepParameterValues.Count - mepSampleKeys.Count} more)";
+                            
+                             if (OptimizationFlags.UseDiagnosticMode)
+                                _log($"[PARAM-SNAPSHOT] ✅ ASSIGNED {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters to existing ClashZone {existingZone.Id} (MEP={mepElement.Id}, Host={structuralElement.Id})");
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                // Non-fatal: Log error but continue
-                _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters for existing ClashZone: {ex.Message}");
-                if (!DeploymentConfiguration.DeploymentMode)
+                catch (Exception ex)
                 {
-                    DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for existing ClashZone MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
+                    // Non-fatal: Log error but continue
+                    _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters for existing ClashZone: {ex.Message}");
                 }
             }
             
-            // ✅ PHASE 3 OPTIMIZATION: Use O(1) opening map if provided, otherwise fallback to slow path
-            bool hasExistingSleeve = false;
-            string pointKey = $"{Math.Round(intersectionPoint.X, 3)}_{Math.Round(intersectionPoint.Y, 3)}_{Math.Round(intersectionPoint.Z, 3)}";
+            using (var verifyOp = _performanceMonitor?.TrackOperation("6d4c. Sleeve Verification") as IDisposable)
+            {
+                // ✅ PHASE 3 OPTIMIZATION: Use O(1) opening map if provided, otherwise fallback to slow path
+                bool hasExistingSleeve = false;
+                string pointKey = $"{Math.Round(intersectionPoint.X, 3)}_{Math.Round(intersectionPoint.Y, 3)}_{Math.Round(intersectionPoint.Z, 3)}";
 
-            if (existingOpeningPointKeys != null)
-            {
-                hasExistingSleeve = existingOpeningPointKeys.Contains(pointKey);
-            }
-            else
-            {
-                hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
-            }
-
-            if (hasExistingSleeve && !existingZone.IsResolved)
-            {
-                existingZone.IsResolved = true;
-                // ✅ FIXED: Only set SleeveInstanceId to -1 if it's not already set (preserve from XML)
-                if (existingZone.SleeveInstanceId <= 0)
+                if (existingOpeningPointKeys != null)
                 {
-                    existingZone.SleeveInstanceId = -1; // Will be populated during placement if needed
+                    hasExistingSleeve = existingOpeningPointKeys.Contains(pointKey);
                 }
-                _log($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}, preserved SleeveInstanceId={existingZone.SleeveInstanceId}");
-            }
-            
-            // ✅ PHASE 3 OPTIMIZATION: Check for existing cluster sleeve (using same pre-indexed map for now, though cluster usually has higher tolerance)
-            bool hasExistingClusterSleeve = false;
-            if (existingOpeningPointKeys != null)
-            {
-                // NOTE: Cluster sleeves often have higher tolerance (50mm), but for streamlined we prioritize exact location matches
-                hasExistingClusterSleeve = existingOpeningPointKeys.Contains(pointKey);
-            }
-            else
-            {
-                hasExistingClusterSleeve = CheckForExistingClusterSleeve(intersectionPoint, document);
-            }
+                else
+                {
+                    hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
+                }
 
-            if (hasExistingClusterSleeve && !existingZone.IsClusterResolved)
-            {
-                existingZone.IsClusterResolved = true;
-                existingZone.ClusterSleeveInstanceId = -1; // Will be populated during clustering if needed
-                _log($"[UpdateExistingClashZone] Found existing cluster sleeve at intersection point - set IsClusterResolved=true for clash zone {existingZone.Id}");
+                if (hasExistingSleeve && !existingZone.IsResolved)
+                {
+                    existingZone.IsResolved = true;
+                    // ✅ FIXED: Only set SleeveInstanceId to -1 if it's not already set (preserve from XML)
+                    if (existingZone.SleeveInstanceId <= 0)
+                    {
+                        existingZone.SleeveInstanceId = -1; // Will be populated during placement if needed
+                    }
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        _log($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}, preserved SleeveInstanceId={existingZone.SleeveInstanceId}");
+                }
+                
+                // ✅ PHASE 3 OPTIMIZATION: Check for existing cluster sleeve (using same pre-indexed map for now, though cluster usually has higher tolerance)
+                bool hasExistingClusterSleeve = false;
+                if (existingOpeningPointKeys != null)
+                {
+                    // NOTE: Cluster sleeves often have higher tolerance (50mm), but for streamlined we prioritize exact location matches
+                    hasExistingClusterSleeve = existingOpeningPointKeys.Contains(pointKey);
+                }
+                else
+                {
+                    hasExistingClusterSleeve = CheckForExistingClusterSleeve(intersectionPoint, document);
+                }
+
+                if (hasExistingClusterSleeve && !existingZone.IsClusterResolved)
+                {
+                    existingZone.IsClusterResolved = true;
+                    existingZone.ClusterSleeveInstanceId = -1; // Will be populated during clustering if needed
+                     if (OptimizationFlags.UseDiagnosticMode)
+                        _log($"[UpdateExistingClashZone] Found existing cluster sleeve at intersection point - set IsClusterResolved=true for clash zone {existingZone.Id}");
+                }
+                
+                existingZone.LastUpdated = DateTime.Now;
             }
-            
-            existingZone.LastUpdated = DateTime.Now;
         }
         
         private void MarkResolvedClashZones(List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections, Document document)
@@ -5721,50 +6102,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// ✅ CRITICAL FIX: Get MEP element size using strategy classes for insulation detection
         /// </summary>
-        private MepElementSize GetMepElementSizeWithStrategy(Element mepElement, string mepCategory)
+        private MepElementSize GetMepElementSizeWithStrategy(Element mepElement, string mepCategory, System.Collections.Generic.Dictionary<string, string>? mepParamDict = null)
         {
             try
             {
-                // 🔥 CRITICAL DEBUG: Force direct file logging to trace strategy analysis
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Analyzing element {mepElement.Id} with category '{mepCategory}'\n");
+                // ✅ PERFORMANCE OPT: Prevent string allocation for SafeLog when diagnostic mode is off
+                bool diagMode = !DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode;
+                if (diagMode) SafeLog("refresh.log", $"Analyzing element {mepElement.Id} with category '{mepCategory}'");
                 
-                // Use appropriate strategy based on category
-                ISleevePlacementStrategy strategy = mepCategory switch
+                // PERF OPT: Use cached strategy instances (all stateless except DamperPlacementStrategy which caches by doc)
+                ISleevePlacementStrategy strategy;
+                switch (mepCategory)
                 {
-                    "Ducts" => new DuctPlacementStrategy(),
-                    "Duct Accessories" => new DamperPlacementStrategy(mepElement.Document), // Pass the document from the MEP element
-                    "Pipes" => new PipePlacementStrategy(),
-                    "Cable Trays" => new CableTrayPlacementStrategy(),
-                    _ => new DuctPlacementStrategy() // Default fallback
-                };
+                    case "Ducts":         strategy = _ductStrategy; break;
+                    case "Pipes":         strategy = _pipeStrategy; break;
+                    case "Cable Trays":   strategy = _cableTrayStrategy; break;
+                    case "Duct Accessories":
+                        // DamperPlacementStrategy holds a Document reference — reuse if same doc
+                        var doc = mepElement.Document;
+                        if (_cachedDamperStrategy == null || !ReferenceEquals(_cachedDamperStrategyDoc, doc))
+                        {
+                            _cachedDamperStrategy = new Strategies.DamperPlacementStrategy(doc);
+                            _cachedDamperStrategyDoc = doc;
+                        }
+                        strategy = _cachedDamperStrategy;
+                        break;
+                    default:              strategy = _ductStrategy; break; // Default fallback
+                }
 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Using strategy: {strategy.GetType().Name}\n");
+                if (diagMode) SafeLog("refresh.log", $"Using strategy: {strategy.GetType().Name}");
 
-                // Get MEP element size with insulation information
-                var mepElementSize = strategy.GetMepElementSize(mepElement);
+                // Get MEP element size with insulation information - Pass pre-captured parameters
+                var mepElementSize = strategy.GetMepElementSize(mepElement, mepParamDict);
                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Strategy analysis complete: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}, InsulationThickness={mepElementSize.InsulationThickness:F6}ft\n");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[ClashZoneService] Strategy '{strategy.GetType().Name}' analyzed element {mepElement.Id}: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}");
+                if (diagMode) SafeLog("refresh.log", $"✅ Strategy analysis complete: Shape='{mepElementSize.Shape}', IsInsulated={mepElementSize.IsInsulated}, InsulationThickness={mepElementSize.InsulationThickness:F6}ft");
+
                 
                 return mepElementSize;
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ ERROR in strategy analysis: {ex.Message}\n");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
+                }
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
                     DebugLogger.Error($"[ClashZoneService] Error getting MEP element size with strategy: {ex.Message}");
+                }
                 return new MepElementSize(); // Return empty size on error
             }
         }
@@ -5875,25 +6260,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (absX > absY)
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absX={absX:F3} > absY={absY:F3} → returning X\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absX={absX:F3} > absY={absY:F3} → returning X\n");
+                        }
                             return "X"; // X-oriented → 0° rotation
                         }
                         else
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absY={absY:F3} >= absX={absX:F3} → returning Y\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation has absY={absY:F3} >= absX={absX:F3} → returning Y\n");
+                        }
                             return "Y"; // Y-oriented → 90° rotation
                         }
                     }
                     else
                     {
                         // Default to X if orientation is zero
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                if (!DeploymentConfiguration.DeploymentMode)
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
                             DebugLogger.Info($"[ORIENT-FIX] Floor host: MEP orientation is zero/null → returning X\n");
+                        }
                         return "X";
                     }
                 }
@@ -5901,17 +6289,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // ✅ CRITICAL: For walls and framing, use wall direction type
                     // DO NOT CHANGE THIS LOGIC - WALL/FRAMING ROTATION DEPENDS ON IT
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
                         DebugLogger.Info($"[ORIENT-FIX] {structuralElementType} host: Using GetWallOrientationFromType({wallDirectionType})\n");
+                    }
                     return GetWallOrientationFromType(wallDirectionType);
                 }
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[GetMepOrientationDirection] Error: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("refresh.log", $"[GetMepOrientationDirection] Error: {ex.Message}");
+                }
                 return "X"; // Default fallback
             }
         }
@@ -5987,9 +6377,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     double rotationAngle = Math.Atan2(basisXProjected.Y, basisXProjected.X);
                                     
                                     string elementType = mepElement is Duct ? "DUCT" : "CABLETRAY";
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[ROTATION-ANGLE] Floor host: VERTICAL {elementType} {mepElement.Id} - Using CoordinateSystem.BasisX ({basisX.X:F3}, {basisX.Y:F3}, {basisX.Z:F3}) projected to ({basisXProjected.X:F3}, {basisXProjected.Y:F3}) → rotation angle {rotationAngle * 180 / Math.PI:F1}°");
+                                    SafeLog("refresh.log", $"[ROTATION-ANGLE] Floor host: VERTICAL {elementType} {mepElement.Id} - Using CoordinateSystem.BasisX ({basisX.X:F3}, {basisX.Y:F3}, {basisX.Z:F3}) projected to ({basisXProjected.X:F3}, {basisXProjected.Y:F3}) → rotation angle {rotationAngle * 180 / Math.PI:F1}°");
                                     
                                     return rotationAngle;
                                 }
@@ -5997,9 +6385,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         catch (Exception transformEx)
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[ROTATION-ANGLE] Error getting CoordinateSystem for vertical element {mepElement.Id}: {transformEx.Message}, falling back to orientation vector (may only give 0°/90°)");
+                                // ✅ PERFORMANCE OPT: Use SafeLog
+                                SafeLog("refresh.log", $"[ROTATION-ANGLE] Error getting CoordinateSystem for vertical element {mepElement.Id}: {transformEx.Message}, falling back to orientation vector (may only give 0°/90°)");
                         }
                         
                         // ✅ FALLBACK: If CoordinateSystem fails, use orientation vector (may only give 0° or 90°)
@@ -6008,18 +6395,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Calculate rotation angle using atan2(Y, X) - gives angle in radians
                         double fallbackRotationAngle = Math.Atan2(mepOrientation.Y, mepOrientation.X);
                         
-                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[ROTATION-ANGLE] Floor host: Using fallback orientation vector ({mepOrientation.X:F3}, {mepOrientation.Y:F3}, {mepOrientation.Z:F3}) → rotation angle {fallbackRotationAngle * 180 / Math.PI:F1}° (may be limited to 0°/90° - CoordinateSystem unavailable)");
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        SafeLog("refresh.log", $"[ROTATION-ANGLE] Floor host: Using fallback orientation vector ({mepOrientation.X:F3}, {mepOrientation.Y:F3}, {mepOrientation.Z:F3}) → rotation angle {fallbackRotationAngle * 180 / Math.PI:F1}° (may be limited to 0°/90° - CoordinateSystem unavailable)");
                         
                         return fallbackRotationAngle;
                     }
                     else
                     {
                         // Default to 0° if orientation is zero/null
-                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ROTATION-ANGLE] Floor host: MEP orientation is zero/null → returning 0°");
+                        // ✅ PERFORMANCE OPT: Use SafeLog
+                        SafeLog("refresh.log", $"[ROTATION-ANGLE] Floor host: MEP orientation is zero/null → returning 0°");
                         return 0.0;
                     }
                 }
@@ -6032,9 +6417,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[CalculateMepElementRotationAngle] Error: {ex.Message}");
+                // ✅ PERFORMANCE OPT: Use SafeLog
+                SafeLog("refresh.log", $"[CalculateMepElementRotationAngle] Error: {ex.Message}");
                 return 0.0; // Default fallback
             }
         }
@@ -6059,5 +6443,242 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         #endregion
+
+        // ─────────────────────────────────────────────────────────────────────
+        // PERF OPT: Cache key generation for linked document support
+        // ElementIds are only unique within a document. For linked files, we need
+        // composite keys that include document path to avoid collisions.
+        // ─────────────────────────────────────────────────────────────────────
+        private static string GetElementCacheKey(Element element)
+        {
+            if (element == null) return string.Empty;
+            // UniqueId is globally unique across all documents (includes document GUID internally).
+            // PathName was unreliable for linked files — can be "" or vary between calls.
+            return element.UniqueId ?? $"{element.Id.GetIntegerValue()}|fallback";
+        }
+
+        // ✅ DIAGNOSTIC: Track expensive fallback calls
+        private static int _fallbackHostOrientationCount = 0;
+        private string GetHostOrientationWithTracking(Element structuralElement)
+        {
+            _fallbackHostOrientationCount++;
+            if (_fallbackHostOrientationCount <= 5 || _fallbackHostOrientationCount % 50 == 0)
+            {
+                SafeLog("refresh.log", $"[FALLBACK-BACK] GetHostOrientation called #{_fallbackHostOrientationCount} for Element {structuralElement?.Id}");
+            }
+            return WallDirectionService.GetHostOrientation(structuralElement);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // PERF OPT: Per-MEP-element pre-computed data cache
+        // All fields are intrinsic to the element (not intersection-dependent).
+        // Pre-computed once per unique MEP element ID before the zone loop.
+        // NOTE: Uses string keys for linked document support (ElementId|DocPath)
+        // ─────────────────────────────────────────────────────────────────────
+        // PERF OPT: Per-host-element pre-computed data cache
+        // Same host wall can intersect many MEP elements — compute once per unique host ID.
+        // NOTE: Uses string keys for linked document support (ElementId|DocPath)
+        private sealed class HostElementComputedData
+        {
+            public string StructuralElementType;       // "Wall", "Floor", "Structural Framing"
+            public double StructuralElementThickness;  // from GetElementThickness
+            public double WallThickness;               // from GetWallThickness
+            public double FramingThickness;            // from GetFramingThickness
+            public XYZ StructuralElementNormal;        // from WallDirectionService.GetStructuralElementNormal
+            public string HostOrientation;             // from WallDirectionService.GetHostOrientation ("X" or "Y")
+            public string GeometryHash;                // ✅ PATH 2 OPT: Pre-computed geometry hash to avoid string alloc per zone
+        }
+
+        private sealed class MepElementComputedData
+        {
+            public string Category;
+            public double RawWidth;
+            public double RawHeight;
+            public MepElementSize StrategySize;   // from GetMepElementSizeWithStrategy
+            public bool StrategyValid;             // true when strategy returned usable dimensions
+            public double FinalWidth;              // resolved from strategy (wall-orient-independent path)
+            public double FinalHeight;
+            public double FinalDiameter;
+            public string DuctShape;
+            public bool IsInsulated;
+            public double InsulationThickness;
+            public string InsulationType;          // "Insulated" / "Normal"
+            public string PipeOpeningType;
+            public string LevelName;
+            public double LevelElevation;
+            public double PipeOuterDiameter;
+            public double PipeNominalDiameter;
+            public string FormattedSize;           // null when strategy invalid (bbox fallback needed)
+            public string SizeParameterValue;
+            public string SystemAbbreviation;
+            public string SystemType;
+            public string SystemName;
+            public string ServiceType;
+            public double ElevationFromLevel;
+            public string TypeName;    // mepElement type name — cached to avoid GetTypeId+GetElement per zone
+            public string FamilyName;  // mepElement family name
+            public string UniqueId;    // ✅ PATH 2 OPT: MepElement.UniqueId cached to avoid COM call per zone
+            public string GeometryHash; // ✅ PATH 2 OPT: Pre-computed geometry hash to avoid string alloc per zone
+            // ✅ NEW: Cache expensive per-zone calculations (called 384 times, should be 247 times)
+            public string MepOrientationDirection;  // From GetMepOrientationDirection
+            public double? MepRotationAngle;         // From CalculateMepElementRotationAngle (Nullable for on-demand)
+            public double MepAngleToXRad;
+            public double MepAngleToXDeg;
+            public double MepAngleToYRad;
+            public double MepAngleToYDeg;
+        }
+
+        private MepElementComputedData ComputeMepElementData(Element mepElement, Dictionary<string, string>? mepParamDict)
+        {
+            var d = new MepElementComputedData();
+            d.Category = GetElementCategoryName(mepElement, mepParamDict);
+            (d.RawWidth, d.RawHeight) = GetMepElementDimensions(mepElement, mepParamDict);
+            d.StrategySize = GetMepElementSizeWithStrategy(mepElement, d.Category, mepParamDict);
+
+            // Resolve final dimensions from strategy (wall-orientation-independent path)
+            double fw = d.RawWidth, fh = d.RawHeight, fd = 0.0;
+            d.StrategyValid = d.StrategySize.Width > 0 || d.StrategySize.Height > 0 || d.StrategySize.Diameter > 0;
+            if (d.StrategyValid)
+            {
+                fw = d.StrategySize.Width  > 0 ? d.StrategySize.Width  : fw;
+                fh = d.StrategySize.Height > 0 ? d.StrategySize.Height : fh;
+                fd = d.StrategySize.Diameter;
+            }
+            d.FinalWidth  = fw;
+            d.FinalHeight = fh;
+            d.FinalDiameter = fd;
+
+            d.DuctShape = GetDuctShape(mepElement, mepParamDict);
+            
+            // ✅ INSULATION OPTIMIZATION: Check parameter cache first
+            if (mepParamDict != null && mepParamDict.TryGetValue("Insulation Thickness", out var insStr) && 
+                double.TryParse(insStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var insVal))
+            {
+                d.IsInsulated = insVal > 0.001; // ~0.3mm threshold
+                d.InsulationThickness = insVal;
+            }
+            else
+            {
+                (d.IsInsulated, d.InsulationThickness) = _insulationDetector.GetInsulationInfo(mepElement, d.StrategySize);
+            }
+            
+            d.InsulationType = d.IsInsulated ? "Insulated" : "Normal";
+            d.PipeOpeningType = GetPipeOpeningType(mepElement);
+            (d.LevelName, d.LevelElevation) = GetMepElementLevelInfo(mepElement, mepParamDict);
+
+            // ✅ PIPE DIAMETER OPTIMIZATION: Check parameter cache first
+            if (mepElement is Pipe pipe)
+            {
+                if (mepParamDict != null && mepParamDict.TryGetValue("Outside Diameter", out var odStr) && 
+                    double.TryParse(odStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var odVal))
+                {
+                    d.PipeOuterDiameter = odVal;
+                }
+                else
+                {
+                    var odp = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER);
+                    if (odp != null) d.PipeOuterDiameter = odp.AsDouble();
+                }
+
+                if (mepParamDict != null && mepParamDict.TryGetValue("Nominal Diameter", out var ndStr) && 
+                    double.TryParse(ndStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var ndVal))
+                {
+                    d.PipeNominalDiameter = ndVal;
+                }
+                else
+                {
+                    var ndp = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
+                    if (ndp != null) d.PipeNominalDiameter = ndp.AsDouble();
+                }
+            }
+
+            // Pre-compute formatted size only when strategy gave valid dims (bbox-fallback path is wall-orient-dependent)
+            d.FormattedSize = d.StrategyValid
+                ? GetMepElementSizeString(mepElement, fw, fh, d.DuctShape, d.PipeNominalDiameter, mepParamDict)
+                : null;
+
+            d.SizeParameterValue  = GetMepElementSizeParameterValue(mepElement, mepParamDict);
+            d.SystemAbbreviation  = GetMepSystemAbbreviation(mepElement, mepParamDict);
+            d.SystemType          = GetMepSystemType(mepElement, d.Category, mepParamDict);
+            
+            // ✅ SYSTEM NAME OPTIMIZATION: Check parameter cache first
+            if (mepParamDict != null && mepParamDict.TryGetValue("System Name", out var sn))
+            {
+                d.SystemName = sn;
+            }
+            else
+            {
+                try
+                {
+                    var sysNameParam = mepElement.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
+                    if (sysNameParam != null && sysNameParam.HasValue) d.SystemName = sysNameParam.AsString() ?? string.Empty;
+                    else d.SystemName = string.Empty;
+                }
+                catch { d.SystemName = string.Empty; }
+            }
+
+            d.ServiceType       = GetMepServiceType(mepElement, mepParamDict);
+            d.ElevationFromLevel = GetMepElementOffset(mepElement, mepParamDict);
+            
+            // ✅ PERSISTED ANGLES: Extract from parameters if available (whitelisted in ParameterSnapshotService)
+            if (mepParamDict != null)
+            {
+                // Angle to X
+                if (mepParamDict.TryGetValue("MepAngleToXRad", out var axr) && double.TryParse(axr, NumberStyles.Any, CultureInfo.InvariantCulture, out var axrv)) d.MepAngleToXRad = axrv;
+                if (mepParamDict.TryGetValue("MepAngleToXDeg", out var axd) && double.TryParse(axd, NumberStyles.Any, CultureInfo.InvariantCulture, out var axdv)) d.MepAngleToXDeg = axdv;
+                else if (mepParamDict.TryGetValue("Angle to X", out var ax) && double.TryParse(ax, NumberStyles.Any, CultureInfo.InvariantCulture, out var axv)) d.MepAngleToXDeg = axv;
+                else if (mepParamDict.TryGetValue("Angle to X-axis", out var ax2) && double.TryParse(ax2, NumberStyles.Any, CultureInfo.InvariantCulture, out var axv2)) d.MepAngleToXDeg = axv2;
+
+                // Angle to Y
+                if (mepParamDict.TryGetValue("MepAngleToYRad", out var ayr) && double.TryParse(ayr, NumberStyles.Any, CultureInfo.InvariantCulture, out var ayrv)) d.MepAngleToYRad = ayrv;
+                if (mepParamDict.TryGetValue("MepAngleToYDeg", out var ayd) && double.TryParse(ayd, NumberStyles.Any, CultureInfo.InvariantCulture, out var aydv)) d.MepAngleToYDeg = aydv;
+                else if (mepParamDict.TryGetValue("Angle to Y", out var ay) && double.TryParse(ay, NumberStyles.Any, CultureInfo.InvariantCulture, out var ayv)) d.MepAngleToYDeg = ayv;
+                else if (mepParamDict.TryGetValue("Angle to Y-axis", out var ay2) && double.TryParse(ay2, NumberStyles.Any, CultureInfo.InvariantCulture, out var ayv2)) d.MepAngleToYDeg = ayv2;
+                
+                // If we only have degrees, convert to radians for structured storage consistency
+                if (d.MepAngleToXRad == 0 && d.MepAngleToXDeg != 0) d.MepAngleToXRad = d.MepAngleToXDeg * Math.PI / 180.0;
+                if (d.MepAngleToYRad == 0 && d.MepAngleToYDeg != 0) d.MepAngleToYRad = d.MepAngleToYDeg * Math.PI / 180.0;
+            }
+
+            // ✅ TYPE INFO OPTIMIZATION: Check parameter cache first
+            if (mepParamDict != null && mepParamDict.TryGetValue("Type Name", out var tn)) d.TypeName = tn;
+            if (mepParamDict != null && mepParamDict.TryGetValue("Family Name", out var fn)) d.FamilyName = fn;
+
+            // ✅ USER REQUESTED OPTIMIZATION: Type Name and Family Name are only needed for Accessories (Dampers/Valves).
+            // For other categories (Ducts, Pipes, Trays), skipping this saves expensive doc.GetElement(typeId) calls.
+            bool isAccessory = d.Category == "Duct Accessories" || d.Category == "Pipe Accessories";
+
+            if (isAccessory && (string.IsNullOrEmpty(d.TypeName) || string.IsNullOrEmpty(d.FamilyName)))
+            {
+                try
+                {
+                    var typeId = mepElement.GetTypeId();
+                    if (typeId != null && typeId != ElementId.InvalidElementId)
+                    {
+                        var typeElem = mepElement.Document?.GetElement(typeId);
+                        if (typeElem != null)
+                        {
+                            d.TypeName = typeElem.Name;
+                            if (typeElem is ElementType et) d.FamilyName = et.FamilyName;
+                        }
+                    }
+                }
+                catch { }
+            }
+            
+            // ✅ PATH 2 OPTIMIZATION: Pre-compute expensive properties to avoid per-zone COM calls
+            try
+            {
+                d.UniqueId = mepElement.UniqueId ?? string.Empty;  
+                d.GeometryHash = $"{mepElement.Id.GetIntegerValue()}_{d.Category ?? "Unknown"}";  
+            }
+            catch { }
+
+            // ✅ OPTIMIZATION: Rotation is calculated in batch only for Floor hosts (vertical elements).
+            // Leave null here — the batch phase fills it in for Floor penetrations only.
+            d.MepRotationAngle = null;
+
+            return d;
+        }
     }
 }

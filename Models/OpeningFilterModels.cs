@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Autodesk.Revit.DB;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -72,6 +73,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public List<string> SelectedReferenceFiles { get; set; } = new List<string>(); // Or suitable type
         public List<string> SelectedHostFiles { get; set; } = new List<string>(); // Or suitable type
         public List<string> SelectedHostCategories { get; set; } = new List<string>();
+        
+        // Multi-floor support
+        public List<ElementId> SelectedLevelIds { get; set; } = new List<ElementId>();
+        public bool ProcessAllLevels { get; set; } = false;
+        public int MaxFloorsPerBatch { get; set; } = 5;
 
 
         /// <summary>

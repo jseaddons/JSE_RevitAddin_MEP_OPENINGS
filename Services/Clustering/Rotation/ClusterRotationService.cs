@@ -20,10 +20,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
     {
         // Store rotation angle and rotated bounding box for each cluster sleeve
         // Key: ClusterInstanceId
-        private readonly Dictionary<int, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)> _clusterRotationData;
+        private readonly Dictionary<long, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)> _clusterRotationData;
         
         // âœ… THREAD-SAFE DEDUPLICATION: Track processed IDs to prevent concurrent threads from claiming the same ID
-        private readonly ConcurrentDictionary<int, byte> _processedClusterIds = new ConcurrentDictionary<int, byte>();
+        private readonly ConcurrentDictionary<long, byte> _processedClusterIds = new ConcurrentDictionary<long, byte>();
 
         // âœ… PERFORMANCE: Cache rotated bounding box calculations by cluster signature + rotation angle
         // Key: Hash of (sorted sleeve IDs + rotation angle), Value: (width, height, depth, mid, rotatedMinX, ...)
@@ -32,14 +32,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
         // âœ… PERFORMANCE: Cache individual ClashZone lookups to avoid repeated database queries for same sleeve
         // Key: sleeveInstanceId, Value: ClashZone (cached to avoid repeated _getClashZoneFunc calls)
-        private readonly Dictionary<int, ClashZone> _clashZoneCache;
+        private readonly Dictionary<long, ClashZone> _clashZoneCache;
         private const int MAX_CLASHZONE_CACHE_SIZE = 5000; // Limit cache size to prevent memory growth
 
         // Delegate for getting ClashZone by sleeve instance ID (injected dependency)
-        private readonly Func<int, string, ClashZone> _getClashZoneFunc;
+        private readonly Func<long, string, ClashZone> _getClashZoneFunc;
         
         // Delegate for getting cluster placement by cluster ID (injected dependency)
-        private readonly Func<int, XYZ> _getClusterPlacementFunc;
+        private readonly Func<long, XYZ> _getClusterPlacementFunc;
 
         // âœ… Same rotation logic as individual sleeves (Wall X/Y, Floor circular/rectangular, Framing)
         private readonly SleeveRotationService _sleeveRotationService;
@@ -50,8 +50,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <param name="getClashZoneFunc">Function to retrieve ClashZone by sleeve instance ID</param>
         /// <param name="getClusterPlacementFunc">Optional function to retrieve existing cluster placement from DB</param>
         public ClusterRotationService(
-            Func<int, string, ClashZone> getClashZoneFunc,
-            Func<int, XYZ> getClusterPlacementFunc = null)
+            Func<long, string, ClashZone> getClashZoneFunc,
+            Func<long, XYZ> getClusterPlacementFunc = null)
         {
             // âœ… VALIDATION: Check for null before assignment (better error message)
             if (getClashZoneFunc == null)
@@ -60,9 +60,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     "getClashZoneFunc cannot be null. Provide a function that returns ClashZone (can return null if not found).");
             }
             
-            _clusterRotationData = new Dictionary<int, (double, bool, XYZ, XYZ, double, double, double)>();
+            _clusterRotationData = new Dictionary<long, (double, bool, XYZ, XYZ, double, double, double)>();
             _rotatedBboxCache = new Dictionary<string, (double, double, double, XYZ, double?, double?, double?, double?, double?, double?)>();
-            _clashZoneCache = new Dictionary<int, ClashZone>();
+            _clashZoneCache = new Dictionary<long, ClashZone>();
             _getClashZoneFunc = getClashZoneFunc;
             _getClusterPlacementFunc = getClusterPlacementFunc;
             _sleeveRotationService = new SleeveRotationService();
@@ -279,7 +279,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 try
                 {
                     // Create cache key from sorted sleeve IDs + rotation angle
-                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0L).Where(id => (long)id > 0).OrderBy(id => (long)id).ToList();
                     if (sleeveIds.Count == cluster.Count) // Only cache if all sleeves have valid IDs
                     {
                         string cacheKey = $"RBB_FIXED_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
@@ -335,7 +335,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 try
                 {
                     // Check if first sleeve has a valid ClusterInstanceId
-                    int clusterId = -1;
+                    long clusterId = -1;
                     dynamic firstSleeve = cluster[0];
                     object clusterIdObj = null;
                     
@@ -346,7 +346,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: Sleeve Type={firstSleeve?.GetType().Name}, Direct ID access result={clusterIdObj ?? "null"}\n");
 
                     // âœ… CRITICAL FIX: Try to get from ClashZone property on dynamic object
-                    if (clusterIdObj == null || (clusterIdObj is int cId1 && cId1 <= 0))
+                    if (clusterIdObj == null || (clusterIdObj is int cId1 && cId1 <= 0) || (clusterIdObj is long cId1L && cId1L <= 0))
                     {
                         try 
                         {
@@ -371,10 +371,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
 
                     // Fallback: try to get from cached/DB ClashZone lookup
-                    if (clusterIdObj == null || (clusterIdObj is int cId2 && cId2 <= 0))
+                    if (clusterIdObj == null || (clusterIdObj is int cId2 && cId2 <= 0) || (clusterIdObj is long cId2L && cId2L <= 0))
                     {
                          // âœ… CRITICAL FIX: Extract SleeveInstanceId from ClashZone property (wrapped anonymous type)
-                         int sleeveId = -1;
+                         long sleeveId = -1;
                          try 
                          {
                              // Try direct access first (for ClashZone objects)
@@ -401,7 +401,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                     else
                     {
-                        clusterId = (int)clusterIdObj;
+                        clusterId = Convert.ToInt64(clusterIdObj);
                     }
                     
                     if (clusterId > 0)
@@ -495,7 +495,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 if (sleeveData == null) continue;
                 try
                 {
-                    int sleeveId = sleeveData.SleeveInstanceId;
+                    long sleeveId = sleeveData.SleeveInstanceId;
                     var cz = GetCachedClashZone(sleeveId, xmlFilePath);
                     if (cz != null)
                     {
@@ -559,7 +559,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             {
                 try
                 {
-                    int firstSleeveInstanceId = firstSleeveData.SleeveInstanceId;
+                    long firstSleeveInstanceId = firstSleeveData.SleeveInstanceId;
                     if (firstSleeveInstanceId > 0)
                     {
                         var hostCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
@@ -604,7 +604,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // âœ… FIX: For batch clustering, individual sleeves may be deleted (SleeveInstanceId = -1)
                 // but corners are still available in the ClashZone database record.
                 // Use the ClashZone from the cluster data directly instead of looking it up by SleeveInstanceId.
-                int sleeveInstanceId = 0;
+                long sleeveInstanceId = 0;
                 ClashZone clashZone = null;
                 
                 try
@@ -727,7 +727,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 // NOTE: User warned that SleeveInstanceId may be overwritten, so this is unreliable
                                 try
                                 {
-                                    int sleeveId = sleeveData.SleeveInstanceId;
+                                    long sleeveId = sleeveData.SleeveInstanceId;
                                     if (sleeveId > 0)
                                     {
                                         clashZone = GetCachedClashZone(sleeveId, xmlFilePath);
@@ -766,7 +766,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     {
                         if (clashZone != null)
                         {
-                            int sleeveId = clashZone.SleeveInstanceId > 0 ? clashZone.SleeveInstanceId : -1;
+                            long sleeveId = clashZone.SleeveInstanceId > 0 ? clashZone.SleeveInstanceId : -1;
                             double sleeveRotationDeg = clashZone.MepElementRotationAngle * 180.0 / Math.PI;
                             
                             // âœ… CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
@@ -840,7 +840,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         {
                             if (clashZone != null)
                             {
-                                int sleeveId = clashZone.SleeveInstanceId > 0 ? clashZone.SleeveInstanceId : -1;
+                                long sleeveId = clashZone.SleeveInstanceId > 0 ? clashZone.SleeveInstanceId : -1;
                                 
                                 // âœ… CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
                                 // âœ… READ FROM DATABASE: These corners were batch saved after regeneration
@@ -1389,7 +1389,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                              var straightCz = clashZonesInCluster[0];
                                              if (straightCz != null)
                                              {
-                                                 int firstSleeveId = straightCz.SleeveInstanceId;
+                                                 long firstSleeveId = straightCz.SleeveInstanceId;
                                                  placementZ = straightCz.SleevePlacementPointZ;
                                                  
                                                  if (placementZ == 0.0) placementZ = straightCz.IntersectionPointZ;
@@ -1779,7 +1779,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 {
                     try
                     {
-                        int firstSleeveInstanceId = fallbackFirstSleeveData.SleeveInstanceId;
+                        long firstSleeveInstanceId = fallbackFirstSleeveData.SleeveInstanceId;
                         if (firstSleeveInstanceId > 0)
                         {
                             var firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
@@ -1875,7 +1875,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         var floorFirstSleeveData = cluster[0];
                         if (floorFirstSleeveData != null)
                         {
-                            int firstSleeveInstanceId = floorFirstSleeveData.SleeveInstanceId;
+                            long firstSleeveInstanceId = floorFirstSleeveData.SleeveInstanceId;
                             if (firstSleeveInstanceId > 0)
                             {
                                 var firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
@@ -2299,7 +2299,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             {
                 if (cluster != null && cluster.Count > 0)
                 {
-                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    var sleeveIds = cluster.Select(s => (long)(s?.SleeveInstanceId ?? 0)).Where(id => id > 0).OrderBy(id => id).ToList();
                     if (sleeveIds.Count == cluster.Count && _rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
                     {
                         string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
@@ -2329,7 +2329,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <summary>
         /// Get stored rotation data for a cluster sleeve
         /// </summary>
-        public (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)? GetRotationData(int clusterInstanceId)
+        public (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)? GetRotationData(long clusterInstanceId)
         {
             if (_clusterRotationData.TryGetValue(clusterInstanceId, out var data))
             {
@@ -2341,7 +2341,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <summary>
         /// Store rotation data for a cluster sleeve
         /// </summary>
-        public void StoreRotationData(int clusterInstanceId, double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)
+        public void StoreRotationData(long clusterInstanceId, double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)
         {
             _clusterRotationData[clusterInstanceId] = (rotationAngleDeg, isRotated, rotatedBboxMin, rotatedBboxMax, rotatedWidth, rotatedHeight, rotatedDepth);
         }
@@ -2359,7 +2359,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// âœ… OPTIMIZATION: Pre-load ClashZones into cache before parallel processing
         /// This eliminates database lookups during parallel execution (major performance improvement)
         /// </summary>
-        public int PreloadClashZones(IEnumerable<int> sleeveIds, string? xmlFilePath = null)
+        public int PreloadClashZones(IEnumerable<long> sleeveIds, string? xmlFilePath = null)
         {
             if (sleeveIds == null)
                 return 0;
@@ -2369,7 +2369,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             
             // âœ… BATCH PRE-LOAD: Load all ClashZones in a single pass (before parallel processing)
             // This populates the cache so GetCachedClashZone hits cache instead of doing database lookups
-            foreach (int sleeveId in uniqueIds)
+            foreach (long sleeveId in uniqueIds)
             {
                 // Skip if already in cache
                 if (_clashZoneCache.ContainsKey(sleeveId))
@@ -2400,7 +2400,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// âœ… OPTIMIZATION: Pre-load ClashZones from dictionary (FAST - no database queries)
         /// Use this when ClashZones are already loaded in memory (e.g., from batch database query)
         /// </summary>
-        public int PreloadClashZonesFromDictionary(Dictionary<int, ClashZone> clashZones)
+        public int PreloadClashZonesFromDictionary(Dictionary<long, ClashZone> clashZones)
         {
             if (clashZones == null || clashZones.Count == 0)
                 return 0;
@@ -2410,7 +2410,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             // âœ… FAST PATH: Directly populate cache from dictionary (no database queries)
             foreach (var kvp in clashZones)
             {
-                int sleeveId = kvp.Key;
+                long sleeveId = kvp.Key;
                 ClashZone clashZone = kvp.Value;
                 
                 if (sleeveId > 0 && clashZone != null && _clashZoneCache.Count < MAX_CLASHZONE_CACHE_SIZE)
@@ -2430,7 +2430,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <summary>
         /// âœ… PERFORMANCE: Helper method to get ClashZone with caching to avoid repeated database queries
         /// </summary>
-        private ClashZone GetCachedClashZone(int sleeveInstanceId, string xmlFilePath)
+        private ClashZone GetCachedClashZone(long sleeveInstanceId, string xmlFilePath)
         {
             if (sleeveInstanceId <= 0)
                 return null;
@@ -2465,7 +2465,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             {
                 if (cluster != null && cluster.Count > 0 && _rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
                 {
-                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    var sleeveIds = cluster.Select(s => (long)(s?.SleeveInstanceId ?? 0)).Where(id => id > 0).OrderBy(id => id).ToList();
                     if (sleeveIds.Count == cluster.Count)
                     {
                         string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
@@ -2505,7 +2505,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
             int validCount = 0;
             ClashZone? firstValidCz = null;
-            int firstSleeveId = 0;
+            long firstSleeveId = 0;
 
             // Collect all points and find first valid sleeve for metadata
             foreach (var sleeveData in cluster)

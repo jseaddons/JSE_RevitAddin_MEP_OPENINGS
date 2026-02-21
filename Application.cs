@@ -9,9 +9,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using System.Xml.Linq;
 
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Switch;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 namespace JSE_RevitAddin_MEP_OPENINGS
@@ -19,7 +25,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS
     /// <summary>
     ///     Application entry point
     /// </summary>
-    [UsedImplicitly]
+    [AttributeUsage(AttributeTargets.All)]
+    public class UsedImplicitlyAttribute : Attribute { }
+
     public class Application : ExternalApplication
     {
         public override void OnStartup()
@@ -32,6 +40,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // ⚠️ TO CHECK STATUS: Click "Diagnostic Status" button in Revit ribbon
             // ⚠️ TO TOGGLE: Click "Toggle Diagnostic" button in Revit ribbon
             MasterSwitch.DiagnosticLogging = true; // ⬅️ CHANGE THIS VALUE: true = ON (SLOW), false = OFF (FAST) - ✅ DIAGNOSTIC MODE ON for Bottom of Opening investigation
+            
+            MasterSwitch.DiagnosticLogging = true; // ⬅️ CHANGE THIS VALUE: true = ON (SLOW), false = OFF (FAST) - ✅ DIAGNOSTIC MODE ON for Bottom of Opening investigation
+            
+            // Store UIApp reference for event subscription
+            // FIX: Use 'this.Application' property from ExternalApplication base class
+            m_uiApp = this.Application;
+            try
+            {
+                this.Application.ViewActivated += OnViewActivated;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to subscribe to ViewActivated: {ex.Message}");
+            }
             
             // ✅ VERIFY SETTING: Double-check that the values were actually set
             System.Diagnostics.Debug.WriteLine($"[Application.OnStartup] ✅ AFTER MasterSwitch.DiagnosticLogging = true:");
@@ -118,11 +140,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 CreateLogger();
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] CreateLogger() DONE\n");
                 
+#if NET8_0_OR_GREATER
+                // ✅ CRITICAL FOR REVIT 2025+ (.NET 8): Initialize SQLitePCL provider
+                try
+                {
+                    File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] Initializing SQLitePCL batteries...\n");
+                    SQLitePCL.Batteries.Init();
+                    File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] SQLitePCL batteries initialized.\n");
+                }
+                catch (Exception initEx)
+                {
+                    File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] ❌ Error initializing SQLitePCL: {initEx.Message}\n");
+                }
+#endif
+
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to CopyNativeSqliteDllToExecutionDirectory()\n");
                 CopyNativeSqliteDllToExecutionDirectory();
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] CopyNativeSqliteDllToExecutionDirectory() DONE\n");
 
-                // ✅ CRITICAL: Explicitly load SQLite.Interop.dll to satisfy System.Data.SQLite
+                // ✅ CRITICAL: Explicitly load SQLite native DLLs to satisfy providers
                 // This is especially needed for Addin Manager where the search path might be incorrect.
                 try
                 {
@@ -133,7 +169,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                         // Check multiple potential locations
                         string[] candidatePaths = {
                             Path.Combine(asmDir, "SQLite.Interop.dll"),
-                            Path.Combine(asmDir, "x64", "SQLite.Interop.dll")
+                            Path.Combine(asmDir, "x64", "SQLite.Interop.dll"),
+                            Path.Combine(asmDir, "e_sqlite3.dll") // Native DLL for net8.0 (Microsoft.Data.Sqlite)
                         };
 
                         foreach (var path in candidatePaths)
@@ -143,7 +180,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] Attempting LoadLibrary: {path}\n");
                                 bool loaded = NativeLibraryLoader.LoadNativeLibrary(path);
                                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] LoadLibrary result: {loaded}\n");
-                                if (loaded) break;
                             }
                         }
                     }
@@ -196,7 +232,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
         public override void OnShutdown()
         {
+            // Unsubscribe from events
+            try
+            {
+                if (m_uiApp != null)
+                {
+                    m_uiApp.ViewActivated -= OnViewActivated;
+                }
+            }
+            catch { }
+
             Log.CloseAndFlush();
+        }
+        
+        private UIControlledApplication m_uiApp;
+
+        /// <summary>
+        /// Event handler to update ApplicationProfileService context when view changes
+        /// This ensures we always have the correct project path for the active document
+        /// </summary>
+        private void OnViewActivated(object sender, Autodesk.Revit.UI.Events.ViewActivatedEventArgs e)
+        {
+            try
+            {
+                if (e.Document != null && !e.Document.IsFamilyDocument)
+                {
+                    // Force update the profile service context using Document overload
+                    // (internally resolves standardized AppData path via ProjectPathService)
+                    ApplicationProfileService.Instance.UpdateForCurrentDocument(e.Document);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fail silently but safely - don't crash Revit
+                System.Diagnostics.Debug.WriteLine($"Error in OnViewActivated: {ex.Message}");
+            }
         }
 
         private void CreateRibbon()
@@ -213,104 +283,134 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             }
             catch { }
 
-            var panel = Application.CreatePanel("Commands", "JSE_RevitAddin_MEP_OPENINGS");
+            string tabName = "JSE_RevitAddin_MEP_OPENINGS";
+            try
+            {
+                this.Application.CreateRibbonTab(tabName);
+            }
+            catch { /* Tab might already exist */ }
+
+            RibbonPanel panel = this.Application.CreateRibbonPanel(tabName, "Commands");
+            
             if (panel == null)
             {
-                // Panel creation failed for some environment; skip ribbon creation to avoid null references.
-                try
-                {
-                    File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel creation FAILED - null panel returned\n");
-                }
-                catch { }
+                try { File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel creation FAILED\n"); } catch { }
                 return;
             }
 
-            try
+            string assemblyPath = Assembly.GetExecutingAssembly().Location;
+
+            // 1. Main JSE Openings Command
+            var button5Data = new PushButtonData("cmdJseOpenings", "JSE Openings", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.TestProfileManagementCommand");
+            var button5 = panel.AddItem(button5Data) as PushButton;
+            if (button5 != null)
             {
-                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Panel created successfully\n");
+                button5.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                button5.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                button5.ToolTip = "JSE MEP Openings - Version 3.0";
             }
-            catch { }
 
-            // Note: Execute and Test Profile buttons removed - JSE Openings handles everything
-            // The "JSE Openings" button provides access to profile setup, profile management, and main UI
+            // 2. Combined Sleeve Manager
+            var buttonCombinedData = new PushButtonData("cmdCombinedSleeve", "Combined\nSleeve", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.CombinedSleeveCommand");
+            var buttonCombined = panel.AddItem(buttonCombinedData) as PushButton;
+            if (buttonCombined != null)
+            {
+                buttonCombined.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                buttonCombined.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                buttonCombined.ToolTip = "Manage combined sleeves (Manual Join).";
+            }
 
-        // 1. Main JSE Openings Command - handles profile setup, management, and main UI
-        var button5 = panel.AddPushButton<TestProfileManagementCommand>("JSE Openings");
-        button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        button5.ToolTip = "JSE MEP Openings - Version 3.0";
+            // 3. Parameter Service (External Project: JSE_Parameter_Service)
+            // This integrates the Parameter Service from the separate project into the same ribbon panel
+            var paramServiceDll = Path.Combine(Path.GetDirectoryName(assemblyPath), "JSE_Parameter_Service.dll");
+            if (File.Exists(paramServiceDll))
+            {
+                var btnParamService = new PushButtonData(
+                    "cmdParameterService",
+                    "Parameter\nService",
+                    paramServiceDll,
+                    "JSE_Parameter_Service.Commands.TestParameterServiceDialogV2Command");
+                btnParamService.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btnParamService.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                btnParamService.ToolTip = "Open Parameter Service (from JSE_Parameter_Service project).";
+                panel.AddItem(btnParamService);
+            }
+            else
+            {
+                // Optional: Add a placeholder button that informs user about the missing Parameter Service
+                var btnParamServiceMissing = new PushButtonData(
+                    "cmdParameterServiceMissing",
+                    "Parameter\nService",
+                    assemblyPath,
+                    "JSE_RevitAddin_MEP_OPENINGS.Commands.ShowParameterServiceMissingCommand");
+                btnParamServiceMissing.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btnParamServiceMissing.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                btnParamServiceMissing.ToolTip = "Parameter Service not found. Please build JSE_Parameter_Service project.";
+                btnParamServiceMissing.AvailabilityClassName = "JSE_RevitAddin_MEP_OPENINGS.Commands.ParameterServiceMissingAvailability";
+                panel.AddItem(btnParamServiceMissing);
+            }
 
-        // 2. Combined Sleeve Manager - Missing button added
-        var buttonCombined = panel.AddPushButton<Commands.CombinedSleeveCommand>("Combined\nSleeve");
-        buttonCombined.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        buttonCombined.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        buttonCombined.ToolTip = "Manage combined sleeves (Manual Join).";
+            // 4. Update DB Command
+            var buttonUpdateDbData = new PushButtonData(
+                "cmdUpdateDb",
+                "Update DB",
+                assemblyPath,
+                "JSE_RevitAddin_MEP_OPENINGS.Commands.UpdateDbCommand");
+            var buttonUpdateDb = panel.AddItem(buttonUpdateDbData) as PushButton;
+            if (buttonUpdateDb != null)
+            {
+                buttonUpdateDb.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                buttonUpdateDb.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                buttonUpdateDb.ToolTip = "Synchronize Database with Model.";
+            }
 
-        // 3. Parameter Service - invokes command from JSE_Parameter_Service project
-        var paramServiceDll = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "JSE_Parameter_Service.dll");
-        if (File.Exists(paramServiceDll))
-        {
-            var btnParamService = new PushButtonData(
-                "cmdParameterService",
-                "Parameter\nService",
-                paramServiceDll,
-                "JSE_Parameter_Service.Commands.TestParameterServiceDialogV2Command");
-            btnParamService.Image = new System.Windows.Media.Imaging.BitmapImage(new Uri("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png", UriKind.RelativeOrAbsolute));
-            btnParamService.LargeImage = new System.Windows.Media.Imaging.BitmapImage(new Uri("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png", UriKind.RelativeOrAbsolute));
-            btnParamService.ToolTip = "Open Parameter Service (separate project).";
-            panel.AddItem(btnParamService);
+            // 5. DIAGNOSTIC TOOLS GROUP
+            var pulldownData = new PulldownButtonData("DiagnosticTools", "Diagnostic\nTools");
+            pulldownData.ToolTip = "Access diagnostic and recovery tools.";
+            var pulldown = panel.AddItem(pulldownData) as PulldownButton;
+            if (pulldown != null)
+            {
+                pulldown.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                pulldown.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                
+                // 5.1 Toggle Diagnostic
+                var btn1Data = new PushButtonData("cmdToggleDiagnostic", "Toggle Diagnostic", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.ToggleDiagnosticCommand");
+                var btn1 = pulldown.AddPushButton(btn1Data);
+                btn1.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btn1.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+                // 5.2 Diagnostic Status
+                var btn2Data = new PushButtonData("cmdDiagnosticStatus", "Diagnostic Status", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.DiagnosticStatusCommand");
+                var btn2 = pulldown.AddPushButton(btn2Data);
+                btn2.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btn2.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+                // 5.3 Reset Flags (Box)
+                var btn3Data = new PushButtonData("cmdResetFlagsBox", "Reset Flags (Box)", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.ResetFlagsInSectionBoxCommand");
+                var btn3 = pulldown.AddPushButton(btn3Data);
+                btn3.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btn3.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+                // 5.4 Clear All DB
+                var btn4Data = new PushButtonData("cmdClearAllSleeveDb", "Clear All Sleeve DB", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.ClearAllSleeveDbTablesCommand");
+                var btn4 = pulldown.AddPushButton(btn4Data);
+                btn4.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btn4.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+            }
+
+            try { File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Ribbon creation COMPLETED\n"); } catch { }
         }
 
-        // 4. Update DB Command - updates DB after manual sleeve adjustments
-        var buttonUpdateDb = panel.AddPushButton<Commands.UpdateDbCommand>("Update DB");
-        buttonUpdateDb.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        buttonUpdateDb.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        buttonUpdateDb.ToolTip = "Synchronize Database with Model.\nRun this after resizing sleeves or adding manual sleeves to update the DB.";
-
-        // 5. DIAGNOSTIC TOOLS GROUP: Grouping diagnostic commands into a single dropdown
-        var pulldownData = new PulldownButtonData("DiagnosticTools", "Diagnostic\nTools");
-        pulldownData.ToolTip = "Access diagnostic and recovery tools.";
-        
-        var pulldown = panel.AddItem(pulldownData) as PulldownButton;
-        
-        if (pulldown != null)
+        private System.Windows.Media.Imaging.BitmapImage GetImageSource(string path)
         {
-            pulldown.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-            pulldown.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        }
-        
-        // 5.1 Toggle Diagnostic
-        var btn1 = pulldown.AddPushButton<ToggleDiagnosticCommand>("Toggle Diagnostic");
-        btn1.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        btn1.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        btn1.ToolTip = "Toggle diagnostic logging on/off. Click to switch between full logging and deployment mode.";
-
-        // 5.2 Diagnostic Status
-        var btn2 = pulldown.AddPushButton<DiagnosticStatusCommand>("Diagnostic Status");
-        btn2.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        btn2.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        btn2.ToolTip = "Check current diagnostic mode status and flag values.";
-        
-        // 5.3 Reset Flags (Box)
-        var btn3 = pulldown.AddPushButton<Commands.ResetFlagsInSectionBoxCommand>("Reset Flags (Box)");
-        btn3.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        btn3.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        btn3.ToolTip = "Resets 'Resolved' flags for clash zones within the ACTIVE 3D SECTION BOX.\nUse to re-process stuck zones without clearing the entire database.";
-
-        // 5.4 Clear All DB
-        var btn4 = pulldown.AddPushButton<Commands.ClearAllSleeveDbTablesCommand>("Clear All Sleeve DB");
-        btn4.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        btn4.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        btn4.ToolTip = "Clear all sleeve-related tables in the add-in's SQLite database. Use with caution!";
-
             try
             {
-                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] TestProfileManagementCommand button added to ribbon\n");
-                File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] Ribbon creation COMPLETED\n");
+                return new System.Windows.Media.Imaging.BitmapImage(new Uri(path, UriKind.RelativeOrAbsolute));
             }
-            catch { }
-
-            // Deleted commands removed from ribbon: DeletePipeSleevesCommand, GetSleeveSummaryCommand
+            catch
+            {
+                return null;
+            }
         }
 
 
@@ -398,8 +498,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS
 
                 var dependencies = new (string RelativePath, bool PreferX64)[]
                 {
+#if NET8_0_OR_GREATER
+                    ("Microsoft.Data.Sqlite.dll", false),
+                    ("e_sqlite3.dll", true)
+#else
                     ("System.Data.SQLite.dll", false),
                     (Path.Combine("x64", "SQLite.Interop.dll"), true)
+#endif
                 };
 
                 foreach (var dependency in dependencies)
@@ -454,8 +559,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                     }
                 }
 
-                // Supported versions pruned to 2023 & 2024 (2025 temporarily removed)
-                var revitVersions = new[] { "2023", "2024" };
+                // Supported versions: 2023 - 2026
+                var revitVersions = new[] { "2023", "2024", "2025", "2026" };
                 foreach (var version in revitVersions)
                 {
                     var appDataDir = Path.Combine(
@@ -475,10 +580,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 {
                     var addinManifests = new[]
                     {
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2026\JSE_RevitAddin_MEP_OPENINGS.addin"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2025\JSE_RevitAddin_MEP_OPENINGS.addin"),
                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2024\JSE_RevitAddin_MEP_OPENINGS.addin"),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2023\JSE_RevitAddin_MEP_OPENINGS.addin"),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2024\JSE_RevitAddin_MEP_OPENINGS.addin"),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2023\JSE_RevitAddin_MEP_OPENINGS.addin")
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2023\JSE_RevitAddin_MEP_OPENINGS.addin")
                     };
 
                     foreach (var manifest in addinManifests)
@@ -521,10 +626,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 {
                     var manifestDirectories = new[]
                     {
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2026"),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2025"),
                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2024"),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2023"),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2024"),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Autodesk\Revit\Addins\2023")
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Autodesk\Revit\Addins\2023")
                     };
 
                     foreach (var manifestDir in manifestDirectories)

@@ -74,10 +74,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Utils
         /// ✅ FIXED: Shows a TaskDialog that appears on top of all windows
         /// Ensures the TaskDialog is visible even if main dialog is behind other windows
         /// </summary>
-        public static TaskDialogResult ShowTaskDialogOnTop(string title, string mainInstruction, 
-            string mainContent = "", TaskDialogCommonButtons buttons = TaskDialogCommonButtons.Ok)
+        public static Autodesk.Revit.UI.TaskDialogResult ShowTaskDialogOnTop(string title, string mainInstruction, 
+            string mainContent = "", Autodesk.Revit.UI.TaskDialogCommonButtons buttons = Autodesk.Revit.UI.TaskDialogCommonButtons.Ok)
         {
-            var dialog = new TaskDialog(title)
+            var dialog = new Autodesk.Revit.UI.TaskDialog(title)
             {
                 MainInstruction = mainInstruction,
                 MainContent = mainContent,

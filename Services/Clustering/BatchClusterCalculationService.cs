@@ -15,7 +15,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy;
+// using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy; // FIX: CS0105 duplicate using directive
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
@@ -261,6 +261,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     conn.Open();
                     using (var trans = conn.BeginTransaction())
                     {
+                        // ✅ SCOPED DELETE: Clear out old 'Pending' clusters for the current category/scope
+                        // This is critical to remove "Ghost Clusters" if the cluster composition changes (and thus GUID changes).
+                        // We do this here in Calculation Phase so the table and viewers see the new state permanently.
+                        try
+                        {
+                            var scopes = results
+                                .Select(r => new { r.ComboId, r.FilterId, Category = r.Category ?? string.Empty })
+                                .Distinct()
+                                .ToList();
+
+                            using (var deleteCmd = conn.CreateCommand())
+                            {
+                                deleteCmd.Transaction = trans;
+                                foreach (var scope in scopes)
+                                {
+                                    deleteCmd.CommandText = @"
+                                        DELETE FROM ClusterSleeves_v2 
+                                        WHERE ComboId = @ComboId 
+                                          AND FilterId = @FilterId 
+                                          AND Category = @Category
+                                          AND Status = 'Pending'";
+                                    deleteCmd.Parameters.Clear();
+                                    deleteCmd.Parameters.AddWithValue("@ComboId", scope.ComboId);
+                                    deleteCmd.Parameters.AddWithValue("@FilterId", scope.FilterId);
+                                    deleteCmd.Parameters.AddWithValue("@Category", scope.Category);
+                                    deleteCmd.ExecuteNonQuery();
+                                }
+                            }
+                        }
+                        catch (Exception delEx)
+                        {
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ SaveToDatabase: Scoped delete failed: {delEx.Message}\n");
+                        }
+
                         // ✅ OPTIMIZATION Step 1: Pre-fetch existing locations to avoid N database reads
                         // Instead of checking each cluster individually, load all relevant existing locations into memory
                         var existingLocations = new HashSet<string>();
@@ -451,7 +485,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     }
                                     
                                     legCmd.CommandText = @"
-                                        INSERT INTO ClusterSleeves (
+                                        INSERT OR IGNORE INTO ClusterSleeves (
                                             ClusterInstanceId, ClusterGuid, ComboId, FilterId, Category,
                                             BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
                                             BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
@@ -666,10 +700,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 HostOrientation = first.HostOrientation,
                 Category = first.MepElementCategory,
                 FamilyName = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementService.GetFamilyName(
-                    first.StructuralElementType ?? "Unknown", 
-                    first.MepElementCategory ?? "Unknown", 
-                    Math.Max(w, h), 
-                    zones.Count > 1),
+                    first.StructuralElementType ?? "Unknown",
+                    first.MepElementCategory ?? "Unknown",
+                    Math.Max(w, h),
+                    zones.Count > 1,
+                    first.HostOrientation),
                 ConstituentZoneGuids = string.Join(",", zones.Select(z => z.ClashZoneGuid)),
                 ComboId = comboId, FilterId = filterId, Status = "Pending", ValidationStatus = "Valid"
             };
@@ -777,9 +812,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
     public class ClashZoneWorkItem
     {
-        public int SleeveInstanceId { get; set; }
+        public long SleeveInstanceId { get; set; }
         public ClashZone ClashZone { get; set; }
         public SleeveGroupKey GroupKey { get; set; }
+        
+        // ✅ CRITICAL FIX: Expose BoundingBox for proximity checking
+        // MixedTypeProximityChecker uses this to perform bounding box proximity checks
+        public BoundingBoxXYZ BoundingBox
+        {
+            get
+            {
+                if (ClashZone == null) return null;
+                // Check if we have valid bounding box data (WCS coordinates from database)
+                if (ClashZone.BoundingBoxMinX == 0 && ClashZone.BoundingBoxMaxX == 0 &&
+                    ClashZone.BoundingBoxMinY == 0 && ClashZone.BoundingBoxMaxY == 0 &&
+                    ClashZone.BoundingBoxMinZ == 0 && ClashZone.BoundingBoxMaxZ == 0)
+                {
+                    return null;
+                }
+                return new BoundingBoxXYZ
+                {
+                    Min = new XYZ(ClashZone.BoundingBoxMinX, ClashZone.BoundingBoxMinY, ClashZone.BoundingBoxMinZ),
+                    Max = new XYZ(ClashZone.BoundingBoxMaxX, ClashZone.BoundingBoxMaxY, ClashZone.BoundingBoxMaxZ),
+                    Enabled = true
+                };
+            }
+        }
+        
         // For compatibility with legacy dynamics
         public dynamic GetClashZone() => ClashZone;
     }

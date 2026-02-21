@@ -18,13 +18,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
         public Guid ClashZoneId { get; set; }
         public List<Guid> ClashZoneIds { get; set; }
         
-        public int ClusterSleeveInstanceId { get; set; }
-        public int CombinedClusterInstanceId { get; set; }
+        public long ClusterSleeveInstanceId { get; set; }
+        public long CombinedClusterInstanceId { get; set; }
         public string Category { get; set; }
-        public int SourceSleeveInstanceId { get; set; }
+        public long SourceSleeveInstanceId { get; set; }
         
         // Additional properties for ViewModel compatibility
-        public int SleeveInstanceId { get; set; }
+        public long SleeveInstanceId { get; set; }
         public string CategoryName 
         { 
             get => Category; 

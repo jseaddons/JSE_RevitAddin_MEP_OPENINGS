@@ -17,6 +17,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
     {
         private readonly RefreshContext _context;
         private static readonly HashSet<string> MinimalWhitelist = GetMinimalParameterWhitelist();
+        // ✅ PERF: Lazy-initialized cache of active doc levels by name — eliminates repeated FilteredElementCollector for Level class
+        private Dictionary<string, Level?>? _levelByNameCache = null;
         
         public ParameterCaptureService(RefreshContext context)
         {
@@ -43,9 +45,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 "Service Type",  // ✅ ADDED: For Cable Trays and Conduits
                 "System Name",
                 "System Abbreviation",
-                "Fire Rating",
-                "Comments",
-                "Mark"
+                "Fire Rating"
+                // ✅ REMOVED: Comments, Mark - not needed and trigger redundancy
                 // ✅ REMOVED: Workset - not needed
             };
         }
@@ -117,13 +118,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             {
                 try
                 {
+                    // ✅ PERF: If zone already has ≥ MinimalWhitelist.Count params, it was likely populated by Phase 6d0 CaptureBatchParams.
+                    // Minimal params are a subset of the full whitelist — no new params to add, skip capture to save ~600ms.
+                    // ✅ BUT: Still need to extract level info if it's missing (Phase 6d0 doesn't populate level properties).
+                    bool needsMepParams = (cz.MepParameterValues == null || cz.MepParameterValues.Count < MinimalWhitelist.Count);
+                    bool needsHostParams = (cz.HostParameterValues == null || cz.HostParameterValues.Count == 0);
+                    bool needsLevel = string.IsNullOrEmpty(cz.MepElementLevelName);
+
+                    if (!needsMepParams && !needsHostParams && !needsLevel)
+                        continue;
+
                     // Get elements (cached if possible) - MUST be on main thread
                     var mep = ElementRetrievalService.GetElementFromDocumentOrLinked(
                         _context.Document, cz.MepElementId, enableLogging: false);
                     var host = ElementRetrievalService.GetElementFromDocumentOrLinked(
                         _context.Document, cz.StructuralElementId, enableLogging: false);
                     
-                    if (mep != null)
+                    if (mep != null && needsMepParams)
                     {
                         // ✅ CRITICAL FIX: Merge parameters instead of overwriting
                         // CreateClashZone already captured parameters using ParameterSnapshotService (full whitelist)
@@ -133,7 +144,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         var newCount = newMepParams?.Count ?? 0;
                         
                         // ✅ DIAGNOSTIC: Log parameter capture for debugging
-                        if (!DeploymentConfiguration.DeploymentMode && existingCount > 0 && newCount == 0)
+                        if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && existingCount > 0 && newCount == 0)
                         {
                             Log($"[PARAM-CAPTURE] ⚠️ Zone {cz.Id}: Had {existingCount} params, CaptureMinimalParams returned {newCount} - will preserve existing");
                         }
@@ -191,7 +202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         Log($"[PARAM-CAPTURE] ⚠️ Zone {cz.Id}: MEP element is null, preserving {cz.MepParameterValues.Count} existing params");
                     }
                     
-                    if (host != null)
+                    if (host != null && needsHostParams)
                     {
                         // ✅ CRITICAL FIX: Merge parameters instead of overwriting
                         // ✅ FIX: Capture host params with isHostElement=true to filter out MEP-specific parameters
@@ -227,7 +238,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                     
                     // ✅ CRITICAL: Extract level name and elevation from MEP element (for Schedule Level mapping)
-                    if (mep != null && cz.MepElementId != null)
+                    if (mep != null && cz.MepElementId != null && needsLevel)
                     {
                         ExtractMepElementLevelInfo(cz, mep);
                     }
@@ -258,60 +269,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             try
             {
-                // ✅ STEP 1: Get Level from MEP element (check "Level" first, then "Reference Level")
-                Level? mepLevel = null;
-                
-                // Try "Level" parameter first
-                Parameter levelParam = mepElement.LookupParameter("Level");
-                if (levelParam != null && levelParam.StorageType == StorageType.ElementId)
+                // ✅ PERF: Lazy-build level cache once (FilteredElementCollector for Level class runs once, O(1) lookups after)
+                if (_levelByNameCache == null)
                 {
-                    ElementId levelId = levelParam.AsElementId();
-                    if (levelId != ElementId.InvalidElementId)
-                    {
-                        Level? levelFromMepDoc = mepElement.Document.GetElement(levelId) as Level;
-                        if (levelFromMepDoc != null)
-                        {
-                            // Find matching level in active document by name
-                            mepLevel = new FilteredElementCollector(_context.Document)
-                                .OfClass(typeof(Level))
-                                .Cast<Level>()
-                                .FirstOrDefault(l => string.Equals(l.Name, levelFromMepDoc.Name, StringComparison.OrdinalIgnoreCase));
-                        }
-                    }
+                    _levelByNameCache = new FilteredElementCollector(_context.Document)
+                        .OfClass(typeof(Level))
+                        .Cast<Level>()
+                        .GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => (Level?)g.First(), StringComparer.OrdinalIgnoreCase);
                 }
-                
-                // If "Level" not found, try "Reference Level" parameter
-                if (mepLevel == null)
-                {
-                    Parameter refLevelParam = mepElement.LookupParameter("Reference Level");
-                    if (refLevelParam != null && refLevelParam.StorageType == StorageType.ElementId)
-                    {
-                        ElementId refLevelId = refLevelParam.AsElementId();
-                        if (refLevelId != ElementId.InvalidElementId)
-                        {
-                            Level? refLevelFromMepDoc = mepElement.Document.GetElement(refLevelId) as Level;
-                            if (refLevelFromMepDoc != null)
-                            {
-                                // Find matching level in active document by name
-                                mepLevel = new FilteredElementCollector(_context.Document)
-                                    .OfClass(typeof(Level))
-                                    .Cast<Level>()
-                                    .FirstOrDefault(l => string.Equals(l.Name, refLevelFromMepDoc.Name, StringComparison.OrdinalIgnoreCase));
-                            }
-                        }
-                    }
-                }
-                
-                // ✅ STEP 2: Set level name and elevation on ClashZone
+
+                Level? mepLevel = GetMepLevelFromElement(mepElement, _levelByNameCache);
+
                 if (mepLevel != null)
                 {
                     zone.MepElementLevelName = mepLevel.Name;
                     zone.MepElementLevelElevation = mepLevel.Elevation;
-                    
+
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
                         Log($"[PARAM-CAPTURE] ✅ Zone {zone.Id}: Extracted Level='{mepLevel.Name}', Elevation={mepLevel.Elevation * 304.8:F1}mm");
-                    }
                 }
                 else if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -321,10 +297,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
-                {
                     Log($"[PARAM-CAPTURE] ⚠️ Error extracting level info for zone {zone.Id}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ✅ PERF: Shared level lookup logic — uses pre-built name cache to avoid repeated FilteredElementCollector.
+        /// Called both from ExtractMepElementLevelInfo (sequential) and CaptureParametersBatch (batch, Step 3).
+        /// </summary>
+        private static Level? GetMepLevelFromElement(Element mepElement, Dictionary<string, Level?> levelByName)
+        {
+            // Try "Level" parameter first
+            Parameter levelParam = mepElement.LookupParameter("Level");
+            if (levelParam?.StorageType == StorageType.ElementId)
+            {
+                ElementId levelId = levelParam.AsElementId();
+                if (levelId != ElementId.InvalidElementId)
+                {
+                    Level? fromDoc = mepElement.Document.GetElement(levelId) as Level;
+                    if (fromDoc != null && levelByName.TryGetValue(fromDoc.Name, out var matched))
+                        return matched;
                 }
             }
+
+            // Fallback: "Reference Level"
+            Parameter refLevelParam = mepElement.LookupParameter("Reference Level");
+            if (refLevelParam?.StorageType == StorageType.ElementId)
+            {
+                ElementId refLevelId = refLevelParam.AsElementId();
+                if (refLevelId != ElementId.InvalidElementId)
+                {
+                    Level? fromDoc = mepElement.Document.GetElement(refLevelId) as Level;
+                    if (fromDoc != null && levelByName.TryGetValue(fromDoc.Name, out var matched))
+                        return matched;
+                }
+            }
+
+            return null;
         }
         
         /// <summary>
@@ -350,7 +359,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             foreach (var cz in clashZones)
             {
-                if (cz.MepElementId != null)
+                // ✅ PERF: Skip zones that are already fully populated to reduce redundant element retrievals
+                bool needsMepParams = (cz.MepParameterValues == null || cz.MepParameterValues.Count < MinimalWhitelist.Count);
+                bool needsHostParams = (cz.HostParameterValues == null || cz.HostParameterValues.Count == 0);
+                bool needsLevel = string.IsNullOrEmpty(cz.MepElementLevelName);
+
+                if (!needsMepParams && !needsHostParams && !needsLevel)
+                    continue;
+
+                if (cz.MepElementId != null && (needsMepParams || needsLevel))
                 {
                     uniqueMepIds.Add(cz.MepElementId);
                     if (!mepIdToZones.ContainsKey(cz.MepElementId))
@@ -358,7 +375,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     mepIdToZones[cz.MepElementId].Add(cz);
                 }
                 
-                if (cz.StructuralElementId != null)
+                if (cz.StructuralElementId != null && needsHostParams)
                 {
                     uniqueHostIds.Add(cz.StructuralElementId);
                     if (!hostIdToZones.ContainsKey(cz.StructuralElementId))
@@ -458,13 +475,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             paramProcessingSw.Stop();
             Log($"[PARAM-CAPTURE-BATCH] Parameter processing: {paramProcessingSw.ElapsedMilliseconds}ms");
-            
+
+            // ✅ BUG FIX + PERF: Extract level info for every unique MEP element BEFORE clearing element caches.
+            // Previously, mepElementCache was cleared before ExtractMepElementLevelInfo was called in Step 4,
+            // causing MepElementLevelName/MepElementLevelElevation to NEVER be set in batch mode.
+            // Now: build a lightweight (levelName, elevation) cache per element ID during Step 3, use it in Step 4.
+            var levelExtractionSw = System.Diagnostics.Stopwatch.StartNew();
+            var mepLevelInfoCache = new Dictionary<ElementId, (string? name, double elevation)>(uniqueMepIds.Count);
+            if (_levelByNameCache == null)
+            {
+                // Build level-by-name lookup once for all MEP elements
+                try
+                {
+                    _levelByNameCache = new FilteredElementCollector(_context.Document)
+                        .OfClass(typeof(Level))
+                        .Cast<Level>()
+                        .GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => (Level?)g.First(), StringComparer.OrdinalIgnoreCase);
+                }
+                catch
+                {
+                    _levelByNameCache = new Dictionary<string, Level?>(StringComparer.OrdinalIgnoreCase);
+                }
+            }
+            foreach (var kvp in mepElementCache)
+            {
+                if (kvp.Value != null)
+                {
+                    try
+                    {
+                        Level? lvl = GetMepLevelFromElement(kvp.Value, _levelByNameCache);
+                        if (lvl != null)
+                            mepLevelInfoCache[kvp.Key] = (lvl.Name, lvl.Elevation);
+                    }
+                    catch { }
+                }
+            }
+            levelExtractionSw.Stop();
+            Log($"[PARAM-CAPTURE-BATCH] Level extraction: {levelExtractionSw.ElapsedMilliseconds}ms ({mepLevelInfoCache.Count} levels found for {mepElementCache.Count} MEP elements)");
+
             // ✅ MEMORY OPTIMIZATION: Clear element caches immediately after parameter processing
-            // This releases element references to reduce memory pressure and prevent GC interference
-            // Element objects are Revit API objects - holding references can affect internal caching
             mepElementCache.Clear();
             hostElementCache.Clear();
-            
+
             // ✅ STEP 4: Map parameters back to clash zones (same merge logic as sequential)
             var mappingSw = System.Diagnostics.Stopwatch.StartNew();
             int processedCount = 0;
@@ -478,40 +531,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // Process MEP parameters
                     if (cz.MepElementId != null && mepParamCache.TryGetValue(cz.MepElementId, out var newMepParams))
                     {
-                        var existingCount = cz.MepParameterValues?.Count ?? 0;
-                        var newCount = newMepParams?.Count ?? 0;
-                        
                         if (newMepParams != null && newMepParams.Count > 0)
                         {
                             if (cz.MepParameterValues == null)
                             {
                                 cz.MepParameterValues = newMepParams;
                             }
+                            else if (cz.MepParameterValues.Count >= MinimalWhitelist.Count)
+                            {
+                                // ✅ PERF: Zone already has ≥ MinimalWhitelist.Count params from 6d0 CaptureBatchParams.
+                                // Minimal params are a subset of the full whitelist — no new params to add, skip expensive merge.
+                            }
                             else
                             {
-                                // Merge: Add new parameters that don't already exist
-                                // ✅ FIX: Handle duplicate keys by taking the first occurrence
+                                // Zone has fewer params than expected — run merge to fill any gaps
                                 var existingDict = cz.MepParameterValues
                                     .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
                                     .GroupBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
                                     .ToDictionary(g => g.Key, g => g.First().Value, StringComparer.OrdinalIgnoreCase);
-                                
+
                                 foreach (var newParam in newMepParams)
                                 {
                                     if (newParam != null && !string.IsNullOrEmpty(newParam.Key) && !existingDict.ContainsKey(newParam.Key))
-                                    {
                                         existingDict[newParam.Key] = newParam.Value;
-                                    }
                                 }
-                                
+
                                 cz.MepParameterValues = existingDict
                                     .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
                                     .ToList();
                             }
                         }
-                        // ✅ CRITICAL: If CaptureMinimalParams fails or returns empty, preserve existing parameters
+                        // ✅ If CaptureMinimalParams fails or returns empty, preserve existing parameters
                     }
-                    
+
                     // Process host parameters
                     if (cz.StructuralElementId != null && hostParamCache.TryGetValue(cz.StructuralElementId, out var newHostParams))
                     {
@@ -521,34 +573,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             {
                                 cz.HostParameterValues = newHostParams;
                             }
+                            else if (cz.HostParameterValues.Count >= newHostParams.Count)
+                            {
+                                // ✅ PERF: Host already has at least as many params as minimal capture — skip merge
+                            }
                             else
                             {
-                                // ✅ FIX: Handle duplicate keys by taking the first occurrence
                                 var existingDict = cz.HostParameterValues
                                     .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
                                     .GroupBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
                                     .ToDictionary(g => g.Key, g => g.First().Value, StringComparer.OrdinalIgnoreCase);
-                                
+
                                 foreach (var newParam in newHostParams)
                                 {
                                     if (newParam != null && !string.IsNullOrEmpty(newParam.Key) && !existingDict.ContainsKey(newParam.Key))
-                                    {
                                         existingDict[newParam.Key] = newParam.Value;
-                                    }
                                 }
-                                
+
                                 cz.HostParameterValues = existingDict
                                     .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
                                     .ToList();
                             }
                         }
-                        // ✅ CRITICAL: If CaptureMinimalParams fails or returns empty, preserve existing parameters
+                        // ✅ If CaptureMinimalParams fails or returns empty, preserve existing parameters
                     }
-                    
-                    // ✅ CRITICAL: Extract level name and elevation from MEP element (for Schedule Level mapping)
-                    if (cz.MepElementId != null && mepElementCache.TryGetValue(cz.MepElementId, out var mepElement) && mepElement != null)
+
+                    // ✅ BUG FIX: Use pre-computed level info from mepLevelInfoCache (built in Step 3 before cache clear).
+                    // Previously used mepElementCache which was already cleared, so level was never set in batch mode.
+                    if (cz.MepElementId != null && mepLevelInfoCache.TryGetValue(cz.MepElementId, out var levelInfo)
+                        && !string.IsNullOrEmpty(levelInfo.name))
                     {
-                        ExtractMepElementLevelInfo(cz, mepElement);
+                        cz.MepElementLevelName = levelInfo.name;
+                        cz.MepElementLevelElevation = levelInfo.elevation;
                     }
                     
                     processedCount++;
@@ -844,7 +900,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (param == null)
             {
                 // ✅ DIAGNOSTIC: Log when System Type is not found
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-CAPTURE] ⚠️ System Type NOT FOUND for element {element.Id} (Category: {element.Category?.Name ?? "Unknown"})\n");
@@ -860,7 +916,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (!string.IsNullOrWhiteSpace(value))
             {
                 collected["System Type"] = value.Trim();
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-CAPTURE] ✅ System Type CAPTURED for element {element.Id}: '{value.Trim()}' (Source: {paramSource}, Method: AsString)\n");
@@ -873,7 +929,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (!string.IsNullOrWhiteSpace(value))
             {
                 collected["System Type"] = value.Trim();
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-CAPTURE] ✅ System Type CAPTURED for element {element.Id}: '{value.Trim()}' (Source: {paramSource}, Method: AsValueString)\n");
@@ -1015,7 +1071,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             if (param == null)
             {
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element {element.Id} (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')\n");
@@ -1027,7 +1083,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (!string.IsNullOrWhiteSpace(value))
             {
                 collected["Schedule of Level"] = value;
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-CAPTURE] ✅ Schedule of Level CAPTURED for element {element.Id}: '{value}' (Source: '{param.Definition.Name}')\n");
@@ -1035,7 +1091,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             }
             else
             {
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-CAPTURE] ⚠️ Schedule of Level parameter FOUND but value is EMPTY for element {element.Id} (Source: '{param.Definition.Name}')\n");
@@ -1099,7 +1155,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             if (!_context.IsDeploymentMode)
                 DebugLogger.Info(message);
-            SafeFileLogger.SafeAppendText(_context.RefreshLogName, $"[{DateTime.Now}] {message}\n");
+            
+            // ✅ PERF GATE: OptimizationFlags.UseDiagnosticMode gates per-zone logging (384 calls adding 10ms each = 3.8s savings)
+            if (OptimizationFlags.UseDiagnosticMode)
+            {
+                SafeFileLogger.SafeAppendText(_context.RefreshLogName, $"[{DateTime.Now}] {message}\n");
+            }
         }
     }
     
