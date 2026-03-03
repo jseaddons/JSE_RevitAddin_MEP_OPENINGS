@@ -153,6 +153,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         RoundInsulated,
                         PipesNormal,
                         PipesInsulated,
+                        UseNominalDiameterForPipes,
                         CableTrayTop,
                         CableTrayTopInsulated,
                         CableTrayOther,
@@ -179,6 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @RoundInsulated,
                         @PipesNormal,
                         @PipesInsulated,
+                        @UseNominalDiameterForPipes,
                         @CableTrayTop,
                         @CableTrayTopInsulated,
                         @CableTrayOther,
@@ -231,6 +233,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         RoundInsulated = @RoundInsulated,
                         PipesNormal = @PipesNormal,
                         PipesInsulated = @PipesInsulated,
+                        UseNominalDiameterForPipes = @UseNominalDiameterForPipes,
                         CableTrayTop = @CableTrayTop,
                         CableTrayTopInsulated = @CableTrayTopInsulated,
                         CableTrayOther = @CableTrayOther,
@@ -292,6 +295,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@RoundInsulated", clearance.RoundInsulated);
             cmd.Parameters.AddWithValue("@PipesNormal", clearance.PipesNormal);
             cmd.Parameters.AddWithValue("@PipesInsulated", clearance.PipesInsulated);
+            cmd.Parameters.AddWithValue("@UseNominalDiameterForPipes", clearance.UseNominalDiameterForPipes ? 1 : 0);
             cmd.Parameters.AddWithValue("@CableTrayTop", clearance.CableTrayTop);
             cmd.Parameters.AddWithValue("@CableTrayTopInsulated", clearance.CableTrayTopInsulated);
             cmd.Parameters.AddWithValue("@CableTrayOther", clearance.CableTrayOther);
@@ -356,6 +360,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         c.RoundInsulated,
                         c.PipesNormal,
                         c.PipesInsulated,
+                        c.UseNominalDiameterForPipes,
                         c.CableTrayTop,
                         c.CableTrayTopInsulated,
                         c.CableTrayOther,
@@ -400,6 +405,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             RoundInsulated = GetDouble(reader, "RoundInsulated"),
                             PipesNormal = GetDouble(reader, "PipesNormal"),
                             PipesInsulated = GetDouble(reader, "PipesInsulated"),
+                            UseNominalDiameterForPipes = reader["UseNominalDiameterForPipes"] is DBNull
+                                ? false
+                                : (Convert.ToInt32(reader["UseNominalDiameterForPipes"]) != 0),
                             CableTrayTop = GetDouble(reader, "CableTrayTop"),
                             CableTrayTopInsulated = GetDouble(reader, "CableTrayTopInsulated"),
                             CableTrayOther = GetDouble(reader, "CableTrayOther"),

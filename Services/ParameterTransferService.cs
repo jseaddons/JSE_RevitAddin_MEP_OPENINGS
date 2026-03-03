@@ -1851,7 +1851,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             snapshot.MepParameters.TryGetValue("MEP_ElementId", out var snapshotMepIdStr) &&
                                             int.TryParse(snapshotMepIdStr, out int snapshotMepIdInt))
                                         {
+#if REVIT2023
                                             mepElementId = new ElementId(snapshotMepIdInt);
+#else
+                                            mepElementId = new ElementId((long)snapshotMepIdInt);
+#endif
                                             if (!DeploymentConfiguration.DeploymentMode)
                                             {
                                                 SafeFileLogger.SafeAppendText("transfer_debug.log",

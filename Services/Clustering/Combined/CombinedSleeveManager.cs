@@ -347,7 +347,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                         // Filter to only elements that still exist
                         var revitIds = elementIdsToDelete
                             .Where(id => id > 0)
-                            .Select(id => new ElementId((int)id)) // Casting to int for ElementId constructor if needed, or use long overload if available. Revit 2024+ uses long.
+#if REVIT2023
+                            .Select(id => new ElementId((int)id))
+#else
+                            .Select(id => new ElementId(id))
+#endif
 
                             .Where(id => _document.GetElement(id) != null)
                             .ToList();

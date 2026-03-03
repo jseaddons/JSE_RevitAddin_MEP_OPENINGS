@@ -202,7 +202,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     var elementIdsToDelete = new List<ElementId>();
                     foreach (var sleeveId in sleevesToDelete)
                     {
+#if REVIT2023
                         var elementId = new ElementId(sleeveId);
+#else
+                        var elementId = new ElementId((long)sleeveId);
+#endif
                         if (elementId != null && elementId != ElementId.InvalidElementId)
                             elementIdsToDelete.Add(elementId);
                     }
@@ -426,7 +430,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 using (Transaction t = new Transaction(doc, "Cleanup Sleeves Inside Clusters"))
                 {
                     t.Start();
+#if REVIT2023
                     var ids = sleevesToDelete.Select(id => new ElementId(id)).ToList();
+#else
+                    var ids = sleevesToDelete.Select(id => new ElementId((long)id)).ToList();
+#endif
                     doc.Delete(ids);
                     t.Commit();
                 }
@@ -650,7 +658,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
             {
                 if (doc == null) return; // Called from background thread, cannot access Revit API
 
+#if REVIT2023
                 var element = doc.GetElement(new ElementId(sleeveId));
+#else
+                var element = doc.GetElement(new ElementId((long)sleeveId));
+#endif
                 if (element == null) return;
 
                 foreach (Parameter param in element.Parameters)

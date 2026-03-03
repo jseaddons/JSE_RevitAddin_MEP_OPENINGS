@@ -155,7 +155,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor.Safety
                     
                     return result;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     // Attempt rollback on any exception
                     try

@@ -435,6 +435,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: RoundNormal={_conditions.ClearanceSettings.RoundNormal}mm, RoundInsulated={_conditions.ClearanceSettings.RoundInsulated}mm");
                         DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: PipesNormal={_conditions.ClearanceSettings.PipesNormal}mm, PipesInsulated={_conditions.ClearanceSettings.PipesInsulated}mm");
                         DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}mm, CableTrayOther={_conditions.ClearanceSettings.CableTrayOther}mm");
+                        // ✅ NOMINAL DIAMETER: Log the setting
+                        DebugLogger.Info($"{_logPrefix} CONDITIONS XML Clearances: UseNominalDiameterForPipes={_conditions.ClearanceSettings.UseNominalDiameterForPipes}");
                     }
                     else
                     {

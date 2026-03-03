@@ -76,10 +76,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
 
                     // 3. Calculate Dimensions (Insulation Aware + Rounding)
                     // We use the "FromClashZoneRounded" method which handles insulation and rounding
+                    // ✅ PIPE NOMINAL DIAMETER OPTION: Use nominal diameter if enabled for pipes
+                    double effectiveDiameter = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : 0;
+                    if (string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) &&
+                        _conditions.ClearanceSettings.UseNominalDiameterForPipes &&
+                        zone.MepElementNominalDiameter > 0)
+                    {
+                        effectiveDiameter = zone.MepElementNominalDiameter;
+                        SafeFileLogger.SafeAppendText("placement_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔄 Using NOMINAL diameter for pipe zone {zone.Id}: {effectiveDiameter*304.8:F1}mm (instead of outer: {zone.MepElementOuterDiameter*304.8:F1}mm)\n");
+                    }
+                    
                     var (finalWidth, finalHeight, finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZoneRounded(
                         zone.MepElementWidth,
                         zone.MepElementHeight,
-                        zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : 0,
+                        effectiveDiameter,
                         zone,
                         clearance,
                         _settings.RoundingValue,
@@ -87,9 +98,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                     );
 
                     // 🔍 LOGGING: Log calculation details
-                    SafeFileLogger.SafeAppendText("placement_sizing_debug.log", 
+                    string diameterSource = (string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) &&
+                                             _conditions.ClearanceSettings.UseNominalDiameterForPipes) 
+                                             ? "NOMINAL" : "OUTER";
+                    SafeFileLogger.SafeAppendText("placement_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] 🧮 CALCULATING ZONE {zone.Id}:\n" +
-                        $"    - Input MEP: W={zone.MepElementWidth*304.8:F1}, H={zone.MepElementHeight*304.8:F1}, D={zone.MepElementOuterDiameter*304.8:F1}\n" +
+                        $"    - Input MEP: W={zone.MepElementWidth*304.8:F1}, H={zone.MepElementHeight*304.8:F1}, D={effectiveDiameter*304.8:F1} ({diameterSource})\n" +
                         $"    - Clearance: {clearance*304.8:F1}mm\n" +
                         $"    - Final Calculated: W={finalWidth*304.8:F1}, H={finalHeight*304.8:F1}, Dia={finalDiameter*304.8:F1}\n");
 

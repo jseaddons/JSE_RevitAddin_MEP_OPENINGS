@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -18,11 +19,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         private readonly RefreshContext _context;
         private readonly Validation.ThreePointValidator _threePointValidator;
         private readonly Services.Interfaces.Refactor.IFlagManager _flagManager;
+        private readonly ClashZoneRepository _repository;
         
-        public ValidationService(RefreshContext context, Services.Interfaces.Refactor.IFlagManager flagManager)
+        public ValidationService(RefreshContext context, Services.Interfaces.Refactor.IFlagManager flagManager, ClashZoneRepository repository)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _flagManager = flagManager ?? throw new ArgumentNullException(nameof(flagManager));
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _threePointValidator = new Validation.ThreePointValidator();
         }
         
@@ -183,30 +186,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         }
         
         /// <summary>
-        /// Removes invalid zones from Global XML
+        /// Removes invalid zones from the database using high-performance bulk delete.
         /// </summary>
-        public void RemoveInvalidZonesFromGlobal(List<ClashZone> invalidZones)
+        public void RemoveInvalidZonesFromDatabase(List<ClashZone> invalidZones)
         {
             if (invalidZones == null || invalidZones.Count == 0)
                 return;
             
-            Log($"[VALIDATION] Removing {invalidZones.Count} invalid zones from Global XML...");
+            Log($"[VALIDATION] 🗑️ Removing {invalidZones.Count} invalid zones from Database...");
             
-            var guidManager = new GuidManager(_context.Document);
-            
-            foreach (var zone in invalidZones)
+            var guids = invalidZones.Select(z => z.Id).ToList();
+            try
             {
-                try
-                {
-                    guidManager.RemoveFromGlobalXml(zone.Id, zone.MepElementCategory);
-                }
-                catch (Exception ex)
-                {
-                    Log($"[VALIDATION] ⚠️ Error removing zone {zone.Id} from Global XML: {ex.Message}");
-                }
+                _repository.DeleteClashZonesBulk(guids);
+                Log($"[VALIDATION] ✅ Successfully deleted {invalidZones.Count} invalid zones from Database");
             }
-            
-            Log($"[VALIDATION] ✅ Removed {invalidZones.Count} invalid zones from Global XML");
+            catch (Exception ex)
+            {
+                Log($"[VALIDATION] ❌ Error deleting invalid zones: {ex.Message}");
+            }
         }
         
         private void Log(string message)

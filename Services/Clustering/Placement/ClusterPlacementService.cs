@@ -665,7 +665,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                         int sId = item?.SleeveInstanceId ?? 0;
                                         if (sId > 0)
                                         {
+#if REVIT2023
                                             var indSleeve = doc.GetElement(new ElementId(sId)) as FamilyInstance;
+#else
+                                            var indSleeve = doc.GetElement(new ElementId((long)sId)) as FamilyInstance;
+#endif
                                             if (indSleeve != null)
                                             {
                                                 // Try Depth first, then Wall Width

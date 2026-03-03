@@ -210,44 +210,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: false (no extra logging; set true only when debugging flag reset timing)
         /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves) — not currently referenced
         /// </summary>
-        public static bool LogFlagResetDiagnostics { get; set; } = false;
+        public static bool LogFlagResetDiagnostics { get; set; } = true;
 
-        public static bool EnablePlacementDebugLog { get; set; } = false;
+        public static bool EnablePlacementDebugLog { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Enable detailed Bulk Placement diagnostics (individual sleeves).
         /// When true: Logs placement details to bulk_placement_debug.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableBulkPlacementDebugLog { get; set; } = false;
+        public static bool EnableBulkPlacementDebugLog { get; set; } = true;
 
         /// <summary>
         /// Enable detailed Batch Clustering diagnostics (Step 4 & 5).
         /// When true: Logs batch placement details to batch_v2.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableBatchClusteringDebugLog { get; set; } = false;
+        public static bool EnableBatchClusteringDebugLog { get; set; } = true;
 
         /// <summary>
         /// Enable detailed Cluster Sizing diagnostics (RCS dimensions, swaps).
         /// When true: Logs sizing details to cluster_debug.log and placement_sizing_debug.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableClusterSizingDebugLog { get; set; } = false;
+        public static bool EnableClusterSizingDebugLog { get; set; } = true;
 
         /// <summary>
         /// Enable detailed Proximity Check diagnostics (Clustering workflow).
         /// When true: Logs proximity analysis details to flag_workflow.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableProximityDebugLog { get; set; } = false;
+        public static bool EnableProximityDebugLog { get; set; } = true;
 
         /// <summary>
         /// Enable detailed placement diagnostics (e.g. corner comparisons).
         /// When true: Logs calculated vs Revit-extracted corners for clusters.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnablePlacementDiagnostics { get; set; } = false;
+        public static bool EnablePlacementDiagnostics { get; set; } = true;
 
         /// <summary>
         /// Use streamlined clash zone creation path when intersections come from optimized MepIntersectionService
@@ -364,7 +364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = false; // ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging { get; set; } = false;// ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -463,7 +463,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Use hybrid spatial index: R-tree for linear elements, grid for volumes
         /// When true: Selects optimal index per element type (10-15% faster for mixed types)
-        /// When false: Uses existing spatial grid for all elements
+        /// When falsimage.pnge: Uses existing spatial grid for all elements
         /// Default: false (disabled - high complexity, low priority)
         /// Location: Services/MepIntersectionService.cs
         /// </summary>
@@ -491,7 +491,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // false = no per-zone debug logging overhead
+        public static bool UseDiagnosticMode { get; set; } = true; // false = no per-zone debug logging overhead
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

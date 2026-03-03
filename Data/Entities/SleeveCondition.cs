@@ -17,6 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public double? RoundInsulated { get; set; }
         public double? PipesNormal { get; set; }
         public double? PipesInsulated { get; set; }
+        public bool? UseNominalDiameterForPipes { get; set; }
         public double? CableTrayTop { get; set; }
         public double? CableTrayOther { get; set; }
         public string? OpeningPrefs { get; set; } // JSON blob

@@ -363,9 +363,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // ✅ FIX: Detect damper category
                 bool isDamperCategory = string.Equals(mepCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
 
-                double rawWidth = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : zone.MepElementWidth;
-                double rawHeight = zone.MepElementHeight > 0 ? zone.MepElementHeight : rawWidth;
-                double rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
+                // ✅ NOMINAL DIAMETER FIX: For pipes with nominal diameter option enabled, use MepElementNominalDiameter
+                double rawWidth, rawHeight, rawDiameter;
+                bool useNominalDiameter = isPipesCategory && 
+                                          (_conditions?.ClearanceSettings?.UseNominalDiameterForPipes ?? false) &&
+                                          zone.MepElementNominalDiameter > 0;
+                
+                if (useNominalDiameter)
+                {
+                    // Use nominal diameter instead of outer diameter
+                    rawWidth = zone.MepElementNominalDiameter;
+                    rawHeight = zone.MepElementHeight > 0 ? zone.MepElementHeight : rawWidth;
+                    rawDiameter = rawWidth; // For pipes, diameter = width
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PLANNER] 🔄 NOMINAL DIAMETER: Zone {zone.Id}, " +
+                            $"Using NominalDia={rawWidth*304.8:F1}mm instead of OuterDia={zone.MepElementOuterDiameter*304.8:F1}mm\n");
+                    }
+                }
+                else
+                {
+                    // Standard path: use outer diameter
+                    rawWidth = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : zone.MepElementWidth;
+                    rawHeight = zone.MepElementHeight > 0 ? zone.MepElementHeight : rawWidth;
+                    rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
+
+                    if (!DeploymentConfiguration.DeploymentMode && isPipesCategory)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PLANNER] ⚪ OUTER DIAMETER (nominal=off): Zone {zone.Id}, " +
+                            $"OuterDia={rawWidth*304.8:F1}mm, NominalAvailable={zone.MepElementNominalDiameter*304.8:F1}mm, " +
+                            $"UseNominalFlag={_conditions?.ClearanceSettings?.UseNominalDiameterForPipes}\n");
+                    }
+                }
 
                 // 3. Resolve Opening Type (Circular vs Rectangular) - CENTRALIZED RULE
                 // ✅ REUSE: ConfigurationResolutionService is the absolute source of truth for rules

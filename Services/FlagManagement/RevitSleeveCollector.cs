@@ -147,7 +147,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             
             try
             {
+#if REVIT2023
                 var element = document.GetElement(new ElementId(sleeveId));
+#else
+                var element = document.GetElement(new ElementId((long)sleeveId));
+#endif
                 if (element != null && element is FamilyInstance sleeve)
                 {
                     bool isSleeve = (sleeve.Category?.Name == "Generic Models" || 

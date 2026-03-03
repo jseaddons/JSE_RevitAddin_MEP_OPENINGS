@@ -519,6 +519,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             RoundInsulated                    REAL,
                             PipesNormal                       REAL,
                             PipesInsulated                    REAL,
+                            UseNominalDiameterForPipes        INTEGER,
                             CableTrayTop                      REAL,
                             CableTrayTopInsulated             REAL,
                             CableTrayOther                    REAL,
@@ -946,6 +947,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("Conditions", "CombinedKey", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "PipesNormal", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "PipesInsulated", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "UseNominalDiameterForPipes", "INTEGER", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryMepNormal", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryMepInsulated", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryOtherNormal", "REAL", transaction);

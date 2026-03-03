@@ -231,8 +231,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 Element host = null;
                 if (zone.StructuralElementIdValue > 0)
                 {
-                    // Compatibility for 2023: ID is integer/long
-                     try { host = doc.GetElement(new ElementId((int)zone.StructuralElementIdValue)); } catch {}
+#if REVIT2023
+                    try { host = doc.GetElement(new ElementId((int)zone.StructuralElementIdValue)); } catch {}
+#else
+                    try { host = doc.GetElement(new ElementId(zone.StructuralElementIdValue)); } catch {}
+#endif
                 }
 
                 XYZ placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ); 

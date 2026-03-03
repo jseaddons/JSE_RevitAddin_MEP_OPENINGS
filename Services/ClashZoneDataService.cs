@@ -227,6 +227,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone.EnsureSleevePlacementPointActiveDocumentReconstructed();
                         zones.Add(zone);
                     }
+                    
+                    // ✅ CROSS-FILTER FIX: Also load zones from OTHER filters that have been reset (ReadyForPlacement=1)
+                    // This handles the case where sleeves were deleted and zones were reset under a different filter
+                    try
+                    {
+                        Log($"[ClashZoneDataService][SQLite] 🔍 CROSS-FILTER: Checking for reset zones from other filters (current filter: '{filterName}', category: '{category}')");
+                        var crossFilterZones = repository.GetCrossFilterResetZones(filterName, category);
+                        if (crossFilterZones.Count > 0)
+                        {
+                            Log($"[ClashZoneDataService][SQLite] ✅ CROSS-FILTER: Loaded {crossFilterZones.Count} reset zones from other filters");
+                            foreach (var zone in crossFilterZones)
+                            {
+                                // Avoid duplicates by checking if zone with same GUID already exists
+                                if (!zones.Any(z => z.ClashZoneGuid == zone.ClashZoneGuid))
+                                {
+                                    zone.EnsureSleevePlacementPointReconstructed();
+                                    zone.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                                    zones.Add(zone);
+                                    Log($"[ClashZoneDataService][SQLite] ✅ CROSS-FILTER: Added zone {zone.ClashZoneGuid}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Log($"[ClashZoneDataService][SQLite] ℹ️ CROSS-FILTER: No reset zones found from other filters");
+                        }
+                    }
+                    catch (Exception crossEx)
+                    {
+                        Log($"[ClashZoneDataService][SQLite] ⚠️ CROSS-FILTER load failed: {crossEx.Message}");
+                    }
                 }
             }
             catch (Exception ex)

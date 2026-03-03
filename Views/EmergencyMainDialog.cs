@@ -103,6 +103,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.CheckedListBox _verticalCategoriesListBox = null!;
         private bool _hostCategoriesInitialized = false;
         
+        // ✅ CROSS-SECTION SYNC: Store references to "Other Files" list boxes for graying out matching items
+        private WinForms.CheckedListBox? _otherReferenceFilesListBox;
+        private WinForms.CheckedListBox? _otherHostFilesListBox;
+        
         // ═══════════════════════════════════════════════════════════════
         // ✨ NEW: Mark Prefix Panel Controls (MEPMARK Implementation)
         // Added: 2025-10-08 for custom discipline-specific mark generation
@@ -1542,6 +1546,175 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _bottomLeftPanel.Controls.Add(bottomVerticalSplitter);
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // CROSS-SECTION SYNC: Gray out and disable items in Other Files sections
+        // When a file is selected in one Other Files section, it becomes disabled in the other
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// <summary>
+        /// Checks if an item should be disabled (is checked in the opposite list box)
+        /// </summary>
+        private bool IsItemDisabled(WinForms.CheckedListBox listBox, int itemIndex)
+        {
+            if (listBox == null || itemIndex < 0 || itemIndex >= listBox.Items.Count) return false;
+            
+            string itemText = listBox.Items[itemIndex]?.ToString() ?? "";
+            WinForms.CheckedListBox? oppositeListBox = null;
+            
+            // Determine which is the opposite list box
+            if (listBox == _otherReferenceFilesListBox)
+                oppositeListBox = _otherHostFilesListBox;
+            else if (listBox == _otherHostFilesListBox)
+                oppositeListBox = _otherReferenceFilesListBox;
+            else
+                return false;
+            
+            if (oppositeListBox == null) return false;
+            
+            // Check if this item is checked in the opposite list box
+            for (int i = 0; i < oppositeListBox.Items.Count; i++)
+            {
+                string oppositeItem = oppositeListBox.Items[i]?.ToString() ?? "";
+                if (oppositeItem == itemText && oppositeListBox.GetItemChecked(i))
+                    return true;
+            }
+            return false;
+        }
+        
+        /// <summary>
+        /// Custom DrawItem handler for Other Files list boxes - grays out disabled items
+        /// </summary>
+        private void OtherFilesListBox_DrawItem(object? sender, WinForms.DrawItemEventArgs e)
+        {
+            if (sender is not WinForms.CheckedListBox listBox || e.Index < 0) return;
+            
+            bool isDisabled = IsItemDisabled(listBox, e.Index);
+            string itemText = listBox.Items[e.Index]?.ToString() ?? "";
+            bool isChecked = listBox.GetItemChecked(e.Index);
+            
+            // Draw background
+            e.DrawBackground();
+            
+            // Determine text color
+            System.Drawing.Color textColor;
+            if (isDisabled)
+            {
+                textColor = System.Drawing.Color.Gray; // Grayed out
+            }
+            else if ((e.State & WinForms.DrawItemState.Selected) == WinForms.DrawItemState.Selected)
+            {
+                textColor = System.Drawing.Color.White; // Selected item
+            }
+            else
+            {
+                textColor = listBox.ForeColor; // Normal
+            }
+            
+            // Calculate checkbox bounds
+            System.Drawing.Rectangle checkBoxRect = new System.Drawing.Rectangle(
+                e.Bounds.X + 3,
+                e.Bounds.Y + (e.Bounds.Height - 12) / 2,
+                12, 12);
+            
+            // Draw checkbox border
+            System.Drawing.Color borderColor = isDisabled ? System.Drawing.Color.Gray : System.Drawing.Color.DarkGray;
+            System.Drawing.Color fillColor = isDisabled ? System.Drawing.Color.LightGray : System.Drawing.Color.White;
+            
+            using (var borderPen = new System.Drawing.Pen(borderColor))
+            using (var fillBrush = new System.Drawing.SolidBrush(fillColor))
+            {
+                e.Graphics.FillRectangle(fillBrush, checkBoxRect);
+                e.Graphics.DrawRectangle(borderPen, checkBoxRect);
+            }
+            
+            // Draw checkmark if checked
+            if (isChecked)
+            {
+                System.Drawing.Color checkColor = isDisabled ? System.Drawing.Color.Gray : System.Drawing.Color.Black;
+                using (var checkPen = new System.Drawing.Pen(checkColor, 2))
+                {
+                    // Draw a simple checkmark
+                    int offsetX = checkBoxRect.X + 2;
+                    int offsetY = checkBoxRect.Y + 2;
+                    e.Graphics.DrawLine(checkPen, offsetX + 1, offsetY + 5, offsetX + 4, offsetY + 8);
+                    e.Graphics.DrawLine(checkPen, offsetX + 4, offsetY + 8, offsetX + 9, offsetY + 1);
+                }
+            }
+            
+            // Draw text
+            System.Drawing.Rectangle textRect = new System.Drawing.Rectangle(
+                checkBoxRect.Right + 4,
+                e.Bounds.Y,
+                e.Bounds.Width - checkBoxRect.Width - 6,
+                e.Bounds.Height);
+            
+            using (var brush = new System.Drawing.SolidBrush(textColor))
+            {
+                var format = new System.Drawing.StringFormat
+                {
+                    Alignment = System.Drawing.StringAlignment.Near,
+                    LineAlignment = System.Drawing.StringAlignment.Center,
+                    FormatFlags = System.Drawing.StringFormatFlags.NoWrap,
+                    Trimming = System.Drawing.StringTrimming.EllipsisCharacter
+                };
+                e.Graphics.DrawString(itemText, e.Font ?? listBox.Font, brush, textRect, format);
+            }
+            
+            // Draw focus rectangle if selected
+            if ((e.State & WinForms.DrawItemState.Focus) == WinForms.DrawItemState.Focus && !isDisabled)
+            {
+                e.DrawFocusRectangle();
+            }
+        }
+        
+        /// <summary>
+        /// Prevents checking of disabled items
+        /// </summary>
+        private void OtherFilesListBox_ItemCheck(object? sender, WinForms.ItemCheckEventArgs e)
+        {
+            if (sender is WinForms.CheckedListBox listBox && e.NewValue == WinForms.CheckState.Checked)
+            {
+                if (IsItemDisabled(listBox, e.Index))
+                {
+                    e.NewValue = WinForms.CheckState.Unchecked; // Prevent checking
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Prevents selection of disabled items on mouse click
+        /// </summary>
+        private void OtherFilesListBox_MouseClick(object? sender, WinForms.MouseEventArgs e)
+        {
+            if (sender is not WinForms.CheckedListBox listBox) return;
+            
+            // Get the item at the click position
+            int index = listBox.IndexFromPoint(e.Location);
+            if (index >= 0 && IsItemDisabled(listBox, index))
+            {
+                // Prevent the click from doing anything by handling it
+                // The item is already drawn as disabled, but we need to prevent check toggling
+            }
+        }
+        
+        /// <summary>
+        /// Updates the disabled state display and triggers redraw
+        /// </summary>
+        private void SyncOtherFilesState(WinForms.CheckedListBox? sourceListBox, WinForms.CheckedListBox? targetListBox)
+        {
+            if (targetListBox == null) return;
+            
+            // Trigger redraw of the target list box to show updated disabled state
+            if (targetListBox.InvokeRequired)
+            {
+                targetListBox.Invoke(new Action(() => targetListBox.Invalidate()));
+            }
+            else
+            {
+                targetListBox.Invalidate();
+            }
+        }
+
         private void PopulateTopLeftSection()
         {
             // Title: "Reference Elements" 
@@ -1584,9 +1757,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new System.Drawing.Size(_topLeftPanel.Width - 10, (_topLeftPanel.Height - 25) / 2 - 5),
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 CheckOnClick = true,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                DrawMode = WinForms.DrawMode.OwnerDrawFixed // ✅ Enable custom drawing for grayed out items
             };
             _topLeftPanel.Controls.Add(otherReferenceFilesListBox);
+            _otherReferenceFilesListBox = otherReferenceFilesListBox; // Store reference for cross-sync
+            
+            // ✅ CROSS-SECTION SYNC: Wire up owner draw and click handlers
+            otherReferenceFilesListBox.DrawItem += OtherFilesListBox_DrawItem;
+            otherReferenceFilesListBox.MouseClick += OtherFilesListBox_MouseClick;
+            otherReferenceFilesListBox.ItemCheck += OtherFilesListBox_ItemCheck;
 
             // ✅ AUTO-SAVE: Add ItemCheck handlers to save UI state automatically when reference files are checked/unchecked
             referenceFilesListBox.ItemCheck += (sender, e) => {
@@ -1601,6 +1781,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
 
             otherReferenceFilesListBox.ItemCheck += (sender, e) => {
+                // ✅ CROSS-SECTION SYNC: Trigger redraw of Host Other Files to update grayed out state
+                SyncOtherFilesState(otherReferenceFilesListBox, _otherHostFilesListBox);
+                
                 System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
                 timer.Interval = 100; // Small delay to avoid issues during check operation
                 timer.Tick += (s, args) => {
@@ -1811,9 +1994,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new System.Drawing.Size(_bottomLeftPanel.Width - 10, (_bottomLeftPanel.Height - 25) / 2 - 5),
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Bottom | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right,
                 CheckOnClick = true,
-                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular)
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 8F, System.Drawing.FontStyle.Regular),
+                DrawMode = WinForms.DrawMode.OwnerDrawFixed // ✅ Enable custom drawing for grayed out items
             };
             _bottomLeftPanel.Controls.Add(otherHostFilesListBox);
+            _otherHostFilesListBox = otherHostFilesListBox; // Store reference for cross-sync
+            
+            // ✅ CROSS-SECTION SYNC: Wire up owner draw and click handlers
+            otherHostFilesListBox.DrawItem += OtherFilesListBox_DrawItem;
+            otherHostFilesListBox.MouseClick += OtherFilesListBox_MouseClick;
+            otherHostFilesListBox.ItemCheck += OtherFilesListBox_ItemCheck;
 
             // ✅ AUTO-SAVE: Add ItemCheck handlers to save UI state automatically when host files are checked/unchecked
             hostFilesListBox.ItemCheck += (sender, e) => {
@@ -1828,6 +2018,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
 
             otherHostFilesListBox.ItemCheck += (sender, e) => {
+                // ✅ CROSS-SECTION SYNC: Trigger redraw of Reference Other Files to update grayed out state
+                SyncOtherFilesState(otherHostFilesListBox, _otherReferenceFilesListBox);
+                
                 System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
                 timer.Interval = 100; // Small delay to avoid issues during check operation
                 timer.Tick += (s, args) => {
@@ -3068,6 +3261,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (pipeRectangularRadio.Checked)
                     pipeCircularRadio.Checked = false;
             };
+
+            // ✅ PIPE NOMINAL DIAMETER OPTION: Checkbox to use nominal diameter instead of outside diameter
+            var useNominalDiameterCheckBox = new WinForms.CheckBox
+            {
+                Text = "Use Nominal Diameter for Clearance",
+                Location = new System.Drawing.Point(10, 82), // Row 3
+                Size = new System.Drawing.Size(250, 20),
+                Checked = false, // Default to outside diameter
+                Tag = "pipe_use_nominal_diameter"
+            };
+            _pipePanel.Controls.Add(useNominalDiameterCheckBox);
         }
 
         private void ToggleLock(WinForms.Button lockBtn, WinForms.TextBox textBox)
@@ -3213,6 +3417,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         {
                             textBox.Text = insulatedValue;
                         }
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// ✅ Sets the "Use Nominal Diameter" checkbox value in the pipe panel
+        /// </summary>
+        private void SetPipePanelNominalDiameterCheckbox(bool useNominalDiameter)
+        {
+            if (_pipePanel?.Controls.Count > 0)
+            {
+                foreach (var control in _pipePanel.Controls)
+                {
+                    if (control is WinForms.CheckBox checkBox && checkBox.Tag?.ToString() == "pipe_use_nominal_diameter")
+                    {
+                        checkBox.Checked = useNominalDiameter;
+                        DebugLogger.Info($"[SetPipePanelNominalDiameterCheckbox] Set UseNominalDiameter checkbox to: {useNominalDiameter}");
+                        break;
                     }
                 }
             }
@@ -3379,7 +3602,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         {
                             categoryValues["pipes_normal_clearance"] = clearance.PipesNormal.ToString("F0");
                             categoryValues["pipes_insulated_clearance"] = clearance.PipesInsulated.ToString("F0");
-                            DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Pipes: Normal={clearance.PipesNormal}mm, Insulated={clearance.PipesInsulated}mm");
+                            categoryValues["pipe_use_nominal_diameter"] = clearance.UseNominalDiameterForPipes.ToString();
+                            DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Pipes: Normal={clearance.PipesNormal}mm, Insulated={clearance.PipesInsulated}mm, UseNominalDiameter={clearance.UseNominalDiameterForPipes}");
+                            
+                            // ✅ Also directly set the checkbox value
+                            SetPipePanelNominalDiameterCheckbox(clearance.UseNominalDiameterForPipes);
                         }
                         else if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
                         {
@@ -4534,12 +4761,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DebugLogger.Warning($"[ReadClearanceSettingsFromUI] Pipe Insulated textbox not found or parse failed - using default");
                         settings.PipesInsulated = settings.RectangularInsulated; // Default to duct insulated
                     }
+                    
+                    // ✅ Read Use Nominal Diameter checkbox
+                    var nominalDiaCheckBox = _pipePanel?.Controls?.OfType<WinForms.CheckBox>()
+                        .FirstOrDefault(cb => cb.Tag?.ToString() == "pipe_use_nominal_diameter");
+                    if (nominalDiaCheckBox != null)
+                    {
+                        settings.UseNominalDiameterForPipes = nominalDiaCheckBox.Checked;
+                        DebugLogger.Info($"[ReadClearanceSettingsFromUI] Use Nominal Diameter for Pipes: {nominalDiaCheckBox.Checked}");
+                    }
+                    else
+                    {
+                        settings.UseNominalDiameterForPipes = false; // Default to outside diameter
+                    }
                 }
                 else
                 {
                     DebugLogger.Warning($"[ReadClearanceSettingsFromUI] _pipePanel is null - using duct values as fallback");
                     settings.PipesNormal = settings.RectangularNormal; // Default to duct normal
                     settings.PipesInsulated = settings.RectangularInsulated; // Default to duct insulated
+                    settings.UseNominalDiameterForPipes = false; // Default to outside diameter
                 }
             }
             catch (Exception ex)
@@ -5982,8 +6223,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             {
                                 var clashZone = new ClashZone
                                 {
+#if REVIT2023
                                     MepElementId = new Autodesk.Revit.DB.ElementId(mepId),
                                     StructuralElementId = new Autodesk.Revit.DB.ElementId(structuralId),
+#else
+                                    MepElementId = new Autodesk.Revit.DB.ElementId((long)mepId),
+                                    StructuralElementId = new Autodesk.Revit.DB.ElementId((long)structuralId),
+#endif
                                     IsResolved = isResolved,
                                     DetectedAt = clashZoneStorage.LastUpdated
                                 };
@@ -7054,8 +7300,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             {
                                 using (var dbContext = new Data.SleeveDbContext(document))
                                 {
-                                    var repository = new Data.Repositories.ClashZoneRepository(dbContext);
-                                    
+                                    // ✅ DATABASE IS USED if we successfully opened the context and created the repository
+                                    usedDatabase = true;
+                                    var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg => { });
+
                                     // ✅ CRITICAL FIX: Reuse selectedFilterName from outer scope (already declared at line 6862)
                                     // Use GetClashZonesByFilter with selected filter name to ensure we only check zones for the selected filter
                                     if (selectedMepCategories != null && selectedMepCategories.Count > 0)
@@ -7065,35 +7313,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                             if (string.IsNullOrWhiteSpace(category))
                                                 continue;
                                             
+                                            // ✅ DEBUG: Always log which filter/category we're checking
+                                            DebugLogger.Info($"[OK_BUTTON_DEBUG] CHECKING Database for Filter='{selectedFilterName}', Category='{category}'");
+                                            
                                             try
                                             {
                                                 // ✅ CRITICAL FIX: Use GetClashZonesByFilter with selected filter name (not GetClashZonesByCategory)
                                                 // This ensures we only check zones for the selected filter, not all filters
                                                 var allZones = repository.GetClashZonesByFilter(selectedFilterName, category, unresolvedOnly: false);
+                                                DebugLogger.Info($"[OK_BUTTON_DEBUG] GetClashZonesByFilter returned {allZones?.Count ?? 0} zones");
+                                                
+                                                int currentFilterUnresolved = 0;
+                                                
                                                 if (allZones != null && allZones.Count > 0)
                                                 {
+                                                    // Log details of each zone found
+                                                    foreach (var zone in allZones)
+                                                    {
+                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] ZONE DETAIL: Id={zone.Id}, IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved}, ReadyForPlacement={zone.ReadyForPlacement}, IsCurrentClash={zone.IsCurrentClash}");
+                                                    }
+                                                    
                                                     // ✅ CRITICAL FIX: A zone needs placement if:
                                                     // 1. BOTH IsResolved=false AND IsClusterResolved=false (no sleeve at all), OR
                                                     // 2. ReadyForPlacementFlag=true (sleeve was deleted, ready to place again)
-                                                    int categoryUnresolved = allZones.Count(z => 
+                                                    currentFilterUnresolved = allZones.Count(z => 
                                                         (!z.IsResolved && !z.IsClusterResolved) || 
                                                         z.ReadyForPlacement == true);
-                                                    unresolvedCount += categoryUnresolved;
-                                                    usedDatabase = true;
+                                                    unresolvedCount += currentFilterUnresolved;
                                                     
-                                                    if (categoryUnresolved > 0)
+                                                    int noSleeveCount = allZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                                                    int readyForPlacementCount = allZones.Count(z => z.ReadyForPlacement == true);
+                                                    DebugLogger.Info($"[OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {currentFilterUnresolved} unresolved out of {allZones.Count} total zones (NoSleeve={noSleeveCount}, ReadyForPlacement={readyForPlacementCount})");
+                                                }
+                                                else
+                                                {
+                                                    DebugLogger.Info($"[OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': NO ZONES FOUND");
+                                                }
+                                                
+                                                // ✅ CROSS-FILTER FIX: Also check for zones from OTHER filters that were reset (ReadyForPlacement=1)
+                                                // This handles the case where sleeves were deleted under a different filter (e.g., Plumbing) 
+                                                // and user switched to a new filter (e.g., Ventilation)
+                                                try
+                                                {
+                                                    var crossFilterZones = repository.GetCrossFilterResetZones(selectedFilterName, category);
+                                                    if (crossFilterZones != null && crossFilterZones.Count > 0)
                                                     {
-                                                        int noSleeveCount = allZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
-                                                        int readyForPlacementCount = allZones.Count(z => z.ReadyForPlacement == true);
-                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones (NoSleeve={noSleeveCount}, ReadyForPlacement={readyForPlacementCount})");
-                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved}/{allZones.Count} unresolved (NoSleeve={noSleeveCount}, ReadyForPlacement={readyForPlacementCount})\n");
+                                                        int crossFilterUnresolved = crossFilterZones.Count(z => 
+                                                            (!z.IsResolved && !z.IsClusterResolved) || 
+                                                            z.ReadyForPlacement == true);
+                                                        
+                                                        if (crossFilterUnresolved > 0)
+                                                        {
+                                                            unresolvedCount += crossFilterUnresolved;
+                                                            DebugLogger.Info($"[OK_BUTTON_DEBUG] Database CROSS-FILTER Filter='{selectedFilterName}', Category='{category}': {crossFilterUnresolved} reset zones from other filters");
+                                                        }
                                                     }
+                                                }
+                                                catch (Exception crossEx)
+                                                {
+                                                    DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking cross-filter zones: {crossEx.Message}");
                                                 }
                                             }
                                             catch (Exception dbEx)
                                             {
                                                 DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking database for filter='{selectedFilterName}', category='{category}': {dbEx.Message}");
-                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking database for Filter='{selectedFilterName}', Category='{category}': {dbEx.Message}\n");
                                             }
                                         }
                                     }
@@ -7101,8 +7384,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             }
                             catch (Exception dbEx)
                             {
-                                DebugLogger.Warning($"[OK_BUTTON_DEBUG] Database check failed, falling back to Global XML: {dbEx.Message}");
-                                usedDatabase = false;
+                                DebugLogger.Warning($"[OK_BUTTON_DEBUG] Database check failed: {dbEx.Message}");
+                                // usedDatabase remains true unless it failed before categories loop
                             }
                             
                             // ✅ FALLBACK: Use Global XML if database has no data (backward compatibility)
@@ -8099,10 +8382,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             catch { }
             
-            // 4. Write to log file immediately (so it's always there)
+            // 4. Write to log file immediately (skipped in deployment mode)
             try
             {
-                System.IO.File.WriteAllText(filterDebugLogPath, logBuilder.ToString());
+                SafeFileLogger.SafeAppendText("filter_ui_state_debug.log", logBuilder.ToString());
             }
             catch (Exception immediateWriteEx)
             {
@@ -8385,10 +8668,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             finally
             {
-                // ✅ Write all logs to file
+                // ✅ Write all logs to file (skipped in deployment mode)
                 try
                 {
-                    System.IO.File.AppendAllText(filterDebugLogPath, logBuilder.ToString());
+                    SafeFileLogger.SafeAppendText("filter_ui_state_debug.log", logBuilder.ToString());
                     DebugLogger.Info($"[FILTER_UI_DEBUG] ✅ Successfully wrote log to: {filterDebugLogPath}");
                     System.Diagnostics.Debug.WriteLine($"[FILTER_UI_DEBUG] ✅ Successfully wrote log to: {filterDebugLogPath}");
                 }
@@ -8642,10 +8925,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             finally
             {
-                // ✅ Write all logs to file
+                // ✅ Write all logs to file (skipped in deployment mode)
                 try
                 {
-                    System.IO.File.AppendAllText(filterDebugLogPath, logBuilder.ToString());
+                    SafeFileLogger.SafeAppendText("filter_ui_state_debug.log", logBuilder.ToString());
                     DebugLogger.Info($"[FILTER_UI_DEBUG] ✅ Successfully wrote UpdateFilterWithCurrentUIState log to: {filterDebugLogPath}");
                 }
                 catch (Exception logEx)

@@ -87,36 +87,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[RefreshServiceRefactoredWrapper] Starting refactored refresh service...");
                 
-                // ✅ CRITICAL: Verify existing sleeves and reset flags for deleted sleeves
-                // This ensures that sleeves deleted in Revit are re-detected and can be re-placed
-                try
-                {
-                    using (var dbContext = new Data.SleeveDbContext(_service.GetDocument()))
-                    {
-                        var repo = new Data.Repositories.ClashZoneRepository(dbContext, msg => 
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info(msg);
-                        });
-                        
-                        int resetCount = repo.VerifyExistingSleevesAndResetFlags(
-                            _service.GetDocument(), 
-                            new List<string>(), // All filters
-                            selectedMepCategories ?? new List<string>());
-                            
-                        if (resetCount > 0)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[RefreshServiceRefactoredWrapper] 🔄 Reset flags for {resetCount} deleted sleeves");
-                        }
-                    }
-                }
-                catch (Exception verifyEx)
-                {
-                    // Log but don't fail - refresh can continue even if flag reset fails
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[RefreshServiceRefactoredWrapper] ⚠️ Sleeve verification failed (continuing): {verifyEx.Message}");
-                }
+                // ✅ NOTE: Flag management sequence is now strictly database-centric:
+                //   1. Global Reset → IsCurrentClashFlag=0, ReadyForPlacementFlag=0
+                //   2. Verify Missing Sleeves → Resets resolution flags (Unresolved) for deleted elements
+                //   3. Session Context → Spatial Discovery (Current) + Filter Masking (ReadyForPlacement)
                 
                 // Refactored service returns Result, but we need void for compatibility
                 // Convert Result to void (errors are logged internally)

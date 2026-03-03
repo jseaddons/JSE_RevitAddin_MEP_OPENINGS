@@ -130,8 +130,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var category = group.Key;
                         var categoryZones = group.ToList();
-                        // Load conditions using category name as filter key
-                        var categoryConditions = conditionsService.LoadConditions(category);
+
+                        // ✅ FIX: Build the proper conditions key matching the save format: FilterName_CategorySuffix
+                        // Previously used just 'category' (e.g. "Pipes") which never matched the DB key
+                        // (DB stores conditions as "FilterName_pipes", not "Pipes")
+                        string categorySuffix = MepCategoryConstants.GetXmlSuffix(category);
+                        string conditionsKey = !string.IsNullOrEmpty(filter?.Name)
+                            ? $"{filter.Name}_{categorySuffix}"
+                            : categorySuffix;
+                        var categoryConditions = conditionsService.LoadConditions(conditionsKey);
+
+                        // ✅ DIAGNOSTIC: Log what was loaded so the user can verify
+                        _logger($"[CONTEXT-PLACEMENT] [CONDITIONS] Category '{category}': key='{conditionsKey}', " +
+                            $"UseNominalDia={categoryConditions?.ClearanceSettings?.UseNominalDiameterForPipes}, " +
+                            $"PipesNormal={categoryConditions?.ClearanceSettings?.PipesNormal}mm");
                         
                         // ✅ PERF: Pass levelMap to planner
                         var planner = new ParallelSleevePlacementPlanner(categoryConditions, levelMap: levelMap);
@@ -325,36 +337,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   ✅ BatchUpdatePostPlacement (TEMP TABLE) completed in {bulkUpdateTimer.ElapsedMilliseconds}ms\n");
 
-                            // DIAGNOSTIC: Verify that IsResolvedFlag is actually set in database
-                            var verifyZones = repo.GetZonesReadyForProximityCheck();
-                            SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                $"[{DateTime.Now:HH:mm:ss}] STEP 3: VERIFICATION\n");
-                            SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Zones ready for proximity check: {verifyZones.Count}\n");
-                            SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   (Query: IsResolvedFlag=1 AND MarkedForClusterProcess IS NULL)\n");
-
-                            if (verifyZones.Count > 0)
+                            // DIAGNOSTIC: Verify that IsResolvedFlag is actually set in database (skipped in deployment mode)
+                            if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                var sample = verifyZones.First();
+                                var verifyZones = repo.GetZonesReadyForProximityCheck();
                                 SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   Sample zone: {sample.Id.ToString().Substring(0, 8)}...\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] STEP 3: VERIFICATION\n");
                                 SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]     IsResolvedFlag={sample.IsResolved}\n");
+                                    $"[{DateTime.Now:HH:mm:ss}]   Zones ready for proximity check: {verifyZones.Count}\n");
                                 SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]     MarkedForClusterProcess={sample.MarkedForClusterProcess?.ToString() ?? "NULL"}\n");
-                                SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]     BBox: ({sample.SleeveBoundingBoxMinX:F3},{sample.SleeveBoundingBoxMinY:F3},{sample.SleeveBoundingBoxMinZ:F3})\n");
+                                    $"[{DateTime.Now:HH:mm:ss}]   (Query: IsResolvedFlag=1 AND MarkedForClusterProcess IS NULL)\n");
 
-                                _logger($"[BULK-PLACEMENT] [DIAGNOSTIC] ✅ IsResolvedFlag correctly set to 1 for placed sleeves");
-                            }
-                            else
-                            {
-                                SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ WARNING: No zones ready for proximity check!\n");
-                            }
+                                if (verifyZones.Count > 0)
+                                {
+                                    var sample = verifyZones.First();
+                                    SafeFileLogger.SafeAppendText("flag_workflow.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   Sample zone: {sample.Id.ToString().Substring(0, 8)}...\n");
+                                    SafeFileLogger.SafeAppendText("flag_workflow.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]     IsResolvedFlag={sample.IsResolved}\n");
+                                    SafeFileLogger.SafeAppendText("flag_workflow.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]     MarkedForClusterProcess={sample.MarkedForClusterProcess?.ToString() ?? "NULL"}\n");
+                                    SafeFileLogger.SafeAppendText("flag_workflow.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]     BBox: ({sample.SleeveBoundingBoxMinX:F3},{sample.SleeveBoundingBoxMinY:F3},{sample.SleeveBoundingBoxMinZ:F3})\n");
 
-                            _logger($"[BULK-PLACEMENT] [DIAGNOSTIC] Zones ready for clustering after flag update: {verifyZones.Count}");
+                                    _logger($"[BULK-PLACEMENT] [DIAGNOSTIC] ✅ IsResolvedFlag correctly set to 1 for placed sleeves");
+                                }
+                                else
+                                {
+                                    SafeFileLogger.SafeAppendText("flag_workflow.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ⚠️ WARNING: No zones ready for proximity check!\n");
+                                }
+
+                                _logger($"[BULK-PLACEMENT] [DIAGNOSTIC] Zones ready for clustering after flag update: {verifyZones.Count}");
+                            }
                         }
                     }
                 }
@@ -829,7 +844,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone.SleevePlacementActiveY = locPt.Point.Y;
                         zone.SleevePlacementActiveZ = locPt.Point.Z;
 
+#if REVIT2023
+                        zone.SleeveInstanceId = element.Id.IntegerValue;
+#else
                         zone.SleeveInstanceId = element.Id.Value;
+#endif
                         zone.PlacementStatus = "Placed";
                         zone.IsResolvedFlag = true;
                         zone.IsClusteredFlag = false;

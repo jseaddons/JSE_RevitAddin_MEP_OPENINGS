@@ -1060,13 +1060,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private FamilyInstance PlaceSleeveFromSavedData(ClashZone zone)
         {
             EnsureDuctAccessoriesHostType(zone);
-            // Use saved dimensions directly
-            double width = zone.SleeveWidth;
-            double height = zone.SleeveHeight;
-            double diameter = zone.SleeveDiameter;
             
-            // Determine shape based on dimensions
-            bool isCircular = diameter > 0;
+            // ✅ NOMINAL DIAMETER FIX: For pipes with nominal diameter option enabled, force recalculation
+            bool isPipe = string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+            bool useNominalDiameter = isPipe && (_conditions?.ClearanceSettings?.UseNominalDiameterForPipes ?? false);
+            
+            double width, height, diameter;
+            bool isCircular;
+            
+            if (useNominalDiameter)
+            {
+                // Force recalculation using nominal diameter
+                var dims = CalculateSleeveDimensions(zone, null);
+                width = dims.width;
+                height = dims.height;
+                diameter = dims.diameter;
+                isCircular = dims.isCircular;
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? NOMINAL DIAMETER (PlaceSleeveFromSavedData): Zone {zone.Id} - " +
+                        $"Force recalc using NominalDia={zone.MepElementNominalDiameter*304.8:F1}mm, " +
+                        $"Result: Dia={diameter*304.8:F1}mm\n");
+                }
+            }
+            else
+            {
+                // Use saved dimensions directly (normal path)
+                width = zone.SleeveWidth;
+                height = zone.SleeveHeight;
+                diameter = zone.SleeveDiameter;
+                isCircular = diameter > 0;
+            }
             
             // Select Family
             string familyName = ClusterPlacementService.GetFamilyName(zone.StructuralElementType, zone.MepElementCategory, isCircular ? zone.SleeveDiameter : Math.Max(zone.SleeveWidth, zone.SleeveHeight), isCluster: false);
@@ -1213,10 +1239,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else if (!isDamper && (zone.SleeveWidth > 0 || zone.SleeveHeight > 0 || zone.SleeveDiameter > 0))
             {
-                width = zone.SleeveWidth;
-                height = zone.SleeveHeight;
-                diameter = zone.SleeveDiameter;
-                isCircular = zone.SleeveDiameter > 0 && zone.SleeveWidth <= 0;
+                // ✅ NOMINAL DIAMETER FIX: For pipes with nominal diameter option enabled, force recalculation
+                // using MepElementNominalDiameter instead of saved SleeveDiameter
+                bool isPipe = string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                bool useNominalDiameter = isPipe && (_conditions?.ClearanceSettings?.UseNominalDiameterForPipes ?? false);
+                
+                if (useNominalDiameter)
+                {
+                    // Force recalculation using nominal diameter
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleeVE] ?? NOMINAL DIAMETER FORCE RECALC: Zone {zone.Id} - " +
+                            $"Using MepElementNominalDiameter={zone.MepElementNominalDiameter*304.8:F1}mm " +
+                            $"instead of saved SleeveDiameter={zone.SleeveDiameter*304.8:F1}mm\n");
+                    }
+                    
+                    var dims = CalculateSleeveDimensions(zone, planningDto);
+                    width = dims.width;
+                    height = dims.height;
+                    diameter = dims.diameter;
+                    isCircular = dims.isCircular;
+                }
+                else
+                {
+                    // Use saved dimensions directly (normal path)
+                    width = zone.SleeveWidth;
+                    height = zone.SleeveHeight;
+                    diameter = zone.SleeveDiameter;
+                    isCircular = zone.SleeveDiameter > 0 && zone.SleeveWidth <= 0;
+                }
             }
             else
             {
@@ -1652,7 +1704,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ? OOP METHOD: Use strategy to calculate clearance for other categories
                 double rawWidth = zone.MepElementWidth;
                 double rawHeight = zone.MepElementHeight;
+                
+                // ✅ PIPE NOMINAL DIAMETER OPTION: Use nominal diameter if enabled for pipes
                 double rawDiameter = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : 0;
+                
+                // ✅ NOMINAL DIAMETER DIAGNOSTIC LOGGING
+                if (!DeploymentConfiguration.DeploymentMode && string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool useNominal = _conditions?.ClearanceSettings?.UseNominalDiameterForPipes ?? false;
+                    double nominalDia = zone.MepElementNominalDiameter;
+                    double outerDia = zone.MepElementOuterDiameter;
+                    
+                    // Log to both placement_debug.log AND main debug log
+                    string logMsg = $"[NOMINAL-DIAMETER-CHECK] Zone {zone.Id}: UseNominal={useNominal}, NominalDia={nominalDia*304.8:F1}mm, OuterDia={outerDia*304.8:F1}mm";
+                    DebugLogger.Info($"[NewSleevePlacer] {logMsg}");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] {logMsg}\n");
+                }
+                
+                if (string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) &&
+                    _conditions?.ClearanceSettings?.UseNominalDiameterForPipes == true &&
+                    zone.MepElementNominalDiameter > 0)
+                {
+                    rawDiameter = zone.MepElementNominalDiameter;
+                    
+                    // Log to both placement_debug.log AND main debug log
+                    string logMsg = $"[NOMINAL-DIAMETER-ENABLED] Zone {zone.Id}: Using NOMINAL diameter: {rawDiameter*304.8:F1}mm instead of outer: {zone.MepElementOuterDiameter*304.8:F1}mm";
+                    DebugLogger.Info($"[NewSleevePlacer] {logMsg}");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] {logMsg}\n");
+                }
                 
                 // ? COMPREHENSIVE LOGGING: Log raw dimensions BEFORE clearance calculation
                 if (!DeploymentConfiguration.DeploymentMode)

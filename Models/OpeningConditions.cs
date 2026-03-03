@@ -117,6 +117,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public double PipesInsulated { get; set; } = 25.0;
         
+        /// <summary>
+        /// ✅ PIPE NOMINAL DIAMETER OPTION: When true, use nominal diameter (RBS_PIPE_DIAMETER_PARAM) 
+        /// instead of outside diameter for pipe sleeve sizing calculations
+        /// </summary>
+        public bool UseNominalDiameterForPipes { get; set; } = false;
+        
         // Cable Tray clearances
         /// <summary>
         /// Clearance for cable tray top side (normal/non-insulated)

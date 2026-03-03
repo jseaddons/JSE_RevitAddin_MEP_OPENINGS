@@ -39,6 +39,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Get clash zones by category (all filters)
         /// </summary>
         List<ClashZone> GetClashZonesByCategory(string category);
+        
+        /// <summary>
+        /// ✅ CROSS-FILTER FIX: Get zones from OTHER filters that have been reset (ReadyForPlacement=1, IsCurrentClash=1)
+        /// This ensures that when switching filters, zones with deleted sleeves are available for re-placement
+        /// </summary>
+        List<ClashZone> GetCrossFilterResetZones(string currentFilterName, string category);
 
         /// <summary>
         /// Update sleeve state and dimensions
@@ -137,7 +143,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Batch update flags including IsCurrentClashFlag.
         /// </summary>
-        void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)> updates);
+        void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, long CombinedClusterSleeveId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)> updates);
 
         /// <summary>
         /// ✅ OPTIMIZED: Bulk UPDATE for IsCurrentClashFlag using Temp Table

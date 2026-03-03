@@ -189,67 +189,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)>();
+                var dbUpdates = new List<(Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, long SleeveInstanceId, long ClusterInstanceId, long CombinedClusterSleeveId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, long AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)>();
                 
-                foreach (var (clashZone, sleeveId) in clashZones)
-                {
-                    if (clashZone == null || sleeveId <= 0) continue;
-
-                    // ✅ UNIFIED FLAG LOGIC: Do NOT reset IsCurrentClash upon placement
-                    // IsCurrentClash should remain true until the next refresh cycle
-                    // IsResolved flag already indicates the zone has been handled
-                    // Resetting IsCurrentClash here would break filtering logic that relies on it
-
-                    if (isCluster)
+                    foreach (var (clashZone, sleeveId) in clashZones)
                     {
-                        if (clashZone.AfterClusterSleevePlacedSleeveInstanceId <= 0 && clashZone.SleeveInstanceId > 0)
+                        if (clashZone == null || sleeveId <= 0) continue;
+
+                        // ✅ UNIFIED FLAG LOGIC: Do NOT reset IsCurrentClash upon placement
+                        // IsCurrentClash should remain true until the next refresh cycle
+
+                        if (isCluster)
                         {
-                            clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
+                            if (clashZone.AfterClusterSleevePlacedSleeveInstanceId <= 0 && clashZone.SleeveInstanceId > 0)
+                            {
+                                clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
+                            }
+                            
+                            clashZone.IsClusterResolvedFlag = true;
+                            clashZone.ClusterSleeveInstanceId = sleeveId;
+                            clashZone.IsClusteredFlag = true;
+                            clashZone.IsResolvedFlag = true;
+                            clashZone.SleeveInstanceId = -1;
                         }
-                        
-                        // ✅ CRITICAL FIX: Explicitly set IsClusterResolvedFlag=true and ClusterID for cluster placement
-                        clashZone.IsClusterResolvedFlag = true;
-                        clashZone.ClusterSleeveInstanceId = sleeveId;
-                        clashZone.IsClusteredFlag = true; // Also set IsClusteredFlag column
-                        
-                        // Ensure IsResolvedFlag is also true (generic resolved state)
-                        clashZone.IsResolvedFlag = true;
-                        
-                        // Clear individual sleeve ID if it was set (since it's now a cluster)
-                        clashZone.SleeveInstanceId = -1;
-                        
-                        // 🔥 DIAGNOSTIC: Log flag changes
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone={clashZone.Id} (ID:{clashZone.ClashZoneId}), IsClusterResolvedFlag=true, ClusterSleeveId={sleeveId}\n");
-                    }
-                    else
-                    {
-                        clashZone.IsResolvedFlag = true;
-                        clashZone.SleeveInstanceId = sleeveId;
-                        
-                        // Ensure cluster flags are cleared for individual placement
-                        clashZone.IsClusterResolvedFlag = false;
-                        clashZone.ClusterSleeveInstanceId = -1;
-                        clashZone.IsClusteredFlag = false;
-                    }
+                        else
+                        {
+                            clashZone.IsResolvedFlag = true;
+                            clashZone.SleeveInstanceId = sleeveId;
+                            clashZone.IsClusterResolvedFlag = false;
+                            clashZone.ClusterSleeveInstanceId = -1;
+                            clashZone.IsClusteredFlag = false;
+                        }
 
-                    dbUpdates.Add((
-                        clashZone.Id,
-                        clashZone.ClashZoneId, // ✅ Pass Integer ID for robust update
-                        clashZone.IsResolvedFlag,
-                        clashZone.IsClusterResolvedFlag,
-                        clashZone.IsCombinedResolved,
-                        clashZone.SleeveInstanceId,
-                        clashZone.ClusterSleeveInstanceId,
-                        true, // ✅ UNIFIED: Always keep IsCurrentClash true during placement (Reset only on Refresh)
-                        clashZone.IsClusteredFlag,
-                        isCluster ? clashZone.MarkedForClusterProcess : false, // ✅ FIXED: Reset MarkedForClusterProcess to false for individual sleeves
-                        clashZone.AfterClusterSleevePlacedSleeveInstanceId, // Pass AfterClusterSleeveId
-                        isCluster ? clusterWidth : 0,    // SleeveWidth
-                        isCluster ? clusterHeight : 0,   // SleeveHeight
-                        isCluster ? clusterDiameter : 0  // SleeveDiameter
-                    ));
-                }
+                        dbUpdates.Add((
+                            clashZone.Id,
+                            clashZone.ClashZoneId, 
+                            clashZone.IsResolvedFlag,
+                            clashZone.IsClusterResolvedFlag,
+                            clashZone.IsCombinedResolved,
+                            clashZone.SleeveInstanceId,
+                            clashZone.ClusterSleeveInstanceId,
+                            clashZone.CombinedClusterSleeveInstanceId, // ✅ NEW: Sync combined IDs to snapshots
+                            true, 
+                            clashZone.IsClusteredFlag,
+                            isCluster ? clashZone.MarkedForClusterProcess : false, 
+                            clashZone.AfterClusterSleevePlacedSleeveInstanceId,
+                            isCluster ? clusterWidth : 0,    
+                            isCluster ? clusterHeight : 0,   
+                            isCluster ? clusterDiameter : 0  
+                        ));
+                    }
 
                 if (dbUpdates.Count == 0)
                 {
@@ -261,7 +249,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with {dbUpdates.Count} updates\n");
                 
-                _logger.Info($"📝 BATCH: Flagging {dbUpdates.Count} clash zones as placed (Resetting IsCurrentClash)", "FlagManager");
+                _logger.Info($"📝 BATCH: Flagging {dbUpdates.Count} clash zones as placed (Preserving IsCurrentClash)", "FlagManager");
                 _repository.BatchUpdateFlagsWithCurrentClash(dbUpdates);
                 _logger.Info($"✅ BATCH: Updated flags for {dbUpdates.Count} clash zones", "FlagManager");
                 

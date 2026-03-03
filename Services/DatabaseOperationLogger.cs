@@ -13,7 +13,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class DatabaseOperationLogger
     {
         private static readonly object _lock = new object();
-        private static readonly string _logFilePath = SafeFileLogger.GetLogFilePath("database_operations.log");
 
         /// <summary>
         /// Log a database operation with full details
@@ -25,8 +24,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int rowsAffected = -1,
             string additionalInfo = null)
         {
-            // if (DeploymentConfiguration.DeploymentMode)
-            //     return; // Skip logging in deployment mode
+            if (DeploymentConfiguration.DeploymentMode)
+                return;
 
             lock (_lock)
             {
@@ -58,7 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     logEntry.AppendLine("---");
                     logEntry.AppendLine();
 
-                    System.IO.File.AppendAllText(_logFilePath, logEntry.ToString());
+                    SafeFileLogger.SafeAppendText("database_operations.log", logEntry.ToString());
                 }
                 catch
                 {
@@ -112,7 +111,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     logEntry.AppendLine("---");
                     logEntry.AppendLine();
 
-                    System.IO.File.AppendAllText(_logFilePath, logEntry.ToString());
+                    SafeFileLogger.SafeAppendText("database_operations.log", logEntry.ToString());
                 }
                 catch
                 {
@@ -144,7 +143,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     logEntry.AppendLine("---");
                     logEntry.AppendLine();
 
-                    System.IO.File.AppendAllText(_logFilePath, logEntry.ToString());
+                    SafeFileLogger.SafeAppendText("database_operations.log", logEntry.ToString());
                 }
                 catch
                 {
@@ -172,7 +171,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     logEntry.AppendLine("---");
                     logEntry.AppendLine();
 
-                    System.IO.File.AppendAllText(_logFilePath, logEntry.ToString());
+                    SafeFileLogger.SafeAppendText("database_operations.log", logEntry.ToString());
                 }
                 catch
                 {

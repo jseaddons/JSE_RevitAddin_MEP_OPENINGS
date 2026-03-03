@@ -35,7 +35,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Existence
 
             try
             {
+#if REVIT2023
                 var element = _document.GetElement(new ElementId(sleeveInstanceId));
+#else
+                var element = _document.GetElement(new ElementId((long)sleeveInstanceId));
+#endif
                 if (element == null)
                     return false;
 
@@ -86,7 +90,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Existence
 
             try
             {
+#if REVIT2023
                 var element = _document.GetElement(new ElementId(clusterInstanceId));
+#else
+                var element = _document.GetElement(new ElementId((long)clusterInstanceId));
+#endif
                 if (element == null)
                     return false;
 

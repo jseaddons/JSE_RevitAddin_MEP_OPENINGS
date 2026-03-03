@@ -126,9 +126,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                      UpdateForCurrentDocument(projectRoot);
                                  }
                              } 
-                             catch (Exception ex)
+                             catch (Exception ex2)
                              {
-                                 System.Diagnostics.Debug.WriteLine($"Error resolving project root: {ex.Message}");
+                                 System.Diagnostics.Debug.WriteLine($"Error resolving project root: {ex2.Message}");
                              } 
                         }
                     }

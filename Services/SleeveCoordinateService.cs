@@ -1124,7 +1124,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     var clashZone = new ClashZone
                                     {
+#if REVIT2023
                                         MepElementId = new ElementId((int)mepElementIdLong),
+#else
+                                        MepElementId = new ElementId(mepElementIdLong),
+#endif
                                         MepElementOrientationDirection = node.SelectSingleNode("MepElementOrientationDirection")?.InnerText ?? ""
                                     };
                                     

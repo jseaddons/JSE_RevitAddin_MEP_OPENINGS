@@ -13,7 +13,6 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup;
@@ -106,7 +105,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var instancesForBbox = new List<FamilyInstance>();
                             foreach (int id in clusterInstanceIds)
                             {
+#if REVIT2023
                                 var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId(id)) as FamilyInstance;
+#else
+                                var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId((long)id)) as FamilyInstance;
+#endif
                                 if (elem != null && elem.IsValidObject) instancesForBbox.Add(elem);
                             }
                             if (instancesForBbox.Count > 0)
@@ -1753,7 +1756,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // doc.Regenerate();
                     
                     // ✅ CRITICAL FIX: Refresh instance reference after regeneration
+#if REVIT2023
                     instance = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
+#else
+                    instance = doc.GetElement(new ElementId((long)clusterInstanceId)) as FamilyInstance;
+#endif
                     
                     // ✅ BATCH LOGGING: Only log every 20th cluster
                     if (logDetail && instance != null && instance.IsValidObject)

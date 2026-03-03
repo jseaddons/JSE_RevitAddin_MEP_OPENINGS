@@ -141,6 +141,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// </summary>
         public void GenerateCsvReport(int totalClashZones)
         {
+            if (DeploymentConfiguration.DeploymentMode)
+                return;
+
             try
             {
                 var csv = new StringBuilder();

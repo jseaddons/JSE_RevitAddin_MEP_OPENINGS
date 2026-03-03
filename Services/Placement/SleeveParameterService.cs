@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
@@ -967,26 +967,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// âœ… FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID IMMEDIATELY (not deferred)
+        /// âœ… FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID with correct storage type.
+        /// Writes INTEGER values so Revit does not leave the parameter at 0 for individual sleeves.
         /// </summary>
         public void SetSleeveInstanceId(FamilyInstance instance, ElementId currentSleeveId, bool forceImmediate = false)
         {
-            // âœ… BATCH PATH: Queue directly without LookupParameter (saves 1 Revit API call per sleeve)
+            if (instance == null) return;
+
+            int idValue = currentSleeveId.GetIntegerValue();
+
+            // âœ… BATCH PATH: Queue integer values so FlushDeferredParameters uses param.Set(int)
             if (OptimizationFlags.UseBatchedParameterWrites && !forceImmediate)
             {
                 var targetDict = ActiveBatchDictionary;
                 if (!targetDict.ContainsKey(currentSleeveId))
                     targetDict[currentSleeveId] = new Dictionary<string, object>();
 
-                // Set on both potential parameter names used by different family versions
-                targetDict[currentSleeveId]["SleeveInstanceId"] = currentSleeveId.GetIntegerValue().ToString();
-                targetDict[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.GetIntegerValue().ToString();
+                targetDict[currentSleeveId]["SleeveInstanceId"] = idValue;
+                targetDict[currentSleeveId]["Sleeve Instance ID"] = idValue;
                 return;
             }
 
-            // âœ… IMMEDIATE PATH: Fallback for critical cases or when batching is disabled
-            SetParameter(instance, "SleeveInstanceId", currentSleeveId.GetIntegerValue().ToString(), currentSleeveId, forceImmediate: true);
-            SetParameter(instance, "Sleeve Instance ID", currentSleeveId.GetIntegerValue().ToString(), currentSleeveId, forceImmediate: true);
+            // âœ… IMMEDIATE PATH: Respect underlying storage type (Integer vs String)
+            void SetIntAware(string paramName)
+            {
+                var p = instance.LookupParameter(paramName);
+                if (p == null || p.IsReadOnly) return;
+
+                if (p.StorageType == StorageType.Integer)
+                {
+                    p.Set(idValue);
+                }
+                else
+                {
+                    p.Set(idValue.ToString());
+                }
+            }
+
+            SetIntAware("SleeveInstanceId");
+            SetIntAware("Sleeve Instance ID");
         }
 
         /// <summary>

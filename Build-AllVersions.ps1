@@ -134,8 +134,16 @@ $AllSuccess = $true
 foreach ($result in $BuildResults) {
     if ($result.Status -eq "Success") {
         $dllPath = $result.OutputPath
-        if (Test-Path $dllPath) {
-            $fileInfo = Get-Item $dllPath
+        # Fallback: Nice3point 2025.x outputs directly to bin\config\ root rather than bin\config\config\
+        $configName = $result.Configuration
+        $rootDllPath = "bin\$configName\JSE_RevitAddin_MEP_OPENINGS.dll"
+
+        $foundPath = $null
+        if (Test-Path $dllPath) { $foundPath = $dllPath }
+        elseif (Test-Path $rootDllPath) { $foundPath = $rootDllPath }
+
+        if ($foundPath) {
+            $fileInfo = Get-Item $foundPath
             Write-Success -Message "$($result.Configuration) - $($fileInfo.Length) bytes"
         } else {
             Write-Fail -Message "$($result.Configuration) - DLL not found"

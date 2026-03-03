@@ -367,7 +367,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     try
                     {
+#if REVIT2023
                         var el = doc.GetElement(new ElementId(idInt)) as RevitLinkInstance;
+#else
+                        var el = doc.GetElement(new ElementId((long)idInt)) as RevitLinkInstance;
+#endif
                         if (el != null)
                             resolved.Add(el);
                     }

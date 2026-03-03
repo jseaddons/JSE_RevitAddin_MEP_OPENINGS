@@ -184,7 +184,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Element mepElement = null;
                         
                         // Try active document first
+#if REVIT2023
                         mepElement = document.GetElement(new ElementId(mepElementId));
+#else
+                        mepElement = document.GetElement(new ElementId((long)mepElementId));
+#endif
                         
                         // If not found, try linked files
                         if (mepElement == null)
@@ -198,7 +202,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var linkDoc = linkInstance.GetLinkDocument();
                                 if (linkDoc != null)
                                 {
+#if REVIT2023
                                     mepElement = linkDoc.GetElement(new ElementId(mepElementId));
+#else
+                                    mepElement = linkDoc.GetElement(new ElementId((long)mepElementId));
+#endif
                                     if (mepElement != null) break;
                                 }
                             }
