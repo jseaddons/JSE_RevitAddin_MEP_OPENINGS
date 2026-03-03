@@ -364,7 +364,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 buttonUpdateDb.ToolTip = "Synchronize Database with Model.";
             }
 
-            // 5. DIAGNOSTIC TOOLS GROUP
+            // 5. BW Tagging - launches JSE_T1 SMART Tagging
+            var jseT1DllPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                @"Autodesk\Revit\Addins",
+                this.Application.ControlledApplication.VersionNumber,
+                @"JSE_T1\RevitAddIn1.dll");
+            var bwTaggingButton = panel.AddItem(new PushButtonData(
+                "BWTaggingMEPOpenings",
+                "BW Tagging\nMEP Openings",
+                jseT1DllPath,
+                "JSE_T1.Commands.BWTaggingMEPOpeningsCommand"
+            )) as PushButton;
+            if (bwTaggingButton != null)
+            {
+                bwTaggingButton.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                bwTaggingButton.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                bwTaggingButton.ToolTip = "ver 1.  for sleeve openings only";
+            }
+
+            // 6. DIAGNOSTIC TOOLS GROUP
             var pulldownData = new PulldownButtonData("DiagnosticTools", "Diagnostic\nTools");
             pulldownData.ToolTip = "Access diagnostic and recovery tools.";
             var pulldown = panel.AddItem(pulldownData) as PulldownButton;
