@@ -18,7 +18,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$PSServicePath   = 'C:\Jse_Developments\JSE_Parameter_Service'
+$PSServicePath = 'C:\Jse_Developments\JSE_Parameter_Service'
 $MainProjectPath = 'C:\Jse_Developments\JSE_MEPOPENING_23'
 
 function Write-Step {
@@ -27,7 +27,7 @@ function Write-Step {
 }
 
 function Write-Success { param([string]$M) Write-Host ('  SUCCESS: ' + $M) -ForegroundColor Green }
-function Write-Fail    { param([string]$M) Write-Host ('  FAILED: '  + $M) -ForegroundColor Red }
+function Write-Fail { param([string]$M) Write-Host ('  FAILED: ' + $M) -ForegroundColor Red }
 
 Clear-Host
 Write-Host '======================================================' -ForegroundColor Cyan
@@ -50,9 +50,10 @@ if (-not $SkipParameterService.IsPresent -and -not $SkipMainProject.IsPresent) {
     $choice = Read-Host '  Enter choice (1/2/3/4)'
 
     switch ($choice.Trim()) {
-        '1' { # both - nothing to skip
+        '1' {
+            # both - nothing to skip
         }
-        '2' { $SkipMainProject      = $true }
+        '2' { $SkipMainProject = $true }
         '3' { $SkipParameterService = $true }
         '4' { $SkipParameterService = $true; $SkipMainProject = $true }
         default {
@@ -60,6 +61,33 @@ if (-not $SkipParameterService.IsPresent -and -not $SkipMainProject.IsPresent) {
         }
     }
     Write-Host ''
+}
+
+# ============================================================================
+# Version selection (Interactive)
+# ============================================================================
+$VersionsToBuild = @("2023", "2024", "2025", "2026") # Default: all
+
+if (-not $SkipParameterService.IsPresent -or -not $SkipMainProject.IsPresent) {
+    Write-Host '  Which Revit versions do you want to build?' -ForegroundColor Yellow
+    Write-Host '  (Press ENTER for all, or type specific years like: 2026 or 2023,2024)' -ForegroundColor Gray
+    Write-Host ''
+    $verInput = Read-Host '  Enter versions'
+    
+    if (-not [string]::IsNullOrWhiteSpace($verInput)) {
+        $selectedVers = $verInput.Split(',') | ForEach-Object { $_.Trim() }
+        # Validate - only allow 2023-2026
+        $validVers = $selectedVers | Where-Object { $_ -match "^202(3|4|5|6)$" }
+        
+        if ($validVers.Count -gt 0) {
+            $VersionsToBuild = $validVers
+            Write-Host "  Building versions: $($VersionsToBuild -join ', ')" -ForegroundColor Green
+        }
+        else {
+            Write-Host "  Invalid versions entered. Building ALL versions." -ForegroundColor Yellow
+        }
+        Write-Host ''
+    }
 }
 
 # 0. Global Cleanup
@@ -93,7 +121,7 @@ if ($Clean) {
 
 $TotalSteps = 3
 if ($SkipParameterService) { $TotalSteps-- }
-if ($SkipMainProject)      { $TotalSteps-- }
+if ($SkipMainProject) { $TotalSteps-- }
 
 $CurrentStep = 0
 
@@ -101,11 +129,16 @@ $CurrentStep = 0
 # Helper configs
 # ============================================================================
 $Configs = @(
-    @{ Name = 'Debug R23'; Out = 'net48';          Revit = '2023' },
-    @{ Name = 'Debug R24'; Out = 'net48';          Revit = '2024' },
+    @{ Name = 'Debug R23'; Out = 'net48'; Revit = '2023' },
+    @{ Name = 'Debug R24'; Out = 'net48'; Revit = '2024' },
     @{ Name = 'Debug R25'; Out = 'net8.0-windows'; Revit = '2025' },
     @{ Name = 'Debug R26'; Out = 'net8.0-windows'; Revit = '2026' }
 )
+
+# Apply version filter
+if ($VersionsToBuild -and $VersionsToBuild.Count -lt 4) {
+    $Configs = $Configs | Where-Object { $VersionsToBuild -contains $_.Revit }
+}
 
 # ============================================================================
 # STEP 1: Build JSE_Parameter_Service + copy to deploy
@@ -118,12 +151,11 @@ if (-not $SkipParameterService) {
     Set-Location $PSServicePath
 
     foreach ($c in $Configs) {
-        $config   = $c.Name
-        $out      = $c.Out
+        $config = $c.Name
+        $out = $c.Out
         $revitVer = $c.Revit
 
         Write-Host ('  Building ' + $config + ' (' + $revitVer + ')...') -NoNewline
-        $built = $false
         try {
             $null = dotnet restore JSE_Parameter_Service.csproj -p:Configuration="$config" -v q 2>&1
             if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
@@ -137,10 +169,12 @@ if (-not $SkipParameterService) {
             Write-Host (' FAILED (' + $_ + ')') -ForegroundColor Red
         }
 
-        # Copy DLL to deploy folder - try nested config folder first, then framework subfolder, then config root
+        # Copy DLL to deploy folder - try nested config folder first, then RID subfolder, then framework subfolder, then config root
         $sources = @(
             ($PSServicePath + '\bin\' + $config + '\' + $config + '\JSE_Parameter_Service.dll'),
-            ($PSServicePath + '\bin\' + $config + '\' + $out   + '\JSE_Parameter_Service.dll'),
+            ($PSServicePath + '\bin\' + $config + '\' + $out + '\win-x64\JSE_Parameter_Service.dll'),
+            ($PSServicePath + '\bin\' + $config + '\win-x64\' + '\JSE_Parameter_Service.dll'),
+            ($PSServicePath + '\bin\' + $config + '\' + $out + '\JSE_Parameter_Service.dll'),
             ($PSServicePath + '\bin\' + $config + '\JSE_Parameter_Service.dll')
         )
 
@@ -175,8 +209,14 @@ if (-not $SkipMainProject) {
     Write-Host ''
 
     Set-Location $MainProjectPath
+    
+    $buildParams = @{}
+    if ($Clean) { $buildParams.Clean = $true }
+    if ($VersionsToBuild -and $VersionsToBuild.Count -lt 4) {
+        $buildParams.Versions = $VersionsToBuild
+    }
 
-    & ($MainProjectPath + '\Build-AllVersions.ps1')
+    & ($MainProjectPath + '\Build-AllVersions.ps1') @buildParams
 
     if ($LASTEXITCODE -ne 0) {
         Write-Fail 'Main project build failed'
@@ -221,9 +261,21 @@ $VerifyPaths = @(
     'deploy\2026\JSE_MEP_OPENINGS\Nice3point.Revit.Toolkit.dll'
 )
 
+# Only verify versions we actually targeted/built
+if ($VersionsToBuild -and $VersionsToBuild.Count -lt 4) {
+    $VerifyPaths = $VerifyPaths | Where-Object { 
+        $path = $_
+        $match = $false
+        foreach ($v in $VersionsToBuild) {
+            if ($path.Contains("deploy\$v\")) { $match = $true; break }
+        }
+        $match
+    }
+}
+
 $AllFound = $true
 foreach ($path in $VerifyPaths) {
-    $fullPath    = Join-Path $MainProjectPath $path
+    $fullPath = Join-Path $MainProjectPath $path
     $displayPath = if ($path.StartsWith('deploy\')) { $path.Substring(7) } else { $path }
 
     Write-Host ('  Checking ' + $displayPath + '...') -NoNewline

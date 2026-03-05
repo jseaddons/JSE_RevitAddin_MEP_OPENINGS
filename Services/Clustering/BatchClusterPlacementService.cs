@@ -562,14 +562,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // RECOVERY clusters: ClusterInstanceId > 0 - check existence, re-place if deleted from Revit
                 // Previously only queried ClusterInstanceId > 0, which excluded all new clusters!
                 cmd.CommandText = @"
-                    SELECT 
-                        cs.ClusterGUID, 
-                        cs.PlacementX, cs.PlacementY, cs.PlacementZ, 
-                        cs.ClusterWidth, cs.ClusterHeight, cs.ClusterDepth, 
+                    SELECT
+                        cs.ClusterGUID,
+                        cs.PlacementX, cs.PlacementY, cs.PlacementZ,
+                        cs.ClusterWidth, cs.ClusterHeight, cs.ClusterDepth,
                         cs.RotationAngleRad,
-                        cs.HostElementId, cs.HostType, cs.HostOrientation, 
+                        cs.HostElementId, cs.HostType, cs.HostOrientation,
                         cs.FamilyName, cs.ConstituentZoneGuids,
-                        cs.ClusterInstanceId
+                        cs.ClusterInstanceId,
+                        cs.IsCrossCategory
                     FROM ClusterSleeves_v2 cs
                     WHERE cs.Status IN ('Pending', 'Placed')";
                 
@@ -619,7 +620,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     HostType = reader["HostType"]?.ToString(),
                                     HostOrientation = reader["HostOrientation"]?.ToString(),
                                     FamilyName = reader["FamilyName"]?.ToString() ?? "",
-                                    ConstituentZoneGuids = reader["ConstituentZoneGuids"]?.ToString() ?? ""
+                                    ConstituentZoneGuids = reader["ConstituentZoneGuids"]?.ToString() ?? "",
+                                    IsCrossCategory = ReadLong(reader, "IsCrossCategory") == 1
                                 });
                             }
                             else
@@ -631,9 +633,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     needsPlacementCount++;
                                     // ✅ BATCH LOGGING: Log every 20th only
                                     if (needsPlacementCount % batchLogIntervalClusters == 1 || needsPlacementCount <= 1)
-                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        SafeFileLogger.SafeAppendText("batch_v2.log",
                                             $"[{DateTime.Now:HH:mm:ss}] 🔍 PATH 1 RECOVERY: Cluster {clusterGuid} [ID={clusterInstanceId}] deleted from Revit - will re-place (count={needsPlacementCount})\n");
-                                    
+
                                     list.Add(new BatchClusterData
                                     {
                                         ClusterGUID = clusterGuid,
@@ -648,7 +650,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                         HostType = reader["HostType"]?.ToString(),
                                         HostOrientation = reader["HostOrientation"]?.ToString(),
                                         FamilyName = reader["FamilyName"]?.ToString() ?? "",
-                                        ConstituentZoneGuids = reader["ConstituentZoneGuids"]?.ToString() ?? ""
+                                        ConstituentZoneGuids = reader["ConstituentZoneGuids"]?.ToString() ?? "",
+                                        IsCrossCategory = ReadLong(reader, "IsCrossCategory") == 1
                                     });
                                 }
                                 else
@@ -1205,7 +1208,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     Corner3Z = corners.corner3.Z,
                     Corner4X = corners.corner4.X,
                     Corner4Y = corners.corner4.Y,
-                    Corner4Z = corners.corner4.Z
+                    Corner4Z = corners.corner4.Z,
+                    IsCrossCategory = cluster.IsCrossCategory
                 };
                 clusterSaveDataList.Add(saveData);
                 if (!string.IsNullOrEmpty(cluster.ClusterGUID))
@@ -2334,6 +2338,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// ✅ CRITICAL FIX: Update SleeveSnapshots table with ClusterInstanceId for all constituent zones.
         /// This links the GUID-based refresh snapshots to the placed cluster sleeves.
         /// Called during PersistClusterPlacementToDb transaction.
+        /// 
+        /// ✅ BUG FIX (2025-03-05): Each constituent zone gets its OWN snapshot row with its SPECIFIC parameters.
+        /// Previously, all zones in a cluster got the same aggregated parameters.
         /// </summary>
         private void UpdateSleeveSnapshotsWithClusterId(
             ClusterPersistenceData data, 
@@ -2348,6 +2355,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 $"[{DateTime.Now:HH:mm:ss}] 📸 SNAPSHOT UPDATE: Updating SleeveSnapshots with ClusterInstanceId for {data.PlacedIdInts.Count} clusters\n");
 
             int updatedCount = 0;
+            int insertedCount = 0;
             int skippedCount = 0;
 
             var snapshotUpdates = new List<(string CleanGuid, int ClusterId)>();
@@ -2416,18 +2424,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         
                         caseBuilder.Append("END");
 
+                        // 1. UPDATE existing snapshot rows (e.g. pipe zones placed individually first)
                         cmd.CommandText = $@"
-                            UPDATE SleeveSnapshots 
+                            UPDATE SleeveSnapshots
                             SET ClusterInstanceId = {caseBuilder},
                                 SourceType = 'Cluster',
                                 UpdatedAt = CURRENT_TIMESTAMP
                             WHERE {cleanCol} IN ({inClauseBuilder})";
-                        
+
                         int rows = cmd.ExecuteNonQuery();
                         updatedCount += rows;
-                        
+
                         SafeFileLogger.SafeAppendText("placement_performance.log",
-                            $"[{DateTime.Now:HH:mm:ss}]   ✅ Updated {rows} snapshots in batch (targets: {batch.Count})\n");
+                            $"[{DateTime.Now:HH:mm:ss}]   ✅ Updated {rows} existing snapshots in batch (targets: {batch.Count})\n");
                     }
                 }
                 catch (Exception ex)
@@ -2437,8 +2446,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
             }
 
+            // ✅ BUG FIX: INSERT one row PER zone with that zone's SPECIFIC parameters
+            // This ensures pipe zones get pipe params, duct zones get duct params, etc.
+            foreach (var (zoneGuid, clusterId) in snapshotUpdates)
+            {
+                try
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = trans;
+                        string cleanCol = "UPPER(REPLACE(REPLACE(ClashZoneGuid, '{{', ''), '}}', ''))";
+                        
+                        // Check if this zone already has a snapshot
+                        cmd.CommandText = $@"
+                            SELECT COUNT(*) FROM SleeveSnapshots 
+                            WHERE {cleanCol} = @Guid";
+                        cmd.Parameters.AddWithValue("@Guid", zoneGuid);
+                        
+                        var existingCount = Convert.ToInt32(cmd.ExecuteScalar());
+                        
+                        if (existingCount > 0)
+                        {
+                            // Already exists - was updated in the batch UPDATE above
+                            continue;
+                        }
+                        
+                        // ✅ CRITICAL: INSERT one row for THIS specific zone with ITS specific parameters
+                        cmd.CommandText = $@"
+                            INSERT INTO SleeveSnapshots (
+                                ClusterInstanceId, SourceType,
+                                ClashZoneGuid, MepParametersJson, HostParametersJson,
+                                CreatedAt, UpdatedAt
+                            )
+                            SELECT
+                                @ClusterId,
+                                'Cluster',
+                                ClashZoneGuid,
+                                MepParameterValuesJson,
+                                HostParameterValuesJson,
+                                CURRENT_TIMESTAMP,
+                                CURRENT_TIMESTAMP
+                            FROM ClashZones
+                            WHERE {cleanCol} = @Guid";
+                        
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@ClusterId", clusterId);
+                        cmd.Parameters.AddWithValue("@Guid", zoneGuid);
+                        
+                        int rows = cmd.ExecuteNonQuery();
+                        insertedCount += rows;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_performance.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   ✅ Inserted snapshot for zone {zoneGuid} in cluster {clusterId}\n");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to insert snapshot for zone {zoneGuid}: {ex.Message}\n");
+                }
+            }
+
             SafeFileLogger.SafeAppendText("batch_v2.log",
-                $"[{DateTime.Now:HH:mm:ss}] 📸 SNAPSHOT UPDATE COMPLETE: {updatedCount} snapshots updated, {skippedCount} skipped\n");
+                $"[{DateTime.Now:HH:mm:ss}] 📸 SNAPSHOT UPDATE COMPLETE: {updatedCount} updated, {insertedCount} inserted (cross-category), {skippedCount} skipped\n");
         }
 
         /// <summary>
@@ -2560,5 +2633,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         public string? MepElementLevelName { get; set; } // ✅ Added for level-based placement
         public string FamilyName { get; set; } = string.Empty;
         public string ConstituentZoneGuids { get; set; } = string.Empty;
+        public bool IsCrossCategory { get; set; }
     }
 }

@@ -140,6 +140,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                         if (result != null)
                         {
+                            // ✅ CROSS-CATEGORY FLAG: detect mixed MepElementCategory in this cluster
+                            var allZones = clusterList
+                                .Select(x => x is ClashZoneWorkItem wi ? wi.ClashZone : (ClashZone)x)
+                                .ToList();
+                            var distinctCats = allZones
+                                .Select(z => (z.MepElementCategory ?? "Unknown").Trim())
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+                            if (distinctCats.Count > 1)
+                            {
+                                result.IsCrossCategory = true;
+                                SafeFileLogger.SafeAppendText("batch_v2.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ CROSS-CATEGORY CLUSTER: GUID={result.ClusterGUID.Substring(0, 8)}, " +
+                                    $"Categories=[{string.Join(", ", distinctCats)}], Zones={allZones.Count} → IsCrossCategory=true\n");
+                            }
                             validClusters.Add(result);
                         }
                     }
@@ -374,7 +389,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     var r = chunk[k];
                                     string p = $"@p{k}_"; // Prefix for this row's params
                                     
-                                    valueClauses.Add($"({p}guid, {p}batch, {p}x, {p}y, {p}z, {p}w, {p}h, {p}d, {p}rot, {p}host, {p}htype, {p}horient, {p}cat, {p}fam, {p}zones, {p}combo, {p}filter, {p}status, {p}valid)");
+                                    valueClauses.Add($"({p}guid, {p}batch, {p}x, {p}y, {p}z, {p}w, {p}h, {p}d, {p}rot, {p}host, {p}htype, {p}horient, {p}cat, {p}fam, {p}zones, {p}combo, {p}filter, {p}status, {p}valid, {p}crosscat)");
                                     
                                     // 🔍 DIAGNOSTIC: Log what we're about to INSERT (ClusterBatchId = timestamp-style, same for whole batch)
                                     SafeFileLogger.SafeAppendText("batch_v2.log", 
@@ -401,18 +416,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     cmd.Parameters.AddWithValue($"{p}filter", r.FilterId);
                                     cmd.Parameters.AddWithValue($"{p}status", r.Status ?? "Pending");
                                     cmd.Parameters.AddWithValue($"{p}valid", r.ValidationStatus ?? "Valid");
+                                    cmd.Parameters.AddWithValue($"{p}crosscat", r.IsCrossCategory ? 1 : 0);
                                 }
-                                
-                                try 
+
+                                try
                                 {
                                     // BATCH MODE: Execute the big INSERT string
                                     // This is the "Fast Path" that mimics "Slow Mode" but in one go
                                     cmd.CommandText = @"
                                     INSERT INTO ClusterSleeves_v2 (
-                                        ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
+                                        ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ,
                                         ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
-                                        HostElementId, HostType, HostOrientation, Category, FamilyName, 
-                                        ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
+                                        HostElementId, HostType, HostOrientation, Category, FamilyName,
+                                        ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus,
+                                        IsCrossCategory
                                     ) VALUES " + string.Join(",", valueClauses) + ";";
 
                                     int rowsAffected = cmd.ExecuteNonQuery();
@@ -864,5 +881,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         public int FilterId { get; set; }
         public string? Status { get; set; }
         public string? ValidationStatus { get; set; }
+        /// <summary>
+        /// True when the cluster contains zones from more than one MepElementCategory
+        /// (e.g. Pipes + Cable Trays in the same filter).  The parameter service will
+        /// treat this cluster as a Combined sleeve and assign the "MEP" prefix instead
+        /// of a single-discipline prefix.
+        /// </summary>
+        public bool IsCrossCategory { get; set; }
     }
 }

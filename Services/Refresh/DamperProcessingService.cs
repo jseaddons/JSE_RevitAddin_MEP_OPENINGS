@@ -1774,10 +1774,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 mepParameters?.TryGetValue("System Name", out mepSystemName);
                 mepParameters?.TryGetValue("System Abbreviation", out mepSystemAbbreviation);
                 
-                _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: From params - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
+                _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id.GetIntegerValue()}: From params - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
                 SafeFileLogger.SafeAppendText(
                     "damper_processing.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-STEP] Element {damper.Id.IntegerValue}: From params - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-STEP] Element {damper.Id.GetIntegerValue()}: From params - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
                 
                 // If not found in parameters, use connector traversal
                 if (string.IsNullOrEmpty(mepSystemType) && string.IsNullOrEmpty(mepSystemName))
@@ -1790,17 +1790,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: From connectors - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
                     SafeFileLogger.SafeAppendText(
                         "damper_processing.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-STEP] Element {damper.Id.IntegerValue}: From connectors - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-STEP] Element {damper.Id.GetIntegerValue()}: From connectors - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
                 }
                 else
                 {
                     _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: Using params (not empty)");
                 }
                 
-                _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: FINAL values - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
+                _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id.GetIntegerValue()}: FINAL values - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
                 SafeFileLogger.SafeAppendText(
                     "damper_processing.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-FINAL] Element {damper.Id.IntegerValue}: FINAL - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-FINAL] Element {damper.Id.GetIntegerValue()}: FINAL - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
 
                 var swFlag = System.Diagnostics.Stopwatch.StartNew();
 

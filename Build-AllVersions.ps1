@@ -12,7 +12,8 @@
 [CmdletBinding()]
 param(
     [switch]$Clean,
-    [switch]$Publish
+    [switch]$Publish,
+    [string[]]$Versions # Optional: specify which versions to build (e.g., "2023", "2026")
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +25,14 @@ $Configurations = @(
     @{ Name = "Debug R25"; Framework = "net8.0-windows"; RevitVersion = "2025" },
     @{ Name = "Debug R26"; Framework = "net8.0-windows"; RevitVersion = "2026" }
 )
+
+# Apply version filter if specified
+if ($Versions -and $Versions.Count -gt 0) {
+    $Configurations = $Configurations | Where-Object { $Versions -contains $_.RevitVersion }
+    if ($Configurations.Count -eq 0) {
+        Write-Warning "No valid configurations found for versions: $($Versions -join ', ')"
+    }
+}
 
 function Write-Step {
     param([int]$Step, [int]$Total, [string]$Message)
@@ -55,7 +64,8 @@ if ($Clean) {
     Remove-Item -Path "bin" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "obj" -Recurse -Force -ErrorAction SilentlyContinue
     Write-Success -Message "Cleaned all build artifacts"
-} else {
+}
+else {
     $sharedFiles = @("obj\project.assets.json", "obj\project.nuget.cache")
     foreach ($file in $sharedFiles) {
         if (Test-Path $file) {
@@ -109,18 +119,18 @@ foreach ($config in $Configurations) {
         
         $BuildResults += [PSCustomObject]@{
             Configuration = $configName
-            Framework = $framework
-            Status = "Success"
-            OutputPath = "bin\$configName\$configName\JSE_RevitAddin_MEP_OPENINGS.dll"
+            Framework     = $framework
+            Status        = "Success"
+            OutputPath    = "bin\$configName\$configName\JSE_RevitAddin_MEP_OPENINGS.dll"
         }
     }
     catch {
         Write-Fail -Message "$_"
         $BuildResults += [PSCustomObject]@{
             Configuration = $configName
-            Framework = $framework
-            Status = "Failed"
-            Error = $_.Exception.Message
+            Framework     = $framework
+            Status        = "Failed"
+            Error         = $_.Exception.Message
         }
     }
     Write-Host ""
@@ -134,22 +144,27 @@ $AllSuccess = $true
 foreach ($result in $BuildResults) {
     if ($result.Status -eq "Success") {
         $dllPath = $result.OutputPath
-        # Fallback: Nice3point 2025.x outputs directly to bin\config\ root rather than bin\config\config\
         $configName = $result.Configuration
         $rootDllPath = "bin\$configName\JSE_RevitAddin_MEP_OPENINGS.dll"
+        $ridDllPath = "bin\$configName\$($result.Framework)\win-x64\JSE_RevitAddin_MEP_OPENINGS.dll"
+        $ridRootPath = "bin\$configName\win-x64\JSE_RevitAddin_MEP_OPENINGS.dll"
 
         $foundPath = $null
         if (Test-Path $dllPath) { $foundPath = $dllPath }
         elseif (Test-Path $rootDllPath) { $foundPath = $rootDllPath }
+        elseif (Test-Path $ridDllPath) { $foundPath = $ridDllPath }
+        elseif (Test-Path $ridRootPath) { $foundPath = $ridRootPath }
 
         if ($foundPath) {
             $fileInfo = Get-Item $foundPath
             Write-Success -Message "$($result.Configuration) - $($fileInfo.Length) bytes"
-        } else {
+        }
+        else {
             Write-Fail -Message "$($result.Configuration) - DLL not found"
             $AllSuccess = $false
         }
-    } else {
+    }
+    else {
         Write-Fail -Message "$($result.Configuration) - $($result.Error)"
         $AllSuccess = $false
     }
@@ -174,7 +189,8 @@ if ($AllSuccess) {
     Write-Host "  3. Build the installer with Inno Setup"
     Write-Host ""
     exit 0
-} else {
+}
+else {
     Write-Host "Status: BUILD FAILED" -ForegroundColor Red
     Write-Host ""
     Write-Host "Troubleshooting:" -ForegroundColor Yellow

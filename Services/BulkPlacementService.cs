@@ -846,7 +846,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone.SleevePlacementActiveZ = locPt.Point.Z;
 
 #if REVIT2023
-                        zone.SleeveInstanceId = element.Id.IntegerValue;
+                        zone.SleeveInstanceId = element.Id.GetIntegerValue();
 #else
                         zone.SleeveInstanceId = element.Id.Value;
 #endif

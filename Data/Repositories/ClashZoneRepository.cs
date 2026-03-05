@@ -3875,92 +3875,82 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
-                int? sleeveInstanceId = isCluster ? (int?)null : (int?)groupId;
-                int? clusterInstanceId = isCluster ? (int?)groupId : (int?)null;
-
-                // ✅ DETERMINISTIC GUID: For individual sleeves, use the zone's Id (deterministic GUID)
-                // For clusters, use the first zone's GUID as the primary identifier
-                // ✅ CRITICAL FIX: Ensure GUID matches what's in ClashZones table by querying the database
-                string clashZoneGuidString = null;
-
-                if (isCluster && clusterInstanceId.HasValue && clusterInstanceId.Value > 0)
+                // ✅ BUG FIX (2025-03-05): For clusters, create SEPARATE snapshots per zone (not one aggregated snapshot)
+                // This ensures each zone's specific parameters are preserved (pipe zones get pipe params, etc.)
+                if (isCluster)
                 {
-                    // ✅ For cluster sleeves, get GUID from ClashZones table where ClusterInstanceId matches
-                    // This ensures the GUID in SleeveSnapshots matches what's actually in ClashZones table
-                    using (var guidCmd = _context.Connection.CreateCommand())
+                    // For clusters: Create ONE snapshot per zone with that zone's specific parameters
+                    foreach (var zone in zones)
                     {
-                        guidCmd.Transaction = transaction;
-                        guidCmd.CommandText = @"
-                            SELECT ClashZoneGuid FROM ClashZones 
-                            WHERE ClusterInstanceId = @ClusterInstanceId 
-                              AND ClashZoneGuid IS NOT NULL 
-                              AND ClashZoneGuid != ''
-                            LIMIT 1";
-                        guidCmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId.Value);
-                        var guidResult = guidCmd.ExecuteScalar();
-                        if (guidResult != null && guidResult != DBNull.Value)
+                        // Get this zone's specific parameters (NOT aggregated)
+                        var zoneMepParams = GetZoneSpecificParameters(zone);
+                        var zoneHostParams = GetZoneSpecificHostParameters(zone);
+
+                        var zoneMepElementId = zone.MepElementIdValue > 0 ? new List<int> { (int)zone.MepElementIdValue } : new List<int>();
+                        var zoneHostElementId = zone.StructuralElementIdValue > 0 ? new List<int> { (int)zone.StructuralElementIdValue } : new List<int>();
+                        var zoneSourceDocKey = !string.IsNullOrWhiteSpace(zone.SourceDocKey) ? new List<string> { zone.SourceDocKey } : new List<string>();
+                        var zoneHostDocKey = !string.IsNullOrWhiteSpace(zone.HostDocKey) ? new List<string> { zone.HostDocKey } : new List<string>();
+
+                        string zoneGuidString = zone.Id.ToString().ToUpperInvariant();
+
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            clashZoneGuidString = guidResult.ToString().ToUpperInvariant().Trim();
+                            _logger($"[SQLite] [UPSERT-DEBUG] Cluster zone snapshot: ZoneId={zone.Id}, ClusterId={groupId}, Category={zone.MepElementCategory}, MepParams={zoneMepParams.Count}");
                         }
-                    }
-                }
 
-                // ✅ Fallback: Use first zone's GUID if database lookup failed or for individual sleeves
-                if (string.IsNullOrEmpty(clashZoneGuidString))
-                {
-                    clashZoneGuidString = zones.FirstOrDefault()?.Id.ToString().ToUpperInvariant();
-                }
-
-                // ✅ CRITICAL DEBUG: Log GUID extraction for diagnostic purposes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    _logger($"[SQLite] [UPSERT-DEBUG] Attempting upsert with ClashZoneGuid='{clashZoneGuidString ?? "NULL"}', SourceType='{(isCluster ? "Cluster" : "Individual")}', GroupId={groupId}, ClusterInstanceId={clusterInstanceId?.ToString() ?? "NULL"}, SleeveInstanceId={sleeveInstanceId?.ToString() ?? "NULL"}, GUIDSource='{(isCluster && clusterInstanceId.HasValue ? "DB" : "Zone.Id")}'");
-
-                    // ✅ DIAGNOSTIC: Check if existing snapshot exists before upsert
-                    if (isCluster && clusterInstanceId.HasValue && clusterInstanceId.Value > 0)
-                    {
-                        using (var checkCmd = _context.Connection.CreateCommand())
-                        {
-                            checkCmd.Transaction = transaction;
-                            checkCmd.CommandText = "SELECT SnapshotId, ClashZoneGuid FROM SleeveSnapshots WHERE ClusterInstanceId = @ClusterInstanceId LIMIT 1";
-                            checkCmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId.Value);
-                            using (var reader = checkCmd.ExecuteReader())
+                        UpsertSleeveSnapshot(
+                            transaction,
+                            new SleeveSnapshot
                             {
-                                if (reader.Read())
-                                {
-                                    var existingId = reader.GetInt32(0);
-                                    var existingGuid = reader.IsDBNull(1) ? "NULL" : reader.GetString(1);
-                                    _logger($"[SQLite] [UPSERT-DEBUG] ✅ Found EXISTING snapshot: SnapshotId={existingId}, ExistingGuid='{existingGuid}', NewGuid='{clashZoneGuidString ?? "NULL"}' - Should UPDATE, not INSERT");
-                                }
-                                else
-                                {
-                                    _logger($"[SQLite] [UPSERT-DEBUG] ⚠️ No existing snapshot found for ClusterInstanceId={clusterInstanceId.Value} - Will INSERT new row");
-                                }
-                            }
-                        }
+                                SleeveInstanceId = null,
+                                ClusterInstanceId = (int)groupId,
+                                SourceType = "Cluster",
+                                FilterId = filterId > 0 ? (int?)filterId : null,
+                                ComboId = comboId > 0 ? (int?)comboId : null,
+                                MepElementIdsJson = SerializeList(zoneMepElementId),
+                                HostElementIdsJson = SerializeList(zoneHostElementId),
+                                MepParametersJson = SerializeDictionary(zoneMepParams),
+                                HostParametersJson = SerializeDictionary(zoneHostParams),
+                                SourceDocKeysJson = SerializeList(zoneSourceDocKey),
+                                HostDocKeysJson = SerializeList(zoneHostDocKey),
+                                ClashZoneGuid = zoneGuidString,
+                                UpdatedAt = DateTime.UtcNow
+                            });
                     }
                 }
+                else
+                {
+                    // For individual sleeves: Keep existing behavior (one snapshot per sleeve)
+                    int? sleeveInstanceId = (int?)groupId;
+                    string clashZoneGuidString = zones.FirstOrDefault()?.Id.ToString().ToUpperInvariant();
 
-                UpsertSleeveSnapshot(
-                    transaction,
-                    new SleeveSnapshot
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        SleeveInstanceId = sleeveInstanceId,
-                        ClusterInstanceId = clusterInstanceId,
-                        SourceType = isCluster ? "Cluster" : "Individual",
-                        FilterId = filterId > 0 ? (int?)filterId : null,       // ✅ FK-SAFE: NULL instead of -1
-                        ComboId = comboId > 0 ? (int?)comboId : null,          // ✅ FK-SAFE: NULL instead of -1
-                        MepElementIdsJson = SerializeList(mepElementIds),
-                        HostElementIdsJson = SerializeList(hostElementIds),
-                        MepParametersJson = SerializeDictionary(mepParams),
-                        HostParametersJson = SerializeDictionary(hostParams),
-                        SourceDocKeysJson = SerializeList(sourceDocKeys),
-                        HostDocKeysJson = SerializeList(hostDocKeys),
-                        ClashZoneGuid = clashZoneGuidString ?? string.Empty, // ✅ DETERMINISTIC: Save ClashZoneGuid from zone.Id
-                        UpdatedAt = DateTime.UtcNow
-                    });
+                        _logger($"[SQLite] [UPSERT-DEBUG] Individual sleeve snapshot: ZoneId={clashZoneGuidString}, SleeveId={groupId}");
+                    }
+
+                    UpsertSleeveSnapshot(
+                        transaction,
+                        new SleeveSnapshot
+                        {
+                            SleeveInstanceId = sleeveInstanceId,
+                            ClusterInstanceId = null,
+                            SourceType = "Individual",
+                            FilterId = filterId > 0 ? (int?)filterId : null,
+                            ComboId = comboId > 0 ? (int?)comboId : null,
+                            MepElementIdsJson = SerializeList(mepElementIds),
+                            HostElementIdsJson = SerializeList(hostElementIds),
+                            MepParametersJson = SerializeDictionary(mepParams),
+                            HostParametersJson = SerializeDictionary(hostParams),
+                            SourceDocKeysJson = SerializeList(sourceDocKeys),
+                            HostDocKeysJson = SerializeList(hostDocKeys),
+                            ClashZoneGuid = clashZoneGuidString ?? string.Empty,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                }
             }
         }
+        
 
         private void UpsertSleeveSnapshot(SQLiteTransaction transaction, SleeveSnapshot snapshot)
         {
@@ -4620,6 +4610,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return "[]";
 
             return JsonSerializer.Serialize(materialized);
+        }
+
+        /// <summary>
+        /// ✅ BUG FIX (2025-03-05): Gets zone-specific MEP parameters (NOT aggregated).
+        /// Used for creating separate snapshot rows per zone in clusters.
+        /// </summary>
+        private Dictionary<string, string> GetZoneSpecificParameters(ClashZone zone)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            
+            if (zone?.MepParameterValues == null)
+                return result;
+            
+            foreach (var kv in zone.MepParameterValues)
+            {
+                if (kv == null || string.IsNullOrWhiteSpace(kv.Key))
+                    continue;
+                    
+                var key = kv.Key.Trim();
+                var value = kv.Value?.Trim() ?? string.Empty;
+                
+                // Skip empty values except for essential parameters
+                bool keepEmpty = key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                key.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
+                                key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase);
+                
+                if (string.IsNullOrEmpty(value) && !keepEmpty)
+                    continue;
+                    
+                result[key] = value;
+            }
+            
+            // Ensure Size parameter is included
+            if (!result.ContainsKey("Size") && !string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+            {
+                result["Size"] = zone.MepElementSizeParameterValue.Trim();
+            }
+            
+            // Ensure MEP_ElementId is included
+            if (!result.ContainsKey("MEP_ElementId") && zone.MepElementId != null && zone.MepElementId.GetIntegerValue() > 0)
+            {
+                result["MEP_ElementId"] = zone.MepElementId.GetIntegerValue().ToString();
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// ✅ BUG FIX (2025-03-05): Gets zone-specific Host parameters (NOT aggregated).
+        /// Used for creating separate snapshot rows per zone in clusters.
+        /// </summary>
+        private Dictionary<string, string> GetZoneSpecificHostParameters(ClashZone zone)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            
+            if (zone?.HostParameterValues == null)
+                return result;
+            
+            foreach (var kv in zone.HostParameterValues)
+            {
+                if (kv == null || string.IsNullOrWhiteSpace(kv.Key))
+                    continue;
+                    
+                var key = kv.Key.Trim();
+                var value = kv.Value?.Trim() ?? string.Empty;
+                
+                if (string.IsNullOrEmpty(value))
+                    continue;
+                    
+                result[key] = value;
+            }
+            
+            return result;
         }
 
         private static (double angleToXRad, double angleToXDeg, double angleToYRad, double angleToYDeg) ComputePlanarOrientationAngles(

@@ -44,6 +44,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // ✅ PERSISTENCE FIX: Save Family Name for validation
         public string SleeveFamilyName { get; set; }
 
+        public bool IsCrossCategory { get; set; }
+        public string MepSystemType { get; set; }
+
         // ✅ CORNER PERISISTENCE (Added for proper cluster sizing)
         public double Corner1X { get; set; }
         public double Corner1Y { get; set; }
@@ -1079,12 +1082,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 HostType, HostOrientation, Category,
                                 ValidationStatus, ValidationMessage,
                                 ClashZoneIdsJson, ConstituentZoneGuids, ClashZoneGuids,
-                                MepSizes, MepSystemNames, MepServiceTypes, MepElementIds,
+                                MepSizes, MepSystemNames, MepServiceTypes, MepSystemType, MepElementIds,
                                 Corner1X, Corner1Y, Corner1Z,
                                 Corner2X, Corner2Y, Corner2Z,
                                 Corner3X, Corner3Y, Corner3Z,
                                 Corner4X, Corner4Y, Corner4Z,
                                 SleeveFamilyName,
+                                IsCrossCategory,
                                 CalculatedAt, PlacedAt, Status
                             ) VALUES (
                                 @ClusterInstanceId, @ComboId, @FilterId, @ClusterGuid, @ClusterBatchId,
@@ -1094,12 +1098,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 @HostType, @HostOrientation, @Category,
                                 'Valid', '',
                                 @ClashZoneIdsJson, @ClashZoneGuids, @ClashZoneGuids,
-                                @MepSizes, @MepSystemNames, @MepServiceTypes, @MepElementIds,
+                                @MepSizes, @MepSystemNames, @MepServiceTypes, @MepSystemType, @MepElementIds,
                                 @Corner1X, @Corner1Y, @Corner1Z,
                                 @Corner2X, @Corner2Y, @Corner2Z,
                                 @Corner3X, @Corner3Y, @Corner3Z,
                                 @Corner4X, @Corner4Y, @Corner4Z,
                                 @SleeveFamilyName,
+                                @IsCrossCategory,
                                 CURRENT_TIMESTAMP,
                                 CASE WHEN @ClusterInstanceId > 0 THEN CURRENT_TIMESTAMP ELSE NULL END,
                                 CASE WHEN @ClusterInstanceId > 0 THEN 'Placed' ELSE 'Pending' END
@@ -1129,6 +1134,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@MepServiceTypes", mepServiceTypes ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@MepSystemType", cluster.MepSystemType ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@MepElementIds", mepElementIds ?? (object)DBNull.Value);
 
                         // ✅ CORNERS: Add in exact order
@@ -1147,6 +1153,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                         // ✅ FAMILY NAME: Add family name explicitly
                         cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@IsCrossCategory", cluster.IsCrossCategory ? 1 : 0);
 
                         // 🔥 DEBUG: Log before execution
                         try

@@ -46,7 +46,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 List<ClashZone> zones = new List<ClashZone>();
 
                 // Determine if this is a cluster or combined sleeve
-                bool isCombined = IsCombinedSleeve(sleeve);
+                bool isCombined = IsCombinedSleeve(sleeve)
+                                  || IsClusterWithCrossCategories(sleeveId, sharedContext);
 
                 if (isCombined)
                 {
@@ -109,6 +110,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             var familyName = sleeve.Symbol?.FamilyName ?? string.Empty;
             return familyName.Contains("Combined", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Returns true if the cluster sleeve has IsCrossCategory=1 in ClusterSleeves_v2,
+        /// meaning it contains zones from more than one MEP category (e.g. Pipes + Cable Trays).
+        /// Such clusters are treated as combined sleeves for prefix resolution → "MEP" prefix.
+        /// </summary>
+        private bool IsClusterWithCrossCategories(int sleeveId, SleeveDbContext context)
+        {
+            try
+            {
+                using (var cmd = context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT IsCrossCategory FROM ClusterSleeves_v2
+                        WHERE ClusterInstanceId = @Id
+                        LIMIT 1";
+                    cmd.Parameters.AddWithValue("@Id", sleeveId);
+                    var val = cmd.ExecuteScalar();
+                    return val != null && val != DBNull.Value && Convert.ToInt32(val) == 1;
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>

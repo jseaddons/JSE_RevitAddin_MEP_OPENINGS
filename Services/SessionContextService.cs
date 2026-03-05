@@ -41,9 +41,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _logger($"[SessionContext] 0. Cleared ReadyForPlacement for {resetReady} zones in selected scope.");
             }
 
-            // STEP 1: RESET — all zones (flag management independent of filters; e.g. Electrical can have Ducts)
-            _logger("[SessionContext] 1. Resetting IsCurrentClashFlag for all zones...");
-            _repository.ResetIsCurrentClashFlag();
+            // STEP 1: RESET — scoped to current filter only, so cross-filter zones reset by VerifyExistingSleevesAndResetFlags
+            // retain their IsCurrentClashFlag=1 state (filter-independent resolved flag fix).
+            _logger("[SessionContext] 1. Resetting IsCurrentClashFlag for current filter scope only (cross-filter zones preserved)...");
+            _repository.ResetIsCurrentClashFlag(filterNames, categories);
 
             // STEP 2: SET CURRENT (Spatial + Filter + Host type)
             if (sectionBox != null)

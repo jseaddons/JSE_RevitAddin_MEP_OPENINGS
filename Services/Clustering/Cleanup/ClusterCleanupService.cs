@@ -72,6 +72,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 // ✅ CRITICAL FIX: Track which cluster each sleeve belongs to for Stage 2 constituent assignment
                 var sleevesToDelete = new HashSet<int>();
                 var sleeveToClusterMap = new Dictionary<int, int>(); // SleeveInstanceId -> ClusterInstanceId
+                var crossCategoryClusterIds = new HashSet<int>(); // Clusters that absorbed zones of a different category
+                var clusterAbsorbedMeta = new Dictionary<int, (HashSet<string> SysNames, HashSet<string> SvcTypes, HashSet<string> SysTypes)>(); // Cluster -> absorbed MEP meta
                 var clusterIdBatches = (clusterInstanceIds != null && clusterInstanceIds.Count > 0)
                     ? clusterInstanceIds.Select((id, i) => (id, i)).GroupBy(x => x.i / MaxClusterIdsPerQuery).Select(g => g.Select(x => x.id).ToList()).ToList()
                     : new List<List<int>> { null }; // null = no IN filter (all clusters)
@@ -84,7 +86,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     using (var cmd = context.Connection.CreateCommand())
                     {
                         var query = @"
-                            SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId, cz.ClashZoneGuid
+                            SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId, cz.ClashZoneGuid,
+                                           cz.MepCategory AS MepElementCategory, cs.Category AS ClusterCategory,
+                                           cz.MepSystemName, cz.MepServiceType, cz.MepSystemType
                             FROM ClashZones cz
                             CROSS JOIN ClusterSleeves_v2 cs
                             WHERE cz.SleeveInstanceId > 0
@@ -123,6 +127,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                                     var clusterId = reader.GetInt32(reader.GetOrdinal("ClusterInstanceId"));
                                     sleevesToDelete.Add(sleeveId);
                                     sleeveToClusterMap[sleeveId] = clusterId;
+
+                                    // ✅ CROSS-CATEGORY: if absorbed zone category differs from cluster category → flag cluster
+                                    var zoneCategory = reader["MepElementCategory"] as string ?? "";
+                                    var clusterCategory = reader["ClusterCategory"] as string ?? "";
+                                    if (!string.IsNullOrEmpty(zoneCategory) && !string.IsNullOrEmpty(clusterCategory) &&
+                                        !string.Equals(zoneCategory, clusterCategory, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        crossCategoryClusterIds.Add(clusterId);
+                                    }
+
+                                    // ✅ MEP META: collect MepSystemName + MepServiceType + MepSystemType for absorbed zones
+                                    var sysName = reader["MepSystemName"] as string ?? "";
+                                    var svcType = reader["MepServiceType"] as string ?? "";
+                                    var sysType = reader["MepSystemType"] as string ?? "";
+                                    if (!clusterAbsorbedMeta.ContainsKey(clusterId))
+                                        clusterAbsorbedMeta[clusterId] = (new HashSet<string>(StringComparer.OrdinalIgnoreCase), new HashSet<string>(StringComparer.OrdinalIgnoreCase), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                                    if (!string.IsNullOrWhiteSpace(sysName)) clusterAbsorbedMeta[clusterId].SysNames.Add(sysName.Trim());
+                                    if (!string.IsNullOrWhiteSpace(svcType)) clusterAbsorbedMeta[clusterId].SvcTypes.Add(svcType.Trim());
+                                    if (!string.IsNullOrWhiteSpace(sysType)) clusterAbsorbedMeta[clusterId].SysTypes.Add(sysType.Trim());
                                 }
                             }
                         }
@@ -172,6 +195,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 // This makes them cluster constituents so Parameter Service will aggregate their parameters
                 var mapCopy = new Dictionary<int, int>(sleeveToClusterMap);
                 var sleeveIdsCopy = sleevesToDelete.ToList();
+                var crossCatCopy = new HashSet<int>(crossCategoryClusterIds);
+                var absorbedMetaCopy = new Dictionary<int, (HashSet<string> SysNames, HashSet<string> SvcTypes, HashSet<string> SysTypes)>(clusterAbsorbedMeta);
                 string bgDbPath = context.DatabasePath;
 
                 System.Threading.Tasks.Task.Run(() =>
@@ -180,18 +205,95 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     {
                         using (var bgContext = new SleeveDbContext(bgDbPath))
                         {
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 (BACKGROUND): Assigning ClusterInstanceId to {mapCopy.Count} zones as cluster constituents\n");
                             AssignClusterInstanceIdToStage2Zones(bgContext, mapCopy);
 
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2 (BACKGROUND): Flushing parameters from {sleeveIdsCopy.Count} sleeves to cluster snapshots\n");
                             FlushParametersToClusterSleeves(bgContext, null, sleeveIdsCopy); // Cannot use Revit doc in background safely
+
+                            // ✅ CROSS-CATEGORY: mark clusters that absorbed zones of a different category
+                            if (crossCatCopy.Count > 0)
+                            {
+                                try
+                                {
+                                    using (var cmd = bgContext.Connection.CreateCommand())
+                                    {
+                                        var ids = string.Join(",", crossCatCopy);
+                                        cmd.CommandText = $"UPDATE ClusterSleeves_v2 SET IsCrossCategory = 1 WHERE ClusterInstanceId IN ({ids})";
+                                        int updated = cmd.ExecuteNonQuery();
+                                        SafeFileLogger.SafeAppendText("batch_v2.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 CROSS-CATEGORY: Marked {updated} cluster(s) as IsCrossCategory=1 (Ids: {ids})\n");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ❌ CROSS-CATEGORY UPDATE ERROR: {ex.Message}\n");
+                                }
+                            }
+
+                            // ✅ MEP META: append absorbed MepSystemName/MepServiceType/MepSystemType to cluster's MepSystemNames/MepServiceTypes/MepSystemType
+                            foreach (var kvp in absorbedMetaCopy)
+                            {
+                                if (kvp.Value.SysNames.Count == 0 && kvp.Value.SvcTypes.Count == 0 && kvp.Value.SysTypes.Count == 0) continue;
+                                try
+                                {
+                                    // Read current values
+                                    string existingSys = null, existingSvc = null, existingSysType = null;
+                                    using (var readCmd = bgContext.Connection.CreateCommand())
+                                    {
+                                        readCmd.CommandText = "SELECT MepSystemNames, MepServiceTypes, MepSystemType FROM ClusterSleeves_v2 WHERE ClusterInstanceId = @id LIMIT 1";
+                                        readCmd.Parameters.AddWithValue("@id", kvp.Key);
+                                        using (var r = readCmd.ExecuteReader())
+                                        {
+                                            if (r.Read())
+                                            {
+                                                existingSys = r["MepSystemNames"] as string;
+                                                existingSvc = r["MepServiceTypes"] as string;
+                                                existingSysType = r["MepSystemType"] as string;
+                                            }
+                                        }
+                                    }
+
+                                    // Merge without duplicates
+                                    var sysSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                    var svcSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                    var sysTypeSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                    if (!string.IsNullOrWhiteSpace(existingSys))
+                                        foreach (var s in existingSys.Split(',')) { var t = s.Trim(); if (!string.IsNullOrEmpty(t)) sysSet.Add(t); }
+                                    if (!string.IsNullOrWhiteSpace(existingSvc))
+                                        foreach (var s in existingSvc.Split(',')) { var t = s.Trim(); if (!string.IsNullOrEmpty(t)) svcSet.Add(t); }
+                                    if (!string.IsNullOrWhiteSpace(existingSysType))
+                                        foreach (var s in existingSysType.Split(',')) { var t = s.Trim(); if (!string.IsNullOrEmpty(t)) sysTypeSet.Add(t); }
+                                    foreach (var s in kvp.Value.SysNames) sysSet.Add(s);
+                                    foreach (var s in kvp.Value.SvcTypes) svcSet.Add(s);
+                                    foreach (var s in kvp.Value.SysTypes) sysTypeSet.Add(s);
+
+                                    using (var updCmd = bgContext.Connection.CreateCommand())
+                                    {
+                                        updCmd.CommandText = "UPDATE ClusterSleeves_v2 SET MepSystemNames = @sys, MepServiceTypes = @svc, MepSystemType = @sysType WHERE ClusterInstanceId = @id";
+                                        updCmd.Parameters.AddWithValue("@sys", string.Join(", ", sysSet));
+                                        updCmd.Parameters.AddWithValue("@svc", string.Join(", ", svcSet));
+                                        updCmd.Parameters.AddWithValue("@sysType", sysTypeSet.Count > 0 ? string.Join(", ", sysTypeSet) : (object)DBNull.Value);
+                                        updCmd.Parameters.AddWithValue("@id", kvp.Key);
+                                        updCmd.ExecuteNonQuery();
+                                    }
+                                    SafeFileLogger.SafeAppendText("batch_v2.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 MEP META: Cluster {kvp.Key} → SysNames=[{string.Join(", ", sysSet)}], SvcTypes=[{string.Join(", ", svcSet)}], SysTypes=[{string.Join(", ", sysTypeSet)}]\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ❌ MEP META UPDATE ERROR (Cluster {kvp.Key}): {ex.Message}\n");
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        SafeFileLogger.SafeAppendText("placement_errors.log", 
+                        SafeFileLogger.SafeAppendText("placement_errors.log",
                             $"[{DateTime.Now:HH:mm:ss}] ❌ STAGE 2 BACKGROUND ERROR: {ex.Message}\n{ex.StackTrace}\n");
                     }
                 });
@@ -615,7 +717,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 return;
             }
 
-            // Step 2: Read existing cluster snapshot
+            // ✅ BUG FIX (2025-03-05): Skip Stage 2 parameter flushing for per-zone snapshots
+            // Check if we have multiple rows per cluster (per-zone snapshots)
+            int snapshotCount = 0;
+            using (var cmd = context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT COUNT(*) 
+                    FROM SleeveSnapshots 
+                    WHERE ClusterInstanceId = @clusterId";
+                cmd.Parameters.AddWithValue("@clusterId", clusterInstanceId);
+                var result = cmd.ExecuteScalar();
+                if (result != null && result != DBNull.Value)
+                    snapshotCount = Convert.ToInt32(result);
+            }
+
+            // If we have multiple snapshots per cluster (per-zone), skip the aggregated update
+            // Each zone already has its own specific parameters
+            if (snapshotCount > 1)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 FLUSH: Cluster {clusterInstanceId} has {snapshotCount} per-zone snapshots - skipping aggregated update\n");
+                return;
+            }
+
+            // Step 2: Read existing cluster snapshot (only for single-snapshot clusters)
             string existingMepJson = null;
             using (var cmd = context.Connection.CreateCommand())
             {
@@ -633,7 +759,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
             // Step 3: Merge with aggregation (same logic as CombinedSleevePlacementService)
             var finalParams = MergeWithAggregation(existingMepJson, mepParamsToMerge);
 
-            // Step 4: Update cluster snapshot
+            // Step 4: Update cluster snapshot (only for single-snapshot clusters)
             using (var cmd = context.Connection.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -645,7 +771,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 cmd.Parameters.AddWithValue("@clusterId", clusterInstanceId);
                 
                 int rowsUpdated = cmd.ExecuteNonQuery();
-                // SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 FLUSH: Cluster {clusterInstanceId} - Updated {rowsUpdated} row(s), {finalParams.Count} params\n");
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ STAGE 2 FLUSH: Cluster {clusterInstanceId} - Updated {rowsUpdated} row(s) with aggregated params\n");
             }
         }
 

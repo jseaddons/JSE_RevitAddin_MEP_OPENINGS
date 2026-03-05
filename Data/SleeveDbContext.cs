@@ -1346,7 +1346,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves", "MepServiceTypes", "TEXT", transaction); // ✅ ADDED: MepServiceTypes
             AddColumnIfMissing("ClusterSleeves", "MepElementIds", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves", "SleeveFamilyName", "TEXT", transaction);
-            
+            AddColumnIfMissing("ClusterSleeves", "IsCrossCategory", "INTEGER DEFAULT 0", transaction); // ✅ Cross-category cluster flag
+
             // ✅ MIGRATION: Add Corner columns if they don't exist (Phase 3 Persistence)
             AddColumnIfMissing("ClusterSleeves", "Corner1X", "REAL DEFAULT 0.0", transaction);
             AddColumnIfMissing("ClusterSleeves", "Corner1Y", "REAL DEFAULT 0.0", transaction);
@@ -1846,6 +1847,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
 
             // ✅ SLEEVE FAMILY NAME: Add family name column
             AddColumnIfMissing("ClusterSleeves_v2", "SleeveFamilyName", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "IsCrossCategory", "INTEGER DEFAULT 0", transaction); // ✅ Cross-category cluster flag
+            AddColumnIfMissing("ClusterSleeves_v2", "MepSystemType", "TEXT", transaction); // ✅ MEP system type aggregated from absorbed zones
         }
 
         private void EnsureCombinedSleevesTables(SQLiteTransaction transaction)
