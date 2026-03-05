@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections.Concurrent;
@@ -69,198 +69,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         }
 
         /// <summary>
-        /// Determine the dominant rotation angle for a cluster of sleeves
-        /// Returns 0 for straight axis-aligned clusters (aligned to WCS: 0Â°, 90Â°, 180Â°, 270Â°)
-        /// Returns rotation angle for rotated axis-aligned clusters (non-straight: 45Â°, 225Â°, etc.)
-        /// 
-        /// âœ… CRITICAL: Circular elements (Pipes and Round Ducts) always return 0.0Â° - no rotation needed
-        ///    MEP orientation is meaningless for circular elements, so always use straight axis (0Â°)
-        ///    This applies to both floors and walls - circular elements don't need rotation alignment
+        /// Determine the dominant rotation angle for a cluster of sleeves.
+        ///
+        /// NOTE (2026‑03‑04, user requirement):
+        ///   "for all cats and clusters no rotation needed" – families encode orientation.
+        /// So we always return 0.0 radians here.
         /// </summary>
         public double DetermineRotationAngle(List<dynamic> cluster, string? xmlFilePath = null)
         {
-            // âœ… PHASE 4 FIX: Get orientation from DATABASE, not from Revit API
-            // This replaces all legacy heuristic logic (finding first zone, checking wall types manually, etc.)
-            
-            if (cluster != null && cluster.Count > 0)
-            {
-                var firstItem = cluster[0];
-                ClashZone? firstClashZone = null;
-                
-                if (firstItem is ClashZone cz)
-                    firstClashZone = cz;
-                else if (firstItem?.ClashZone != null)
-                    firstClashZone = firstItem.ClashZone as ClashZone;
-                
-                if (firstClashZone != null)
-                {
-                    // âœ… CRITICAL FIX: Circular elements (Pipes and Round Ducts) should NOT rotate in clusters
-                    // This applies universally to all hosts (Walls, Floors, etc.)
-                    // User Request: "for circular pipes clustering should not rotate"
-                    bool allCircular = true;
-                    foreach (var item in cluster)
-                    {
-                        ClashZone? itemCz = null;
-                        if (item is ClashZone czItem) itemCz = czItem;
-                        else if (item?.ClashZone != null) itemCz = item.ClashZone as ClashZone;
-
-                        if (itemCz == null) { allCircular = false; break; }
-
-                        // âœ… DETECTION BY MEP ELEMENT: Circular elements (Pipes/Round Ducts) never rotate
-                        // User Req: "for circular element it should not rotate always even if it is rectangula sleeve"
-                        bool isPipe = string.Equals(itemCz.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
-                        bool isRoundDuct = (string.Equals(itemCz.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) || 
-                                           string.Equals(itemCz.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase)) &&
-                                          (string.Equals(itemCz.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                                           string.Equals(itemCz.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase));
-
-                        if (!isPipe && !isRoundDuct)
-                        {
-                            allCircular = false;
-                            break;
-                        }
-                    }
-
-                    if (cluster.Count > 0 && allCircular)
-                    {
-                        // For floors (and non wall/framing hosts) we keep the old rule:
-                        // all-circular clusters get 0Â° rotation.
-                        // For walls / structural framing we MUST still respect HostOrientation
-                        // (X â†’ 90Â°, Y â†’ 0Â°) so that cluster orientation matches individual sleeves.
-                        string hostType = firstClashZone.StructuralElementType ?? "";
-                        bool isWallOrFraming =
-                            hostType.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) ||
-                            hostType.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
-
-                        if (!isWallOrFraming)
-                        {
-                            // if (!DeploymentConfiguration.DeploymentMode)
-                            // {
-                            //    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            //        $"[{DateTime.Now:HH:mm:ss}] âœ… ALL-CIRCULAR NON-WALL CLUSTER: Skipping rotation (0.0Â°)\n");
-                            // }
-                            return 0.0;
-                        }
-                        // Wall / framing + all circular: fall through and use HostOrientation logic below
-                    }
-
-                    // Normalize HostOrientation string
-                    string hostOrientation = (firstClashZone.HostOrientation ?? "").Trim();
-                    string hostTypeForOrientation = firstClashZone.StructuralElementType ?? "";
-                    bool isWallOrFramingForOrientation =
-                        hostTypeForOrientation.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) ||
-                        hostTypeForOrientation.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
-                    
-                    // âœ… VALIDATION: For WALL/FRAMING only, all zones must have SAME HostOrientation (X vs Y)
-                    // For FLOOR we do NOT require HostOrientation to match (often "" or "Floor") so rotated MEP gets MepElementRotationAngle
-                    bool allSameOrientation = true;
-                    if (isWallOrFramingForOrientation)
-                    {
-                        foreach (var item in cluster)
-                        {
-                            ClashZone? itemCz = null;
-                            if (item is ClashZone clashZone)
-                                itemCz = clashZone;
-                            else if (item?.ClashZone != null)
-                                itemCz = item.ClashZone as ClashZone;
-                            
-                            string itemOrientation = (itemCz?.HostOrientation ?? "").Trim();
-                            if (!string.Equals(itemOrientation, hostOrientation, StringComparison.OrdinalIgnoreCase))
-                            {
-                                allSameOrientation = false;
-                                SafeFileLogger.SafeAppendText("cluster_errors.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] âŒ CRITICAL: Cluster has MIXED orientations! " +
-                                    $"Zone1 Orientation='{hostOrientation}', Zone2 Orientation='{itemOrientation}'\n");
-                                break;
-                            }
-                        }
-                        if (!allSameOrientation)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_errors.log",
-                                $"[{DateTime.Now:HH:mm:ss}] âŒ SKIPPING cluster due to mixed orientations (Wall/Framing)\n");
-                            return 0.0;
-                        }
-                    }
-                    
-                    // âœ… PHASE 4: Use database orientation directly (Simple Logic as requested)
-                    // If HostOrientation is X/X-WALL -> Rotate 90 degrees
-                    // Else -> 0 degrees
-                    // âœ… USER RULE (2026-02-05): For Floors, NO host orientation needed. Strictly use MEP orientation for rotated elements.
-                    // To avoid affecting walls/framing, we ONLY bypass this if host is explicitly a Floor.
-                    bool isFloorForOrientation = (firstClashZone.StructuralElementType ?? "").IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                    if (!isFloorForOrientation && (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
-                        hostOrientation.IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0))
-                    {
-                        double rotationAngle = Math.PI / 2.0; // 90 degrees for X-walls
-                        // if (!DeploymentConfiguration.DeploymentMode)
-                        // {
-                        //    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        //        $"[{DateTime.Now:HH:mm:ss}] âœ… ORIENTATION (WALL): X-wall â†’ 90Â° rotation\n");
-                        // }
-                        return rotationAngle;
-                    }
-                    else if (!isFloorForOrientation && (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
-                             hostOrientation.IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0))
-                    {
-                         double rotationAngle = 0.0; // 0 degrees for Y-walls (User Req: "y should remain at 0 degre")
-                        // if (!DeploymentConfiguration.DeploymentMode)
-                        // {
-                        //    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        //        $"[{DateTime.Now:HH:mm:ss}] âœ… ORIENTATION (WALL): Y-wall â†’ 0Â° rotation\n");
-                        // }
-                        return rotationAngle;
-                    }
-                    else
-                    {
-                        // For floors (or anything not explicitly X/Y wall), use MEP element rotation angle (from database)
-                        // âœ… FIX (2026-02-05): "yes 0 degree ok ... because we already get extreme corners to shape the box no need to rotate 0 degree"
-                        // Rule: If all angles are orthogonal (0, 90, 180, 270), return 0.
-                        // Only return non-zero if we find a "truly" rotated angle (e.g. 45 degrees).
-                        
-                        double rotationAngle = 0.0;
-                        bool foundNonOrthogonal = false;
-
-                        foreach (var item in cluster)
-                        {
-                            ClashZone? itemCz = null;
-                            if (item is ClashZone czItem) itemCz = czItem;
-                            else if (item?.ClashZone != null) itemCz = item.ClashZone as ClashZone;
-                            
-                            if (itemCz != null)
-                            {
-                                double angle = itemCz.MepElementRotationAngle;
-                                // Normalize to 0-2PI for comparison
-                                while (angle < 0) angle += 2 * Math.PI;
-                                while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
-
-                                // Check if it's NOT a multiple of 90 degrees (1.570796 rad)
-                                double remainder = Math.Abs(angle % (Math.PI / 2.0));
-                                if (remainder > 1e-4 && Math.Abs(remainder - (Math.PI / 2.0)) > 1e-4)
-                                {
-                                    rotationAngle = angle;
-                                    foundNonOrthogonal = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // if (!DeploymentConfiguration.DeploymentMode)
-                        // {
-                        //    string typeLog = string.IsNullOrEmpty(hostOrientation) ? "Unknown/Floor" : hostOrientation;
-                        //    string pathLog = foundNonOrthogonal ? "NON-ORTHOGONAL" : "ORTHOGONAL-MIX (Default to 0)";
-                        //    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        //        $"[{DateTime.Now:HH:mm:ss}] âœ… ORIENTATION (OTHER): {typeLog} â†’ {rotationAngle * 180 / Math.PI:F1}Â° rotation ({pathLog})\n");
-                        // }
-                        return rotationAngle;
-                    }
-                }
-            }
-
-            // âŒ If we reach here, database values were not available - ERROR
-            SafeFileLogger.SafeAppendText("cluster_errors.log",
-                $"[{DateTime.Now:HH:mm:ss}] âŒ CRITICAL: Could not get HostOrientation from database for cluster\n");
-            return 0.0; // Fallback to no rotation (error case)
+            return 0.0;
         }
 
         /// <summary>
@@ -989,6 +806,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     double wcsMaxX = allCorners.Max(c => c.X);
                                     double wcsMinY = allCorners.Min(c => c.Y);
                                     double wcsMaxY = allCorners.Max(c => c.Y);
+                                    double wcsMinZ = allCorners.Min(c => c.Z);
+                                    double wcsMaxZ = allCorners.Max(c => c.Z);
+
+                                    // âœ… HEIGHT FIX: For walls, cluster height is the Z extent
+                                    // Previously missing → resulted in Height = 0 for wall clusters
+                                    cornerHeight = wcsMaxZ - wcsMinZ;
                                     
                                     // âœ… CRITICAL: For walls, width is ALWAYS along the wall direction
                                     // Y-wall: Wall runs along Y-axis â†’ Width = Y range (along the wall)
@@ -1025,10 +848,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                      {
                                          double midX = (wcsMinX + wcsMaxX) / 2.0;
                                          double midY = (wcsMinY + wcsMaxY) / 2.0;
-                                         
-                                         // âœ… SEPARATED LOGIC: Calculate Z geometric center for Walls too
-                                         double wcsMinZ = allCorners.Min(c => c.Z);
-                                         double wcsMaxZ = allCorners.Max(c => c.Z);
                                          double midZ = (wcsMinZ + wcsMaxZ) / 2.0;
                                          
                                          placementPoint = new XYZ(midX, midY, midZ);
@@ -1591,24 +1410,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 } // End of injected 'else' (Rectangular Floor)
                             } // End of if (!isWallOrFraming)
                             
-                            // âœ… HEIGHT: Calculate from Z range of bounding boxes (vertical dimension)
-                            // For walls/framing: Height = Z range (vertical), NOT from corner Z (all corners have same Z for 2D opening)
-                            // For floors/other: Height = Y range (vertical in rotated space)
-                             double cornerMinZ = clashZonesInCluster.Count > 0 ? clashZonesInCluster.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
-                             double cornerMaxZ = clashZonesInCluster.Count > 0 ? clashZonesInCluster.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
-                             double calculatedHeight = cornerMaxZ - cornerMinZ; // Height = Z range (vertical dimension)
-                            
-                            // âœ… CRITICAL FIX: For walls/framing, use Z range for height, not RCS Y
-                            // For floors/other, cornerHeight is already calculated from Y range in rotated space
+                            // âœ… HEIGHT: Calculate from Z range.
+                            // Primary source for walls/framing: corners (Z encodes sleeve height).
+                            // If individual SleeveBoundingBoxMinZ/MaxZ are populated, we use them; otherwise we fall back to corners.
+                            double cornerMinZ = clashZonesInCluster.Count > 0 ? clashZonesInCluster.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
+                            double cornerMaxZ = clashZonesInCluster.Count > 0 ? clashZonesInCluster.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
+                            double calculatedHeight = cornerMaxZ - cornerMinZ; // Height from persisted bbox, if available.
+
                             if (isWallOrFraming)
                             {
-                                cornerHeight = calculatedHeight; // Override with Z range (vertical) for walls/framing
+                                // If DB bbox Z-range is missing/zero, fall back to corner Z extents
+                                if (calculatedHeight <= 1e-6 && allCorners.Count > 0)
+                                {
+                                    double zMinCorners = allCorners.Min(c => c.Z);
+                                    double zMaxCorners = allCorners.Max(c => c.Z);
+                                    cornerMinZ = zMinCorners;
+                                    cornerMaxZ = zMaxCorners;
+                                    calculatedHeight = zMaxCorners - zMinCorners;
+                                }
+
+                                // For walls/framing: final cluster height = vertical Z range
+                                if (calculatedHeight > 1e-6)
+                                {
+                                    cornerHeight = calculatedHeight;
+                                }
                             }
                             else
                             {
-                                // For floors/other, cornerHeight is already correct from rotated Y range.
-                                // CalculatedHeight is the Z-range (thickness), which is correctly assigned to depth below.
-                                // We don't compare them here as they represent different physical dimensions for floors.
+                                // Floors/other: cornerHeight was already computed from rotated Y-range;
+                                // calculatedHeight here represents thickness and is handled separately via cornerDepth.
                             }
                             
                             // âœ… DEPTH: Calculate based on host type (only if not already set for mixed orientations)

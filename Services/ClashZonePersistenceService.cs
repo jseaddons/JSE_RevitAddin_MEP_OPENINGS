@@ -159,6 +159,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory) && IsValidClashZone(z))
                             .ToList();
                         
+                        // ✅ CRITICAL FIX: For NEW zones (not yet in DB), set IsCurrentClashFlag=1
+                        // For EXISTING zones, the flags are managed by UpdateSessionFlags
+                        foreach (var zone in validZones)
+                        {
+                            // NEW zones have ClashZoneId == -1 (default, not yet saved to DB)
+                            // EXISTING zones have ClashZoneId > 0 (assigned by database)
+                            if (zone.ClashZoneId <= 0)
+                            {
+                                // New zone - set IsCurrentClashFlag=1 for initial save
+                                // This ensures new zones are marked as "current" when first created
+                                zone.IsCurrentClashFlag = true;
+                                zone.ReadyForPlacementFlag = true;
+                            }
+                            else
+                            {
+                                // Existing zone - flag will be managed by UpdateSessionFlags
+                                zone.IsCurrentClashFlag = false;
+                                zone.ReadyForPlacementFlag = false;
+                            }
+                        }
+                        
                         // ✅ FLOOR ROTATION FIX: Enrich zones with MEP orientation and rotation angle BEFORE saving
                         // This populates MepOrientationX/Y/Z and MepElementRotationAngle for database storage
                         using (var enrichOp = _performanceMonitor?.TrackOperation("9a7. Enrich Orientation"))

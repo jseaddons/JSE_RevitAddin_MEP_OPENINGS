@@ -205,7 +205,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 var symbolCache = new Dictionary<string, FamilySymbol>();
                 using (_performanceMonitor?.TrackOperation("Step 1a: CACHE CLUSTER SYMBOLS"))
                 {
-                    var uniqueFamilyNames = pendingClusters.Select(c => c.FamilyName).Distinct().ToList();
+                    var uniqueFamilyNames = pendingClusters
+                        .Select(c => c.FamilyName)
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    // ✅ CRITICAL FIX: Ensure all required cluster families are loaded into the document
+                    // Previously, bulk placement assumed families were already loaded, which caused
+                    // "Placed=0" when clusters existed in DB but their families were not yet in the model.
+                    // This pre-loads any missing cluster families (Rectangular/Circular On Wall/Slab, etc.)
+                    ClusterPlacementService.PreLoadClusterFamilies(doc, uniqueFamilyNames);
+
                     var allSymbols = new FilteredElementCollector(doc)
                         .OfClass(typeof(FamilySymbol))
                         .Cast<FamilySymbol>()
@@ -213,11 +224,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                     foreach (var name in uniqueFamilyNames)
                     {
-                        var symbol = allSymbols.FirstOrDefault(s => s.Name == name || s.Family.Name == name);
+                        var symbol = allSymbols.FirstOrDefault(s =>
+                            s.Name.Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                            s.Family.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
                         if (symbol != null)
                         {
                             symbolCache[name] = symbol;
                             if (!symbol.IsActive) symbol.Activate();
+                        }
+                        else if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLUSTER-FAMILY-MISS: No FamilySymbol found for cluster family '{name}' after pre-load.\n");
                         }
                     }
                 }
@@ -2010,12 +2028,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     {
                         if (zoneCache.TryGetValue(guid, out var z))
                         {
-                            int effectiveSleeveId = (int)_repository.TryGetSleeveInstanceIdFromSnapshot(z.Id);
-                            if (effectiveSleeveId <= 0) effectiveSleeveId = (int)z.SleeveInstanceId;
+                            long recoveredId = _repository.TryGetSleeveInstanceIdFromSnapshot(z.Id);
+                            long effectiveSleeveId = recoveredId > 0 ? recoveredId : z.SleeveInstanceId;
                             
                             if (effectiveSleeveId > 0)
                             {
-                                var eid = ElementIdCompat.FromInt(effectiveSleeveId);
+                                var eid = ElementIdCompat.FromLong(effectiveSleeveId);
                                 if (doc.GetElement(eid) != null)
                                 {
                                     data.IndividualSleevesToDelete.Add(eid);

@@ -226,8 +226,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 // ✅ CRITICAL: Save SleeveInstanceId first (needed for clustering to find sleeves)
                                 // This must be saved immediately after placement so clustering can find the sleeves
-                                repository.UpdateSleeveInstanceId(cz.Id, cz.SleeveInstanceId);
+                                repository.UpdateSleeveInstanceId(cz.Id, (int)cz.SleeveInstanceId);
                                 dbSleeveIdUpdatedCount++;
+
+                                // If bounding box is still zero but corners exist, derive bbox from corners
+                                if (cz.SleeveBoundingBoxMinX == 0.0 && cz.SleeveBoundingBoxMinY == 0.0 && cz.SleeveBoundingBoxMinZ == 0.0 &&
+                                    cz.SleeveBoundingBoxMaxX == 0.0 && cz.SleeveBoundingBoxMaxY == 0.0 && cz.SleeveBoundingBoxMaxZ == 0.0)
+                                {
+                                    var xs = new[] { cz.SleeveCorner1X, cz.SleeveCorner2X, cz.SleeveCorner3X, cz.SleeveCorner4X }
+                                        .Where(v => v.HasValue).Select(v => v.Value).ToList();
+                                    var ys = new[] { cz.SleeveCorner1Y, cz.SleeveCorner2Y, cz.SleeveCorner3Y, cz.SleeveCorner4Y }
+                                        .Where(v => v.HasValue).Select(v => v.Value).ToList();
+                                    var zs = new[] { cz.SleeveCorner1Z, cz.SleeveCorner2Z, cz.SleeveCorner3Z, cz.SleeveCorner4Z }
+                                        .Where(v => v.HasValue).Select(v => v.Value).ToList();
+
+                                    if (xs.Count > 0 && ys.Count > 0 && zs.Count > 0)
+                                    {
+                                        cz.SleeveBoundingBoxMinX = xs.Min();
+                                        cz.SleeveBoundingBoxMaxX = xs.Max();
+                                        cz.SleeveBoundingBoxMinY = ys.Min();
+                                        cz.SleeveBoundingBoxMaxY = ys.Max();
+                                        cz.SleeveBoundingBoxMinZ = zs.Min();
+                                        cz.SleeveBoundingBoxMaxZ = zs.Max();
+                                    }
+                                }
                                 
                                 // ✅ Save bounding boxes if they're not zero
                                 // Bounding boxes are required for clustering to calculate cluster bounding boxes

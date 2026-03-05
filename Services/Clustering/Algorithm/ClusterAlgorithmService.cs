@@ -341,15 +341,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             // 2. Check MEP Category
             if (cz1.MepElementCategory != cz2.MepElementCategory) return false; 
             
-            // ✅ PERSISTENCE CHECK: If bounding boxes are zero/null, log and skip (user requested no expensive fallback)
-            bool s1HasBbox = Math.Abs(cz1.SleeveBoundingBoxMaxX - cz1.SleeveBoundingBoxMinX) > 1e-6;
-            bool s2HasBbox = Math.Abs(cz2.SleeveBoundingBoxMaxX - cz2.SleeveBoundingBoxMinX) > 1e-6;
-
-            if (!s1HasBbox || !s2HasBbox)
+            // Helper: detect whether a zone has any corner geometry
+            bool HasCorners(ClashZone cz)
             {
-                // Only log once per session/run to avoid log bloat if needed, but for now simple log
-                if (!s1HasBbox) SafeFileLogger.SafeAppendText("clustering_warnings.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Zone {cz1.ClashZoneGuid} has zero BBox - skipping proximity check.\n");
-                if (!s2HasBbox) SafeFileLogger.SafeAppendText("clustering_warnings.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Zone {cz2.ClashZoneGuid} has zero BBox - skipping proximity check.\n");
+                return (cz.SleeveCorner1X.HasValue && cz.SleeveCorner1Y.HasValue && cz.SleeveCorner1Z.HasValue) ||
+                       (cz.SleeveCorner2X.HasValue && cz.SleeveCorner2Y.HasValue && cz.SleeveCorner2Z.HasValue) ||
+                       (cz.SleeveCorner3X.HasValue && cz.SleeveCorner3Y.HasValue && cz.SleeveCorner3Z.HasValue) ||
+                       (cz.SleeveCorner4X.HasValue && cz.SleeveCorner4Y.HasValue && cz.SleeveCorner4Z.HasValue);
+            }
+
+            // ✅ PERSISTENCE CHECK: Treat "bbox all zeros but corners present" as valid geometry.
+            // We only skip when BOTH the persisted bbox is zero AND there are no usable corners.
+            bool s1HasPersistedBbox =
+                Math.Abs(cz1.SleeveBoundingBoxMaxX - cz1.SleeveBoundingBoxMinX) > 1e-6 &&
+                (cz1.SleeveBoundingBoxMinX != 0.0 || cz1.SleeveBoundingBoxMaxX != 0.0);
+            bool s2HasPersistedBbox =
+                Math.Abs(cz2.SleeveBoundingBoxMaxX - cz2.SleeveBoundingBoxMinX) > 1e-6 &&
+                (cz2.SleeveBoundingBoxMinX != 0.0 || cz2.SleeveBoundingBoxMaxX != 0.0);
+
+            bool s1HasGeometry = s1HasPersistedBbox || HasCorners(cz1);
+            bool s2HasGeometry = s2HasPersistedBbox || HasCorners(cz2);
+
+            if (!s1HasGeometry || !s2HasGeometry)
+            {
+                // Only log when a zone truly has no usable geometry (no bbox and no corners)
+                if (!s1HasGeometry)
+                    SafeFileLogger.SafeAppendText("clustering_warnings.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Zone {cz1.ClashZoneGuid} has no bbox or corners - skipping proximity check.\n");
+                if (!s2HasGeometry)
+                    SafeFileLogger.SafeAppendText("clustering_warnings.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Zone {cz2.ClashZoneGuid} has no bbox or corners - skipping proximity check.\n");
                 return false;
             }
 

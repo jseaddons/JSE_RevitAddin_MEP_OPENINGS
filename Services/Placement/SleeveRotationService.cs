@@ -31,89 +31,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// <returns>Rotation angle in radians (0, π/2, or pre-calculated angle)</returns>
         public double DetermineRotation(ClashZone clashZone)
         {
-            if (clashZone == null)
-                return 0.0; // Default: no rotation
-
-            // ✅ WALL ROTATION: Based on HostOrientation (X or Y) — set during refresh from wall direction
-            // X-WALL → +90° (π/2 rad), Y-WALL → 0°
-            if (clashZone.StructuralElementType?.Contains("Wall") == true)
-            {
-                string hostOrientation = (clashZone.HostOrientation ?? "").Trim();
-
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                           $"[{DateTime.Now:HH:mm:ss}] 🔍 WALL ROTATION CHECK: HostOri='{clashZone.HostOrientation}' (Trimmed='{hostOrientation}')\\n");
-                }
-
-                if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
-                    string.Equals(hostOrientation, "X-WALL", StringComparison.OrdinalIgnoreCase))
-                {
-                    return Math.PI / 2.0;
-                }
-                else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
-                         string.Equals(hostOrientation, "Y-WALL", StringComparison.OrdinalIgnoreCase))
-                {
-                    return 0.0;
-                }
-
-                return 0.0; // Default for unknown wall orientation
-            }
-            
-            // ✅ FRAMING ROTATION: Same X/Y logic as walls, driven by HostOrientation
-            if (clashZone.StructuralElementType?.Contains("Structural Framing") == true)
-            {
-                string hostOrientation = (clashZone.HostOrientation ?? "").Trim();
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                           $"[{DateTime.Now:HH:mm:ss}] 🔍 FRAMING ROTATION CHECK: HostOri='{clashZone.HostOrientation}' (Trimmed='{hostOrientation}')\\n");
-                }
-
-                if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase))
-                {
-                    return Math.PI / 2.0;
-                }
-                else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase))
-                {
-                    return 0.0;
-                }
-
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                           $"[{DateTime.Now:HH:mm:ss}] ⚠️ FRAMING ROTATION UNKNOWN: HostOri='{clashZone.HostOrientation}', using 0.0\\n");
-                }
-                
-                return 0.0; // Default for unknown framing orientation
-            }
-            
-            // ✅ FLOOR ROTATION: For circular MEP elements (pipes, round ducts), always place straight (no rotation)
-            // MEP orientation is meaningless for circular elements - they have the same dimensions in all directions
-            // This applies ONLY to floors - walls/framing still need rotation based on MEP orientation
-            if (clashZone.StructuralElementType?.Contains("Floor") == true)
-            {
-                // ✅ CRITICAL: Check if MEP element is circular (pipe or round duct)
-                // User Req: "for circular element it should not rotate always even if it is rectangula sleeve"
-                bool isPipe = clashZone.MepElementCategory?.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool isRoundDuct = clashZone.MepElementCategory?.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                  (string.Equals(clashZone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                                   (clashZone.MepElementSizeData != null &&
-                                    (string.Equals(clashZone.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(clashZone.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase))));
-                
-                // ✅ FOR FLOOR CIRCULAR ELEMENTS: Skip rotation calculation, place straight (0°)
-                if (isPipe || isRoundDuct)
-                {
-                    return 0.0; // No rotation for circular elements on floors
-                }
-                
-                // ✅ FOR FLOOR RECTANGULAR ELEMENTS: Use pre-calculated MepElementRotationAngle
-                return clashZone.MepElementRotationAngle; // Already calculated during refresh
-            }
-            
-            // Default: no rotation
+            // User requirement (2026‑03‑04): 
+            // "for all cats and clusters no rotation needed" – families encode orientation.
+            // So we always return 0.0 radians and let family choice control orientation.
             return 0.0;
         }
         

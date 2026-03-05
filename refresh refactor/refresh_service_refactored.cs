@@ -89,14 +89,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// ✅ Get the Revit document - needed by wrapper for sleeve verification
-        /// </summary>
-        public Document GetDocument()
-        {
-            return _document;
-        }
-        
-        /// <summary>
         /// Main refresh execution - orchestrates all helper services
         /// </summary>
         public Result ExecuteRefresh(
@@ -268,15 +260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ProcessIntersections(context);
             
             // PHASE 9: Capture Parameters
-            // ✅ REDUNDANCY FIX: Skip Phase 8 if bulk capture already handled parameters in Phase 6
-            if (!OptimizationFlags.UseBulkIntersectionProcessing)
-            {
-                CaptureParameters(context);
-            }
-            else if (!context.IsDeploymentMode)
-            {
-                DebugLogger.Info("[REFRESH-REFACTORED] Skipping Phase 8 (Parameter Capture) - handled by Bulk Phase 6");
-            }
+            CaptureParameters(context);
             
             // PHASE 10: Merge and Save
             UpdateProgress(80, "Merging and saving...");
@@ -1333,63 +1317,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ DEPLOYMENT MODE ON: Run validation based on path strategy
                 if (context.PathStrategy.EnableThreePointValidation)
                 {
-                    using (var dbContext = new Data.SleeveDbContext(_document, msg => { }))
+                    var validationService = new ValidationService(context, Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document));
+                    var validationResult = validationService.ValidateClashZones(context.ExistingClashZones);
+                    
+                    var processedZones = context.PathStrategy.ProcessZonesAfterValidation(
+                        context,
+                        validationResult.ValidZones,
+                        validationResult.InvalidZones);
+                    
+                    context.ExistingClashZones = processedZones;
+                    context.ValidatedZones = validationResult.ValidZones ?? new List<ClashZone>();
+                    context.InvalidatedZones = validationResult.InvalidZones ?? new List<ClashZone>();
+                
+                    if (validationResult.InvalidZones.Count > 0)
                     {
-                        var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg => { });
-                        var validationService = new ValidationService(context, Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document), repository);
-                        var validationResult = validationService.ValidateClashZones(context.ExistingClashZones);
-                        
-                        var processedZones = context.PathStrategy.ProcessZonesAfterValidation(
-                            context,
-                            validationResult.ValidZones,
-                            validationResult.InvalidZones);
-                        
-                        context.ExistingClashZones = processedZones;
-                        context.ValidatedZones = validationResult.ValidZones ?? new List<ClashZone>();
-                        context.InvalidatedZones = validationResult.InvalidZones ?? new List<ClashZone>();
-                        
-                        // ✅ CRITICAL FIX: Ensure IsCurrentClash is set for all zones in context
-                        if (context.ValidatedZones != null)
-                        {
-                            foreach (var zone in context.ValidatedZones)
-                            {
-                                zone.IsCurrentClash = true;
-                            }
-                        }
-
-                        // ✅ PATH 3 SYNC: Force invalidated zones to Ready status
-                        if (context.PathStrategy is Path3Strategy && context.InvalidatedZones != null && context.InvalidatedZones.Count > 0)
-                        {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] ⚡ PATH 3: Forcing {context.InvalidatedZones.Count} invalidated zones to Ready status");
-                            foreach (var zone in context.InvalidatedZones)
-                            {
-                                zone.IsCurrentClash = true;
-                                zone.ReadyForPlacementFlag = true;
-                                
-                                // Reset resolution status since they are invalidated (moved/changed)
-                                zone.IsResolved = false;
-                                zone.IsClusterResolved = false;
-                                zone.IsCombinedResolved = false;
-                                zone.SleeveInstanceId = -1;
-                                zone.ClusterSleeveInstanceId = -1;
-                            }
-                        }
-                        else if (context.InvalidatedZones != null)
-                        {
-                            // Even if not Path 3, they are still "Current" if they exists in this session
-                            foreach (var zone in context.InvalidatedZones)
-                            {
-                                zone.IsCurrentClash = true;
-                            }
-                        }
-                    
-                        if (validationResult.InvalidZones.Count > 0)
-                        {
-                            validationService.RemoveInvalidZonesFromDatabase(validationResult.InvalidZones);
-                        }
-                    
-                        validationOp?.SetItemCount(context.ExistingClashZones.Count);
+                        validationService.RemoveInvalidZonesFromDatabase(validationResult.InvalidZones);
                     }
+                
+                    validationOp?.SetItemCount(context.ExistingClashZones.Count);
                 }
                 else
                 {
@@ -1404,12 +1349,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private void ResetFlags(RefreshContext context)
         {
+            // ✅ CRITICAL: ALWAYS verify sleeves and set section box flags early in the refresh
+            // This ensures hierarchical resolution (Combined -> Cluster -> Individual) is clean
+            // and section box filtering is applied consistently to the database.
+            
             UpdateProgress(30, "Verifying existing sleeves and resetting flags...");
             
+            // Get section box bounds (if active)
             BoundingBoxXYZ? sectionBoxNullable = null;
             if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
             {
                 sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                if (sectionBoxNullable != null && !context.IsDeploymentMode)
+                {
+                    BoundingBoxXYZ sb = sectionBoxNullable;
+                    DebugLogger.Info($"[REFRESH-REFACTORED] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
+                }
             }
             
             try
@@ -1420,12 +1375,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg => { });
 
-                        // ✅ STEP 1: Global Reset of Session Flags
-                        // Clears IsCurrentClashFlag and ReadyForPlacementFlag for ALL zones.
-                        repository.ResetIsCurrentClashFlag(null, null);
-
-                        // ✅ STEP 2: Unresolve Dead Sleeves (Cross-Filter)
-                        // Marks zones as unresolved if the sleeve element is missing from Revit.
+                        // ✅ STEP 1: Optimized Hierarchical Reset (Combined -> Cluster -> Individual)
+                        // Uses O(1) HashSet check against ALL opening families in Revit.
                         int resetCount = repository.VerifyExistingSleevesAndResetFlags(
                             _document,
                             context.SelectedFilterNames ?? new List<string>(),
@@ -1433,23 +1384,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (!context.IsDeploymentMode)
                         {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [HIERARCHICAL-RESET] ✅ Unresolved {resetCount} zones with missing/deleted sleeves");
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones with missing/deleted sleeves");
+                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                $"[{DateTime.Now}] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones\n");
                         }
 
-                        // ✅ STEP 3: Session Context (Spatial + Filter awareness)
-                        // 1. Sets IsCurrentClashFlag strictly based on Section Box (independent of filters)
-                        // 2. Sets ReadyForPlacementFlag if (Current + Unresolved + Matches Filter)
-                        var sessionContext = new SessionContextService(repository, msg => { });
+                        // ✅ STEP 2: Session Context (SOLID Refactor)
+                        // Orchestrates the 2-step flag setting logic:
+                        // 1. Reset & Set IsCurrentClashFlag based on Filters + Section Box
+                        // 2. Set ReadyForPlacementFlag based on IsCurrentClashFlag + Unresolved Status
+                        var sessionContext = new SessionContextService(repository);
                         int markedCount = sessionContext.UpdateSessionFlags(
                             context.SelectedFilterNames ?? new List<string>(),
                             context.SelectedMepCategories ?? new List<string>(),
                             sectionBoxNullable,
-                            context.SelectedHostTypes,
-                            true); // skipReset = true (handled by Step 1)
+                            context.SelectedHostTypes);
 
                         if (!context.IsDeploymentMode)
                         {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [SESSION-CONTEXT] ✅ Applied session context. Marked {markedCount} zones as ReadyForPlacement.");
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [SESSION-CONTEXT] ✅ Applied section box context. Marked {markedCount} zones as ReadyForPlacement.");
+                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                $"[{DateTime.Now}] [SESSION-CONTEXT] ✅ Applied section box context. Marked {markedCount} zones\n");
                         }
                         
                         op?.SetItemCount(resetCount + markedCount);
@@ -1458,7 +1413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[REFRESH-REFACTORED] ❌ Error in ResetFlags: {ex.Message}");
+                DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Hierarchical flag reset failed: {ex.Message}");
                 SafeFileLogger.SafeAppendText(context.RefreshLogName,
                     $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Hierarchical flag reset failed: {ex.Message}\n");
             }
@@ -1502,151 +1457,220 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             using (var intersectionOp = context.PerformanceMonitor.TrackOperation("6. Intersection Processing") as PerformanceMonitor.OperationTracker)
             {
                 var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
+                var validationService = new ValidationService(context, Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document));
+                var paramService = new ParameterCaptureService(context);
                 
-                using (var dbContext = new Data.SleeveDbContext(_document, msg => { }))
+                var logger = new Action<string>(msg => 
                 {
-                    var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg => { });
-                    var validationService = new ValidationService(context, Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document), repository);
-                    var paramService = new ParameterCaptureService(context);
-                    
-                    var logger = new Action<string>(msg => 
+                    if (!context.IsDeploymentMode)
+                        DebugLogger.Info(msg);
+                    SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] {msg}\n");
+                });
+                
+                Action<string, int> progressCallback = null;
+                if (_statusLabel != null)
+                {
+                    progressCallback = (category, count) =>
                     {
-                        if (!context.IsDeploymentMode)
-                            DebugLogger.Info(msg);
-                        SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] {msg}\n");
-                    });
-                    
-                    Action<string, int> progressCallback = null;
-                    if (_statusLabel != null)
-                    {
-                        progressCallback = (category, count) =>
-                        {
-                            try
-                            {
-                                _statusLabel.Text = $"Processing {category}: {count} intersections";
-                            }
-                            catch (Exception ex)
-                            {
-                                DebugLogger.Warning($"[REFRESH-REFACTORED] Error updating progress status: {ex.Message}");
-                            }
-                        };
-                    }
-                    
-                    // ✅ ROUTING LOGIC: Check if "Duct Accessories" is selected
-                    bool hasDuctAccessories = context.SelectedMepCategories != null && 
-                        context.SelectedMepCategories.Any(c => string.Equals(c, "Duct Accessories", StringComparison.OrdinalIgnoreCase));
-                    
-                    var processor = new IntersectionProcessor(
-                        context,
-                        xmlManager,
-                        validationService,
-                        paramService,
-                        context.PerformanceMonitor,
-                        logger,
-                        progressCallback);
-                    
-                    var decision = processor.PrepareExistingZones();
-                    
-                    // ✅ FAST PATH: Skip both damper processing AND intersection detection for validated zones
-                    bool shouldSkipProcessing = !decision.ShouldRunDetection && DeploymentConfiguration.DeploymentMode;
-                    
-                    List<ClashZone> damperClashZones = new List<ClashZone>();
-                    
-                    if (hasDuctAccessories && !shouldSkipProcessing)
-                    {
-                        // ✅ ROUTE TO DAMPER PROCESSING
                         try
                         {
-                            BoundingBoxXYZ? sectionBox = null;
-                            if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
-                            {
-                                sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
-                            }
-                            
-                            var clashZoneStorage = context.XmlCache?.FilterXml?.Values?.FirstOrDefault() ?? new ClashZoneStorage();
-                            var damperService = new DamperProcessingService(
-                                _document, logger, clashZoneStorage, null, null, null, context.PerformanceMonitor);
-                            
-                            var openingLocationMap = new Dictionary<string, FamilyInstance>();
-                            var allOpenings = new FilteredElementCollector(_document)
-                                .OfClass(typeof(FamilyInstance))
-                                .Cast<FamilyInstance>()
-                                .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
-                                .Cast<FamilyInstance>().ToList();
+                            _statusLabel.Text = $"Processing {category}: {count} intersections";
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Warning($"[REFRESH-REFACTORED] Error updating progress status: {ex.Message}");
+                        }
+                    };
+                }
+                
+                // ✅ ROUTING LOGIC: Check if "Duct Accessories" is selected
+                // If selected, process dampers separately; all other categories go to intersection processor
+                bool hasDuctAccessories = context.SelectedMepCategories != null && 
+                    context.SelectedMepCategories.Any(c => string.Equals(c, "Duct Accessories", StringComparison.OrdinalIgnoreCase));
+                
+                // ✅ CHECK FAST PATH CONDITIONS: Determine if fast path should be taken BEFORE processing
+                // This allows us to skip both damper processing AND intersection detection for validated zones
+                var processor = new IntersectionProcessor(
+                    context,
+                    xmlManager,
+                    validationService,
+                    paramService,
+                    context.PerformanceMonitor,
+                    logger,
+                    progressCallback);
+                
+                var decision = processor.PrepareExistingZones();
+                
+                // ✅ FAST PATH: Skip both damper processing AND intersection detection for validated zones
+                // Conditions: DeploymentMode ON, Adopt OFF, all combos processed (IsFilterComboNew=0)
+                bool shouldSkipProcessing = !decision.ShouldRunDetection && DeploymentConfiguration.DeploymentMode;
+                
+                List<ClashZone> damperClashZones = new List<ClashZone>();
+                
+                if (hasDuctAccessories && !shouldSkipProcessing)
+                {
+                    // ✅ ROUTE TO DAMPER PROCESSING: Process Duct Accessories separately (only if NOT fast path)
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService\n");
+                    }
+                    
+                    try
+                    {
+                        // Get section box from view
+                        BoundingBoxXYZ? sectionBox = null;
+                        if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                        {
+                            sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                        }
+                        
+                        // Get ClashZoneStorage from context (or create new one)
+                        var clashZoneStorage = context.XmlCache?.FilterXml?.Values?.FirstOrDefault() ?? new ClashZoneStorage();
+                        
+                        // Create damper processing service
+                        var damperService = new DamperProcessingService(
+                            _document,
+                            logger,
+                            clashZoneStorage,
+                            null, // Use default damper type detector
+                            null, // Use default connector detector
+                            null, // Use default parameter snapshot service
+                            context.PerformanceMonitor); // Pass performance monitor for tracking
+                        
+                        // ✅ PHASE 3 OPTIMIZATION: Pre-index "Opening" instances for O(1) proximity check
+                        // This allows DamperProcessingService to skip redundant checks
+                        var openingLocationMap = new Dictionary<string, FamilyInstance>();
+                        var allOpenings = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .ToList();
 
-                            foreach (var opening in allOpenings)
-                            {
-                                XYZ loc = null;
-                                if (opening.Location is LocationPoint lp) loc = lp.Point;
-                                else if (opening.Location is LocationCurve lc) loc = lc.Curve.Evaluate(0.5, true);
+                        foreach (var opening in allOpenings)
+                        {
+                            XYZ loc = null;
+                            if (opening.Location is LocationPoint lp) loc = lp.Point;
+                            else if (opening.Location is LocationCurve lc) loc = lc.Curve.Evaluate(0.5, true);
 
-                                if (loc != null)
-                                {
-                                    string key = $"{Math.Round(loc.X, 3)}_{Math.Round(loc.Y, 3)}_{Math.Round(loc.Z, 3)}";
-                                    if (!openingLocationMap.ContainsKey(key)) openingLocationMap.Add(key, opening);
-                                }
-                            }
-                            
-                            damperClashZones = damperService.ProcessDampers(
-                                context.SelectedMepCategories,
-                                context.SelectedHostTypes,
-                                context.SelectedReferenceFiles,
-                                sectionBox,
-                                context.ExistingClashZones,
-                                openingLocationMap.Keys.ToHashSet()) ?? new List<ClashZone>();
-                        }
-                        catch (Exception damperEx)
-                        {
-                            DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Error in damper processing: {damperEx.Message}");
-                        }
-                    }
-                    
-                    // ✅ INTERSECTION DETECTION
-                    var intersectionClashZones = processor.RunDetectionIfNeeded(decision);
-                    
-                    // ✅ MERGE RESULTS
-                    var allClashZones = intersectionClashZones?.ToList() ?? new List<ClashZone>();
-                    if (damperClashZones.Count > 0)
-                    {
-                        var existingIds = new HashSet<Guid>(allClashZones.Select(z => z.Id));
-                        foreach (var damperZone in damperClashZones)
-                        {
-                            if (!existingIds.Contains(damperZone.Id))
+                            if (loc != null)
                             {
-                                allClashZones.Add(damperZone);
+                                string key = $"{Math.Round(loc.X, 3)}_{Math.Round(loc.Y, 3)}_{Math.Round(loc.Z, 3)}";
+                                if (!openingLocationMap.ContainsKey(key)) openingLocationMap.Add(key, opening);
                             }
                         }
-                    }
-                    
-                    // Update context
-                    if (context.AllClashZones == null)
-                    {
-                        context.AllClashZones = allClashZones;
-                    }
-                    else
-                    {
-                        var existingIds = new HashSet<Guid>(context.AllClashZones.Select(z => z.Id));
-                        foreach (var zone in allClashZones)
+                        var openingPointKeys = openingLocationMap.Keys.ToHashSet();
+                        if (!context.IsDeploymentMode) DebugLogger.Info($"[REFRESH-REFACTORED] Pre-indexed {openingPointKeys.Count} openings for Damper O(1) check");
+
+                        // Process dampers (pass selected reference files to respect UI selection)
+                        // ✅ CRITICAL FIX: Pass existing zones to prevent duplicate GUID creation
+                        damperClashZones = damperService.ProcessDampers(
+                            context.SelectedMepCategories,
+                            context.SelectedHostTypes,
+                            context.SelectedReferenceFiles,
+                            sectionBox,
+                            context.ExistingClashZones,
+                            openingPointKeys) ?? new List<ClashZone>();
+                        
+                        if (!context.IsDeploymentMode)
                         {
-                            if (!existingIds.Contains(zone.Id))
-                            {
-                                context.AllClashZones.Add(zone);
-                            }
+                            DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Damper processing complete: {damperClashZones.Count} ClashZones created");
+                            SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                                $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Damper processing complete: {damperClashZones.Count} ClashZones created\n");
+                        }
+                    }
+                    catch (Exception damperEx)
+                    {
+                        DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Error in damper processing: {damperEx.Message}");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Error in damper processing: {damperEx.Message}\n");
+                    }
+                }
+                else if (hasDuctAccessories && shouldSkipProcessing)
+                {
+                    // ✅ FAST PATH: Skip damper processing - zones already exist in database for validated zones
+                    System.Diagnostics.Debug.WriteLine($"[REFRESH-REFACTORED] ⚡⚡⚡ FAST PATH: Skipping damper processing (validated zones, no detection needed)");
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] ⚡ FAST PATH: Skipping damper processing (validated zones, no detection needed)");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚡ FAST PATH: Skipping damper processing (validated zones, no detection needed)\n");
+                    }
+                    damperClashZones = new List<ClashZone>(); // Use empty list - zones already exist in database
+                }
+                else
+                {
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] ✅ No Duct Accessories category selected → Skipping damper processing");
+                    }
+                }
+                
+                var intersectionClashZones = processor.RunDetectionIfNeeded(decision);
+                
+                // ✅ MERGE RESULTS: Combine intersection processor results with damper processing results
+                var allClashZones = intersectionClashZones?.ToList() ?? new List<ClashZone>();
+                if (damperClashZones.Count > 0)
+                {
+                    var existingIds = new HashSet<Guid>(allClashZones.Select(z => z.Id));
+                    foreach (var damperZone in damperClashZones)
+                    {
+                        if (!existingIds.Contains(damperZone.Id))
+                        {
+                            allClashZones.Add(damperZone);
                         }
                     }
                     
-                    if (damperClashZones.Count > 0)
+                    if (!context.IsDeploymentMode)
                     {
-                        if (context.NewClashZones == null) context.NewClashZones = new List<ClashZone>();
-                        var newIds = new HashSet<Guid>(context.NewClashZones.Select(z => z.Id));
-                        foreach (var dz in damperClashZones)
+                        DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Merged results: {intersectionClashZones?.Count ?? 0} from intersections + {damperClashZones.Count} from dampers = {allClashZones.Count} total");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Merged results: {intersectionClashZones?.Count ?? 0} from intersections + {damperClashZones.Count} from dampers = {allClashZones.Count} total\n");
+                    }
+                }
+                
+                // Update context with merged results
+                if (context.AllClashZones == null)
+                {
+                    context.AllClashZones = allClashZones;
+                }
+                else
+                {
+                    // Merge with existing zones
+                    var existingIds = new HashSet<Guid>(context.AllClashZones.Select(z => z.Id));
+                    foreach (var zone in allClashZones)
+                    {
+                        if (!existingIds.Contains(zone.Id))
                         {
-                            if (!newIds.Contains(dz.Id)) context.NewClashZones.Add(dz);
+                            context.AllClashZones.Add(zone);
                         }
                     }
-                    
-                    processor.PostProcess(decision);
-                    intersectionOp?.SetItemCount(allClashZones.Count);
+                }
+                
+                // Add damper zones to NewClashZones if they're new
+                if (damperClashZones.Count > 0)
+                {
+                    if (context.NewClashZones == null)
+                    {
+                        context.NewClashZones = new List<ClashZone>();
+                    }
+                    var newDamperIds = new HashSet<Guid>(context.NewClashZones.Select(z => z.Id));
+                    foreach (var damperZone in damperClashZones)
+                    {
+                        if (!newDamperIds.Contains(damperZone.Id))
+                        {
+                            context.NewClashZones.Add(damperZone);
+                        }
+                    }
+                }
+                
+                processor.PostProcess(decision);
+                intersectionOp?.SetItemCount(allClashZones.Count);
+                
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Info($"[REFRESH-REFACTORED] Mode: {decision.Mode}, Detection Run: {decision.ShouldRunDetection}, Reason: {decision.Reason}");
                 }
             }
         }
@@ -1683,7 +1707,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             existingZone.MepElementNominalDiameter = newZone.MepElementNominalDiameter;
                             existingZone.MepElementSizeParameterValue = newZone.MepElementSizeParameterValue;
                             existingZone.MepElementFormattedSize = newZone.MepElementFormattedSize;
+
+                            // ✅ CRITICAL: propagate system metadata from refreshed zone
+                            existingZone.MepSystemType = newZone.MepSystemType;
+                            existingZone.MepSystemName = newZone.MepSystemName;
+                            existingZone.MepServiceType = newZone.MepServiceType;
                             existingZone.MepElementSystemAbbreviation = newZone.MepElementSystemAbbreviation;
+
                             existingZone.MepElementUniqueId = newZone.MepElementUniqueId;
                             existingZone.IsInsulated = newZone.IsInsulated;
                             existingZone.InsulationThickness = newZone.InsulationThickness;
@@ -1850,8 +1880,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Create SectionBoxService instance
                 var sectionBoxService = new SectionBoxService();
 
-                // Get active 3D view
-                if (_uiDocument?.ActiveView is View3D view3D)
+                // Get active 3D view with section box
+                if (_uiDocument?.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
                 {
                     // Create database context for storing section box
                     using (var dbContext = new Data.SleeveDbContext(_document, msg =>
@@ -1860,15 +1890,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
                     }))
                     {
-                        // Capture and store section box bounds (now handles inactive state)
+                        // Capture and store section box bounds
                         sectionBoxService.CaptureAndStore(view3D, dbContext.Connection);
 
                         if (!context.IsDeploymentMode)
                         {
-                            DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] ✅ Section box state captured and synchronized to database");
+                            DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] ✅ Section box bounds captured and stored successfully");
                         }
                         SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                            $"[{DateTime.Now}] [SECTION-BOX] ✅ Section box state captured and synchronized to database\n");
+                            $"[{DateTime.Now}] [SECTION-BOX] ✅ Section box bounds captured and stored successfully\n");
                     }
                 }
                 else

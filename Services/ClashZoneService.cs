@@ -3240,6 +3240,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 systemAbbreviation  = mepData?.SystemAbbreviation   ?? GetMepSystemAbbreviation(mepElement);
                 mepSystemType       = mepData?.SystemType           ?? GetMepSystemType(mepElement, mepCategoryForClearance);
                 mepSystemName       = mepData?.SystemName           ?? string.Empty;
+                
+                // ✅ DIAGNOSTIC: Log system type for duct accessories before creating zone
+                if (mepCategoryForClearance == "Duct Accessories" || mepCategoryForClearance == "Pipe Accessories")
+                {
+                    _log($"[ZONE-CREATE-DEBUG] Element {mepElement.Id} (Category={mepCategoryForClearance}): mepSystemType='{mepSystemType}', mepData?.SystemType='{mepData?.SystemType ?? "null"}'");
+                }
                 if (mepData == null)
                 {
                     try
@@ -3248,6 +3254,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (sysNameParam != null && sysNameParam.HasValue) mepSystemName = sysNameParam.AsString() ?? string.Empty;
                     }
                     catch { }
+
+                    // Duct/Pipe accessory fallback: traverse connectors for system name
+                    if (string.IsNullOrEmpty(mepSystemName) &&
+                        (mepCategoryForClearance == "Duct Accessories" || mepCategoryForClearance == "Pipe Accessories" ||
+                         mepElement?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory ||
+                         mepElement?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_PipeAccessory))
+                    {
+                        var (_, sysName, _) = GetSystemInfoFromAccessoryConnectors(mepElement);
+                        if (!string.IsNullOrEmpty(sysName)) mepSystemName = sysName;
+                    }
                 }
                 mepServiceType      = mepData?.ServiceType          ?? GetMepServiceType(mepElement);
                 elevationFromLevel  = mepData?.ElevationFromLevel   ?? GetMepElementOffset(mepElement);
@@ -3642,6 +3658,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get MEP System Type for all categories (Pipes, Ducts, etc.)
         /// </summary>
+        /// <summary>
+        /// For duct/pipe accessories (FamilyInstances), traverse connectors to read system type,
+        /// system name and system abbreviation from the connected MEPSystem.
+        /// Returns empty strings if the element is not a FamilyInstance or has no connected system.
+        /// </summary>
+        private (string systemType, string systemName, string systemAbbreviation) GetSystemInfoFromAccessoryConnectors(Element mepElement)
+        {
+            try
+            {
+                if (!(mepElement is FamilyInstance fi)) 
+                {
+                    _log($"[CONNECTOR-DEBUG] Element {mepElement.Id} is not a FamilyInstance");
+                    return (string.Empty, string.Empty, string.Empty);
+                }
+                var connMgr = fi.MEPModel?.ConnectorManager;
+                if (connMgr == null) 
+                {
+                    _log($"[CONNECTOR-DEBUG] Element {mepElement.Id} has no ConnectorManager");
+                    return (string.Empty, string.Empty, string.Empty);
+                }
+
+                int connCount = 0;
+                foreach (Connector conn in connMgr.Connectors)
+                {
+                    connCount++;
+                    var mepSys = conn.MEPSystem;
+                    if (mepSys == null) 
+                    {
+                        _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}, Connector {connCount}: MEPSystem is null");
+                        continue;
+                    }
+
+                    string sysName = mepSys.Name ?? string.Empty;
+                    _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}, Connector {connCount}: MEPSystem.Name = '{sysName}'");
+
+                    string sysType = mepSys.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM)?.AsValueString()
+                                  ?? mepSys.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)?.AsValueString()
+                                  ?? mepSys.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM)?.AsValueString()
+                                  ?? mepSys.LookupParameter("System Type")?.AsValueString()
+                                  ?? string.Empty;
+                    _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}, Connector {connCount}: SystemType = '{sysType}'");
+
+                    string sysAbbr = mepSys.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM)?.AsString()
+                                  ?? mepSys.LookupParameter("System Abbreviation")?.AsString()
+                                  ?? mepSys.LookupParameter("System Abbr")?.AsString()
+                                  ?? string.Empty;
+                    _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}, Connector {connCount}: SystemAbbr = '{sysAbbr}'");
+
+                    if (!string.IsNullOrEmpty(sysType) || !string.IsNullOrEmpty(sysName) || !string.IsNullOrEmpty(sysAbbr))
+                    {
+                        _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}: Found system info - Type='{sysType}', Name='{sysName}', Abbr='{sysAbbr}'");
+                        return (sysType, sysName, sysAbbr);
+                    }
+                }
+                _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}: No system info found in {connCount} connectors");
+            }
+            catch (Exception ex)
+            {
+                _log($"[CONNECTOR-DEBUG] Element {mepElement.Id}: Exception - {ex.Message}");
+            }
+            return (string.Empty, string.Empty, string.Empty);
+        }
+
         private string GetMepSystemType(Element mepElement, string category, System.Collections.Generic.Dictionary<string, string>? paramCache = null)
         {
             try
@@ -3670,7 +3749,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // 1. Try Built-in Parameter (Fastest, language independent)
                 var param = mepElement.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM); // Mechanical System
                 if (param == null) param = mepElement.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM); // Piping System
-                
+
                 if (param != null) return param.AsValueString() ?? string.Empty;
 
                 // 2. Try Generic "System Type" Parameter (Lookup)
@@ -3681,7 +3760,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // 3. Try "System Classification" (Often used if System Type is missing)
                 var classParam = mepElement.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
                 if (classParam != null) return classParam.AsValueString() ?? string.Empty;
-                
+
+                // 4. Duct/Pipe accessory fallback: traverse connectors to get system type from connected MEPSystem
+                if (category == "Duct Accessories" || category == "Pipe Accessories" ||
+                    mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory ||
+                    mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_PipeAccessory)
+                {
+                    _log($"[SYSTEM-TYPE-DEBUG] Element {mepElement.Id} (Category={category}): Trying connector traversal fallback");
+                    var (sysType, _, _) = GetSystemInfoFromAccessoryConnectors(mepElement);
+                    if (!string.IsNullOrEmpty(sysType)) 
+                    {
+                        _log($"[SYSTEM-TYPE-DEBUG] Element {mepElement.Id}: Connector traversal returned '{sysType}'");
+                        return sysType;
+                    }
+                    _log($"[SYSTEM-TYPE-DEBUG] Element {mepElement.Id}: Connector traversal returned empty");
+                }
+
                 return string.Empty;
             }
             catch
@@ -4721,7 +4815,8 @@ private double GetMepElementOffset(Element mepElement, System.Collections.Generi
                     return cachedAbbr;
 
                 // Try direct BIP first (O(1) vs O(N) LookupParameter)
-                var abbrevParam = mepElement.LookupParameter("System Abbreviation");
+                var abbrevParam = mepElement.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM)
+                               ?? mepElement.LookupParameter("System Abbreviation");
                 if (abbrevParam != null && abbrevParam.StorageType == StorageType.String)
                     return abbrevParam.AsString() ?? string.Empty;
 
@@ -4732,6 +4827,14 @@ private double GetMepElementOffset(Element mepElement, System.Collections.Generi
                     var systemName = systemNameParam.AsString();
                     if (!string.IsNullOrEmpty(systemName))
                         return systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
+                }
+
+                // Duct/Pipe accessory fallback: traverse connectors
+                if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory ||
+                    mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_PipeAccessory)
+                {
+                    var (_, _, sysAbbr) = GetSystemInfoFromAccessoryConnectors(mepElement);
+                    if (!string.IsNullOrEmpty(sysAbbr)) return sysAbbr;
                 }
 
                 return string.Empty;
@@ -6601,6 +6704,12 @@ private double GetMepElementOffset(Element mepElement, System.Collections.Generi
             d.SystemAbbreviation  = GetMepSystemAbbreviation(mepElement, mepParamDict);
             d.SystemType          = GetMepSystemType(mepElement, d.Category, mepParamDict);
             
+            // ✅ DIAGNOSTIC: Log system type for duct accessories
+            if (d.Category == "Duct Accessories" || d.Category == "Pipe Accessories")
+            {
+                _log($"[COMPUTE-DEBUG] Element {mepElement.Id} (Category={d.Category}): SystemType='{d.SystemType}', SystemName='{d.SystemName}', SystemAbbr='{d.SystemAbbreviation}'");
+            }
+            
             // ✅ SYSTEM NAME OPTIMIZATION: Check parameter cache first
             if (mepParamDict != null && mepParamDict.TryGetValue("System Name", out var sn))
             {
@@ -6615,6 +6724,16 @@ private double GetMepElementOffset(Element mepElement, System.Collections.Generi
                     else d.SystemName = string.Empty;
                 }
                 catch { d.SystemName = string.Empty; }
+
+                // Duct/Pipe accessory fallback: traverse connectors for system name
+                if (string.IsNullOrEmpty(d.SystemName) &&
+                    (d.Category == "Duct Accessories" || d.Category == "Pipe Accessories" ||
+                     mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory ||
+                     mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_PipeAccessory))
+                {
+                    var (_, sysName, _) = GetSystemInfoFromAccessoryConnectors(mepElement);
+                    if (!string.IsNullOrEmpty(sysName)) d.SystemName = sysName;
+                }
             }
 
             d.ServiceType       = GetMepServiceType(mepElement, mepParamDict);

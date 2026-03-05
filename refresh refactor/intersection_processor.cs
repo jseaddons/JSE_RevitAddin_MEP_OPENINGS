@@ -124,15 +124,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 _context.NewClashZones = new List<ClashZone>();
                 _context.AllClashZones = _context.ExistingClashZones ?? new List<ClashZone>();
                 
-                // ✅ CRITICAL FIX: Ensure IsCurrentClash is set for loaded zones in Superfast Path
-                // This ensures they are included in the synchronized ReadyForPlacementFlag update
-                if (_context.AllClashZones != null)
-                {
-                    foreach (var zone in _context.AllClashZones)
-                    {
-                        zone.IsCurrentClash = true;
-                    }
-                }
+                // ✅ NOTE: IsCurrentClash flag is managed by UpdateSessionFlags in ResetFlags()
+                // Do NOT set it here - let the proper flag management handle it based on
+                // section box + host types + MEP categories + filter names + linked/host file keys
                 
                 _logger($"[INTERSECTION-PROCESSOR] ✅ SUPERFAST PATH: Using {_context.AllClashZones.Count} existing zones from database (no detection, no damper processing)");
                 

@@ -1763,6 +1763,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 // NOTE: Parameters, Dimensions, and Level info were already calculated/extracted above
                 // We just reused the local variables: mepParameters, hostParameters, damperWidth, damperHeight, mepElementLevelName
 
+                // ✅ CRITICAL FIX: Get system type info from connectors for duct accessories
+                // Duct accessories are FamilyInstance objects - RBS_DUCT_SYSTEM_TYPE_PARAM isn't directly accessible
+                string mepSystemType = string.Empty;
+                string mepSystemName = string.Empty;
+                string mepSystemAbbreviation = string.Empty;
+                
+                // First try to get from captured parameters
+                mepParameters?.TryGetValue("System Type", out mepSystemType);
+                mepParameters?.TryGetValue("System Name", out mepSystemName);
+                mepParameters?.TryGetValue("System Abbreviation", out mepSystemAbbreviation);
+                
+                _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: From params - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
+                SafeFileLogger.SafeAppendText(
+                    "damper_processing.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-STEP] Element {damper.Id.IntegerValue}: From params - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
+                
+                // If not found in parameters, use connector traversal
+                if (string.IsNullOrEmpty(mepSystemType) && string.IsNullOrEmpty(mepSystemName))
+                {
+                    _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: Params empty, trying connector traversal");
+                    var (sysType, sysName, sysAbbr) = GetSystemInfoFromAccessoryConnectors(damper);
+                    mepSystemType = sysType;
+                    mepSystemName = sysName;
+                    mepSystemAbbreviation = sysAbbr;
+                    _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: From connectors - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
+                    SafeFileLogger.SafeAppendText(
+                        "damper_processing.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-STEP] Element {damper.Id.IntegerValue}: From connectors - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
+                }
+                else
+                {
+                    _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: Using params (not empty)");
+                }
+                
+                _logger($"[DAMPER-SYSTEM-DEBUG] Element {damper.Id}: FINAL values - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'");
+                SafeFileLogger.SafeAppendText(
+                    "damper_processing.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SYSTEM-FINAL] Element {damper.Id.IntegerValue}: FINAL - Type='{mepSystemType}', Name='{mepSystemName}', Abbr='{mepSystemAbbreviation}'\n");
+
                 var swFlag = System.Diagnostics.Stopwatch.StartNew();
 
                 var clashZone = new ClashZone
@@ -1830,7 +1869,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // ✅ CRITICAL FIX: Explicitly set IsCurrentClash to true
                     // Damper zones are created during refresh, so they are by definition "Current" active clashes
                     // Without this, they are filtered out by GetClashZonesByFiles (WHERE IsCurrentClash = 1)
-                    IsCurrentClash = true
+                    IsCurrentClash = true,
+                    
+                    // ✅ CRITICAL FIX: Set system type info for duct accessories
+                    // This is needed for ParameterService to populate system parameters
+                    MepSystemType = mepSystemType,
+                    MepSystemName = mepSystemName,
+                    MepElementSystemAbbreviation = mepSystemAbbreviation
                 };
 
                 // ✅ O(1) EXISTENCE CHECK: Set IsResolved if sleeve exists at this location
@@ -2090,6 +2135,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
                 return "Unknown";
             }
+        }
+
+        /// <summary>
+        /// ✅ HELPER: Get system info (type, name, abbreviation) from duct/pipe accessory connectors
+        /// Duct accessories are FamilyInstance objects - system info must be read via connector.MEPSystem traversal
+        /// </summary>
+        private (string systemType, string systemName, string systemAbbreviation) GetSystemInfoFromAccessoryConnectors(Element mepElement)
+        {
+            try
+            {
+                _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: Starting connector traversal");
+                
+                if (!(mepElement is FamilyInstance fi)) 
+                {
+                    _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: Not a FamilyInstance");
+                    return (string.Empty, string.Empty, string.Empty);
+                }
+                
+                var connMgr = fi.MEPModel?.ConnectorManager;
+                if (connMgr == null) 
+                {
+                    _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: No ConnectorManager");
+                    return (string.Empty, string.Empty, string.Empty);
+                }
+                
+                int connectorCount = 0;
+                foreach (Connector conn in connMgr.Connectors)
+                {
+                    connectorCount++;
+                    _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: Checking connector {connectorCount}, Domain={conn.Domain}");
+                    
+                    var mepSys = conn.MEPSystem;
+                    if (mepSys == null)
+                    {
+                        _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: Connector {connectorCount} has NO MEPSystem");
+                        continue;
+                    }
+                    
+                    _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: Connector {connectorCount} has MEPSystem '{mepSys.Name}'");
+
+                    string sysName = mepSys.Name ?? string.Empty;
+                    string sysType = mepSys.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM)?.AsValueString()
+                                ?? mepSys.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)?.AsValueString()
+                                ?? mepSys.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM)?.AsValueString()
+                                ?? string.Empty;
+                    string sysAbbr = mepSys.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM)?.AsString()
+                                  ?? string.Empty;
+
+                    _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: Found sysType='{sysType}', sysName='{sysName}', sysAbbr='{sysAbbr}'");
+
+                    if (!string.IsNullOrEmpty(sysType) || !string.IsNullOrEmpty(sysName) || !string.IsNullOrEmpty(sysAbbr))
+                    {
+                        _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: ✅ RETURNING sysType='{sysType}', sysName='{sysName}'");
+                        return (sysType, sysName, sysAbbr);
+                    }
+                }
+                
+                _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: No valid system info found in {connectorCount} connectors");
+            }
+            catch (Exception ex)
+            {
+                _logger($"[CONNECTOR-TRAVERSE] Element {mepElement.Id}: EXCEPTION - {ex.Message}");
+            }
+            return (string.Empty, string.Empty, string.Empty);
         }
     }
 

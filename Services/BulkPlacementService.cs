@@ -328,6 +328,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 zone.IsResolved = true;
                                 zone.PlacementStatus = "Placed";
                                 zone.IsClusteredFlag = false; // Individual placement resets this
+                                zone.MarkedForClusterProcess = false; // ✅ CRITICAL: Reset so proximity step can set 1 only for zones with neighbors (was missing → all stayed 1)
                             }
 
                             var bulkUpdateTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -346,7 +347,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 SafeFileLogger.SafeAppendText("flag_workflow.log",
                                     $"[{DateTime.Now:HH:mm:ss}]   Zones ready for proximity check: {verifyZones.Count}\n");
                                 SafeFileLogger.SafeAppendText("flag_workflow.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   (Query: IsResolvedFlag=1 AND MarkedForClusterProcess IS NULL)\n");
+                                    $"[{DateTime.Now:HH:mm:ss}]   (Query: IsResolvedFlag=1 AND (MarkedForClusterProcess IS NULL OR MarkedForClusterProcess = 0))\n");
 
                                 if (verifyZones.Count > 0)
                                 {

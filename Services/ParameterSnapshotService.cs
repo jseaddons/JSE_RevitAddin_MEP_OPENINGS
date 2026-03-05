@@ -585,6 +585,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         element.LookupParameter("System Classification") ??
                                         element.LookupParameter("MEP System Classification");
                                 }
+
+                                // ✅ DUCT/PIPE ACCESSORY: traverse connectors to get system type from connected MEPSystem
+                                if (p == null && (categoryId == (int)BuiltInCategory.OST_DuctAccessory ||
+                                                  categoryId == (int)BuiltInCategory.OST_PipeAccessory) &&
+                                    element is FamilyInstance fiST)
+                                {
+                                    try
+                                    {
+                                        var connMgrST = fiST.MEPModel?.ConnectorManager;
+                                        if (connMgrST != null)
+                                        {
+                                            foreach (Connector conn in connMgrST.Connectors)
+                                            {
+                                                var mepSys = conn.MEPSystem;
+                                                if (mepSys == null) continue;
+                                                var sysPar = mepSys.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM)
+                                                          ?? mepSys.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)
+                                                          ?? mepSys.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM)
+                                                          ?? mepSys.LookupParameter("System Type");
+                                                if (sysPar != null)
+                                                {
+                                                    var sysTypeStr = sysPar.AsValueString() ?? sysPar.AsString();
+                                                    if (!string.IsNullOrEmpty(sysTypeStr))
+                                                    {
+                                                        result.Add(new SerializableKeyValue { Key = actualKey, Value = sysTypeStr });
+                                                        goto nextKey_SystemType;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                    nextKey_SystemType:;
+                                }
                             }
                         }
 
@@ -600,15 +634,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             p = element.LookupParameter("MEP System Name") ??
                                 element.LookupParameter("System Name") ??
                                 element.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
+
+                            // ✅ DUCT/PIPE ACCESSORY: traverse connectors to get system name from connected MEPSystem
+                            if (p == null && (categoryId == (int)BuiltInCategory.OST_DuctAccessory ||
+                                              categoryId == (int)BuiltInCategory.OST_PipeAccessory) &&
+                                element is FamilyInstance fiSN)
+                            {
+                                try
+                                {
+                                    var connMgrSN = fiSN.MEPModel?.ConnectorManager;
+                                    if (connMgrSN != null)
+                                    {
+                                        foreach (Connector conn in connMgrSN.Connectors)
+                                        {
+                                            var mepSys = conn.MEPSystem;
+                                            if (mepSys == null) continue;
+                                            var sysName = mepSys.Name;
+                                            if (!string.IsNullOrEmpty(sysName))
+                                            {
+                                                result.Add(new SerializableKeyValue { Key = key, Value = sysName });
+                                                goto nextKey_SystemName;
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { }
+                                nextKey_SystemName:;
+                            }
                         }
 
                         // ✅ CRITICAL: Special fallback for System Abbreviation
                         if (p == null && key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase))
                         {
-                            p = element.LookupParameter("System Abbreviation") ??
+                            p = element.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM)
+                             ?? element.LookupParameter("System Abbreviation") ??
                                 element.LookupParameter("System Abbr") ??
                                 element.LookupParameter("Abbreviation") ??
                                 element.LookupParameter("Abbr");
+
+                            // ✅ DUCT/PIPE ACCESSORY: traverse connectors to get system abbreviation from connected MEPSystem
+                            if (p == null && (categoryId == (int)BuiltInCategory.OST_DuctAccessory ||
+                                              categoryId == (int)BuiltInCategory.OST_PipeAccessory) &&
+                                element is FamilyInstance fiSA)
+                            {
+                                try
+                                {
+                                    var connMgrSA = fiSA.MEPModel?.ConnectorManager;
+                                    if (connMgrSA != null)
+                                    {
+                                        foreach (Connector conn in connMgrSA.Connectors)
+                                        {
+                                            var mepSys = conn.MEPSystem;
+                                            if (mepSys == null) continue;
+                                            var abbrPar = mepSys.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM)
+                                                       ?? mepSys.LookupParameter("System Abbreviation")
+                                                       ?? mepSys.LookupParameter("System Abbr");
+                                            if (abbrPar != null)
+                                            {
+                                                var abbrStr = abbrPar.AsString();
+                                                if (!string.IsNullOrEmpty(abbrStr))
+                                                {
+                                                    result.Add(new SerializableKeyValue { Key = key, Value = abbrStr });
+                                                    goto nextKey_SystemAbbr;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { }
+                                nextKey_SystemAbbr:;
+                            }
                         }
 
                         // ✅ CRITICAL FIX: "Elevation from Level" mapping per User Request

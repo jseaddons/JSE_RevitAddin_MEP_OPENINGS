@@ -94,7 +94,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                             totalPlaced += bulkResult.PlacedCount;
                             totalErrors += bulkResult.FailedCount;
-                            placedZones.AddRange(bulkResult.PlacedItems.Select(x => x.Zone));
+                            var currentFilterZones = bulkResult.PlacedItems.Select(x => x.Zone).ToList();
+                            placedZones.AddRange(currentFilterZones);
+
+                            // ✅ PERSISTENCE: Save snapshots immediately after placement for this filter
+                            // This ensures the correct FilterId is associated with the snapshots.
+                            // ✅ CRITICAL: Wrapped in try-catch so snapshot failure does NOT kill the entire
+                            // workflow (geometry extraction, proximity, clustering must still run).
+                            if (currentFilterZones.Any())
+                            {
+                                try
+                                {
+                                    using (var db = _contextFactory())
+                                    {
+                                        var repo = new ClashZoneRepository(db, _logger, _perf as PerformanceMonitor);
+                                        repo.SaveSleeveSnapshotsForPlacedSleeves(filter.Id, currentFilterZones);
+                                    }
+                                }
+                                catch (Exception snapshotEx)
+                                {
+                                    _logger($"[WORKFLOW] ⚠️ Snapshot save failed for filter '{filter.Name}' (non-fatal): {snapshotEx.Message}");
+                                    SafeFileLogger.SafeAppendText("workflow_error.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] Snapshot save failed (non-fatal): {snapshotEx.Message}\n");
+                                }
+                            }
 
                             if (!bulkResult.OverallSuccess)
                             {

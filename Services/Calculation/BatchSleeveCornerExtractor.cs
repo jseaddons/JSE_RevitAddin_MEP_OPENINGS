@@ -66,10 +66,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
         }
 
         /// <summary>
-        /// ✅ PERF: Computes corners mathematically from placement data (no Revit geometry API calls).
-        /// Uses CalculatedSleeveWidth/Height, SleevePlacementPoint, and HostOrientation
-        /// that are already set on each ClashZone after placement.
-        /// Eliminates per-sleeve doc.GetElement() + get_BoundingBox()/get_Geometry() calls.
+        /// After placement only: extracts corners from placement data (no pre-calculation, no Revit geometry API).
+        /// Uses CalculatedSleeveWidth/Height, SleevePlacementPoint, and HostOrientation already set on each ClashZone.
+        /// From the four corners, derives axis-aligned BoundingBoxMin/Max (min/max of corner X,Y,Z) and persists
+        /// both SleeveCorner1-4 and SleeveBoundingBoxMin*/Max* to the database.
         /// </summary>
         public int ComputeAndSaveCornersFromPlacementData(List<ClashZone> zones)
         {
@@ -153,6 +153,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                         }
                     }
 
+                    // Queue corner update for DB
                     updates.Add((zone.Id, c1x, c1y, c1z, c2x, c2y, c2z, c3x, c3y, c3z, c4x, c4y, c4z));
 
                     // Also set on the in-memory object for immediate use by proximity checker
@@ -160,6 +161,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                     zone.SleeveCorner2X = c2x; zone.SleeveCorner2Y = c2y; zone.SleeveCorner2Z = c2z;
                     zone.SleeveCorner3X = c3x; zone.SleeveCorner3Y = c3y; zone.SleeveCorner3Z = c3z;
                     zone.SleeveCorner4X = c4x; zone.SleeveCorner4Y = c4y; zone.SleeveCorner4Z = c4z;
+
+                    // Derive axis-aligned bbox from corners (no extra calculation — just min/max of corner coords) and persist.
+                    double minX = Math.Min(Math.Min(c1x, c2x), Math.Min(c3x, c4x));
+                    double maxX = Math.Max(Math.Max(c1x, c2x), Math.Max(c3x, c4x));
+                    double minY = Math.Min(Math.Min(c1y, c2y), Math.Min(c3y, c4y));
+                    double maxY = Math.Max(Math.Max(c1y, c2y), Math.Max(c3y, c4y));
+                    double minZ = Math.Min(Math.Min(c1z, c2z), Math.Min(c3z, c4z));
+                    double maxZ = Math.Max(Math.Max(c1z, c2z), Math.Max(c3z, c4z));
+
+                    // Update in-memory ClashZone for immediate consumers
+                    zone.SleeveBoundingBoxMinX = minX;
+                    zone.SleeveBoundingBoxMinY = minY;
+                    zone.SleeveBoundingBoxMinZ = minZ;
+                    zone.SleeveBoundingBoxMaxX = maxX;
+                    zone.SleeveBoundingBoxMaxY = maxY;
+                    zone.SleeveBoundingBoxMaxZ = maxZ;
+
+                    // Persist to database (also maintains R-tree index)
+                    _repository.UpdateSleeveBoundingBoxes(zone.Id, minX, minY, minZ, maxX, maxY, maxZ);
                 }
                 catch (Exception ex)
                 {

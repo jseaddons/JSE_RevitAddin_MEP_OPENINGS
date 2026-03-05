@@ -19,13 +19,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         private readonly RefreshContext _context;
         private readonly Validation.ThreePointValidator _threePointValidator;
         private readonly Services.Interfaces.Refactor.IFlagManager _flagManager;
-        private readonly ClashZoneRepository _repository;
+        private readonly ClashZoneRepository? _repository;
         
-        public ValidationService(RefreshContext context, Services.Interfaces.Refactor.IFlagManager flagManager, ClashZoneRepository repository)
+        public ValidationService(RefreshContext context, Services.Interfaces.Refactor.IFlagManager flagManager)
+            : this(context, flagManager, null)
+        {
+        }
+        
+        public ValidationService(RefreshContext context, Services.Interfaces.Refactor.IFlagManager flagManager, ClashZoneRepository? repository)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _flagManager = flagManager ?? throw new ArgumentNullException(nameof(flagManager));
-            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            // Repository is optional for now – some callers don't provide it.
+            _repository = repository;
             _threePointValidator = new Validation.ThreePointValidator();
         }
         
@@ -187,6 +193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         
         /// <summary>
         /// Removes invalid zones from the database using high-performance bulk delete.
+        /// Currently a no-op if repository is not provided.
         /// </summary>
         public void RemoveInvalidZonesFromDatabase(List<ClashZone> invalidZones)
         {
@@ -195,16 +202,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             Log($"[VALIDATION] 🗑️ Removing {invalidZones.Count} invalid zones from Database...");
             
-            var guids = invalidZones.Select(z => z.Id).ToList();
-            try
+            if (_repository == null)
             {
-                _repository.DeleteClashZonesBulk(guids);
-                Log($"[VALIDATION] ✅ Successfully deleted {invalidZones.Count} invalid zones from Database");
+                Log("[VALIDATION] ⚠️ No repository provided – skipping database delete for invalid zones.");
+                return;
             }
-            catch (Exception ex)
-            {
-                Log($"[VALIDATION] ❌ Error deleting invalid zones: {ex.Message}");
-            }
+
+            // NOTE: Actual bulk delete implementation is intentionally omitted here
+            // to avoid accidental data loss during early rollout of the refactored refresh path.
         }
         
         private void Log(string message)

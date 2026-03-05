@@ -73,6 +73,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double rotatedMaxX, double rotatedMaxY, double rotatedMaxZ);
 
         /// <summary>
+        /// Update axis-aligned bounding box coordinates for an individual sleeve by ClashZone GUID.
+        /// Also maintains the R-tree index for spatial queries.
+        /// </summary>
+        void UpdateSleeveBoundingBoxes(System.Guid clashZoneGuid, double minX, double minY, double minZ,
+            double maxX, double maxY, double maxZ);
+
+        /// <summary>
         /// ✅ SLEEVE CORNERS: Update pre-calculated 4 corner coordinates in world space
         /// Calculated once during individual sleeve placement, stored for reuse during clustering
         /// </summary>
