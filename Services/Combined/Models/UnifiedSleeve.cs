@@ -35,6 +35,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         /// MEP category: 'Pipes', 'Ducts', 'Cable Trays', 'Conduits'
         /// </summary>
         public string Category { get; set; }
+
+        /// <summary>
+        /// Linked file origin. An empty string denotes the local model.
+        /// </summary>
+        public string SourceDocKey { get; set; }
+
         
         // ============================================================================
         // GEOMETRY
@@ -282,7 +288,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 HostType = hostType,
                 HostOrientation = clashZone.HostOrientation,
                 RotationAngleDeg = clashZone.MepElementRotationAngle * (180.0 / Math.PI),
-                SourceData = clashZone
+                SourceData = clashZone,
+                SourceDocKey = clashZone.SourceDocKey ?? string.Empty
             };
         }
         
@@ -372,7 +379,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 HostOrientation = clusterSleeve.HostOrientation,
                 HostType = clusterSleeve.HostType, // ✅ FIX: Map HostType
                 RotationAngleDeg = clusterSleeve.RotationAngleDeg,
-                SourceData = clusterSleeve
+                SourceData = clusterSleeve,
+                SourceDocKey = string.Empty // Clusters don't have a single SourceDocKey
             };
 
             return result;
@@ -451,7 +459,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 HostType = clusterSleeve.HostType,
                 HostOrientation = clusterSleeve.HostOrientation,
                 RotationAngleDeg = clusterSleeve.RotationAngleDeg ?? 0.0,
-                SourceData = clusterSleeve
+                SourceData = clusterSleeve,
+                SourceDocKey = string.Empty // Clusters don't have a single SourceDocKey
             };
 
             return result;

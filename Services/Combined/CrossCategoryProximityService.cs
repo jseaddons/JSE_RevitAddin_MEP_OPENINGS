@@ -30,7 +30,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         /// </summary>
         public List<ProximityGroup> DetectProximityGroups(
             List<UnifiedSleeve> sleeves,
-            double proximityThreshold)
+            double proximityThreshold,
+            bool allowSameCategoryFromDifferentLinks = false)
         {
             if (sleeves == null || sleeves.Count == 0)
                 return new List<ProximityGroup>();
@@ -51,26 +52,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             var spatialIndex = BuildSpatialIndex(sleeves);
             
             // 2. Find proximity relationships
-            var proximityPairs = FindProximityPairs(sleeves, spatialIndex, proximityThreshold);
+            var proximityPairs = FindProximityPairs(sleeves, spatialIndex, proximityThreshold, allowSameCategoryFromDifferentLinks);
             
             _logger($"[CrossCategoryProximity] Found {proximityPairs.Count} proximity pairs");
             
             // 3. Group sleeves using union-find
             var groups = GroupSleeves(sleeves, proximityPairs);
             
-            // 4. Filter to cross-category groups only
-            var crossCategoryGroups = groups
-                .Where(g => g.IsCrossCategory() && g.IsValid())
+            // 4. Filter to valid groups
+            var combinedGroups = groups
+                .Where(g => g.IsValid() && IsValidCombinedGroup(g, allowSameCategoryFromDifferentLinks))
                 .ToList();
             
-            _logger($"[CrossCategoryProximity] Created {crossCategoryGroups.Count} cross-category proximity groups");
+            _logger($"[CrossCategoryProximity] Created {combinedGroups.Count} combined proximity groups");
             
-            foreach (var group in crossCategoryGroups)
+            foreach (var group in combinedGroups)
             {
                 _logger($"[CrossCategoryProximity]   - {group.GetSummary()}");
             }
             
-            return crossCategoryGroups;
+            return combinedGroups;
+        }
+
+        private bool IsValidCombinedGroup(ProximityGroup group, bool allowSameCategoryFromDifferentLinks)
+        {
+            if (group.IsCrossCategory())
+                return true;
+
+            if (allowSameCategoryFromDifferentLinks)
+            {
+                // To be valid under this flag, we need at least 2 different linked files in the group
+                var uniqueDocKeys = group.Sleeves.Select(s => s.SourceDocKey).Distinct().ToList();
+                if (uniqueDocKeys.Count > 1)
+                    return true;
+            }
+
+            return false;
         }
         
         /// <summary>
@@ -106,7 +123,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         private List<(string id1, string id2)> FindProximityPairs(
             List<UnifiedSleeve> sleeves,
             SimplifiedSpatialIndex spatialIndex,
-            double proximityThreshold)
+            double proximityThreshold,
+            bool allowSameCategoryFromDifferentLinks)
         {
             // ✅ MULTI-THREADING: Use concurrent collection for thread-safe pair storage
             var pairs = new System.Collections.Concurrent.ConcurrentBag<(string, string)>();
@@ -144,8 +162,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     if (nearbySleeve == null)
                         continue;
                     
-                    // Only consider cross-category pairs
-                    if (sleeve.Category == nearbySleeve.Category)
+                    // Only consider cross-category pairs, UNLESS allowSameCategoryFromDifferentLinks is true and they come from different docs
+                    bool isCrossCategory = sleeve.Category != nearbySleeve.Category;
+                    bool isDifferentLink = sleeve.SourceDocKey != nearbySleeve.SourceDocKey;
+
+                    if (!isCrossCategory && !(allowSameCategoryFromDifferentLinks && isDifferentLink))
                         continue;
                     
                     // Check proximity using bounding box edges (accounts for element size)

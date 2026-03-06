@@ -160,6 +160,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             set { _isDuctAccessoriesSelected = value; OnPropertyChanged(nameof(IsDuctAccessoriesSelected)); }
         }
 
+        private bool _combineSameCategoryDifferentLinks = true;
+        public bool CombineSameCategoryDifferentLinks
+        {
+            get => _combineSameCategoryDifferentLinks;
+            set { _combineSameCategoryDifferentLinks = value; OnPropertyChanged(nameof(CombineSameCategoryDifferentLinks)); }
+        }
+
         // Host Type checkboxes for placement control (right-side UI) — user can select 1, 2, or more
         private bool _isFloorHostSelected = true;
         public bool IsFloorHostSelected
@@ -318,8 +325,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
 
                         // 3. Detect proximity groups using NEW service
                         double proximityThreshold = 1.0; // 1 foot default
-                        var proximityGroups = _proximityService.DetectProximityGroups(unifiedSleeves, proximityThreshold);
-                        DebugLogger.Info($"[AutoCluster] Formed {proximityGroups.Count} proximity groups (threshold={proximityThreshold:F2} ft)");
+                        var proximityGroups = _proximityService.DetectProximityGroups(unifiedSleeves, proximityThreshold, CombineSameCategoryDifferentLinks);
+                        DebugLogger.Info($"[AutoCluster] Formed {proximityGroups.Count} proximity groups (threshold={proximityThreshold:F2} ft, AllowSameCatDiffLinks={CombineSameCategoryDifferentLinks})");
 
                         if (proximityGroups.Count == 0)
                         {

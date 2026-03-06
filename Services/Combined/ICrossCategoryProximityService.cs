@@ -15,9 +15,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         /// </summary>
         /// <param name="sleeves">List of all sleeves to analyze</param>
         /// <param name="proximityThreshold">Maximum distance (in feet) for sleeves to be considered in proximity</param>
+        /// <param name="allowSameCategoryFromDifferentLinks">Whether to allow clustering of same category from different links</param>
         /// <returns>List of proximity groups (each containing 2+ sleeves from different categories)</returns>
         List<ProximityGroup> DetectProximityGroups(
             List<UnifiedSleeve> sleeves,
-            double proximityThreshold);
+            double proximityThreshold,
+            bool allowSameCategoryFromDifferentLinks = false);
     }
 }
