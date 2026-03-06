@@ -83,9 +83,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             foreach (var z in clashZones)
             {
                 var hostType = GetBatchHostType(z);
+                
+                // Group by the Linked File (SourceDocKey) instead of MepElementCategory to allow cross-category clustering
+                string bucketKey = string.IsNullOrEmpty(z.SourceDocKey) ? "LocalModel" : z.SourceDocKey;
+                
                 var groupKey = new SleeveGroupKey(
                     $"{hostType}_{z.StructuralElementIdValue}",
-                    z.MepElementCategory ?? "Unknown", 
+                    bucketKey, 
                     z.HostOrientation ?? "Unknown",
                     0, 0, 0);
 
@@ -549,9 +553,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 .GroupBy(z =>
                 {
                     // ✅ FIX: Disable spatial bucketing as requested
+                    string bucketKey = string.IsNullOrEmpty(z.SourceDocKey) ? "LocalModel" : z.SourceDocKey;
                     return new SleeveGroupKey(
                         z.StructuralElementIdValue.ToString(), 
-                        z.MepElementCategory ?? "Unknown", 
+                        bucketKey, 
                         z.HostOrientation ?? "Unknown",
                         0, 0, 0);
                 })

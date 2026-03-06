@@ -483,17 +483,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (_pipeOpeningTypeRectangularCheckBox != null)
                     _settings.PipeOpeningTypeRectangular = _pipeOpeningTypeRectangularCheckBox.Checked;
                 
-                if (_joinOpeningsDistanceTextBox != null && double.TryParse(_joinOpeningsDistanceTextBox.Text, out double joinDist))
-                    _settings.JoinOpeningsDistance = joinDist;
-
-                if (_roundingValueTextBox != null && double.TryParse(_roundingValueTextBox.Text, out double roundValue))
-                    _settings.RoundingValue = roundValue;
+                if (_roundingValueTextBox != null && double.TryParse(_roundingValueTextBox.Text, out double roundVal))
+                    _settings.RoundingValue = roundVal;
 
                 if (_roundAlwaysUpCheckBox != null)
                     _settings.RoundAlwaysUp = _roundAlwaysUpCheckBox.Checked;
 
-                if (_minWallThicknessTextBox != null && double.TryParse(_minWallThicknessTextBox.Text, out double minWallThickness))
-                    _settings.MinWallThickness = minWallThickness;
+                if (_minWallThicknessTextBox != null && double.TryParse(_minWallThicknessTextBox.Text, out double minWall))
+                    _settings.MinWallThickness = minWall;
 
                 if (_ignoreArchitecturalFloorsCheckBox != null)
                     _settings.IgnoreArchitecturalFloors = _ignoreArchitecturalFloorsCheckBox.Checked;

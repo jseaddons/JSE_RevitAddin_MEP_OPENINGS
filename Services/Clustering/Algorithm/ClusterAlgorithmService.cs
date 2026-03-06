@@ -338,8 +338,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                  if (host1 > 0 && host2 > 0) return false;
             }
 
-            // 2. Check MEP Category
-            if (cz1.MepElementCategory != cz2.MepElementCategory) return false; 
+            // 2. Check Linked File (SourceDocKey) instead of MepElementCategory to allow cross-category clustering
+            string bucket1 = string.IsNullOrEmpty(cz1.SourceDocKey) ? "LocalModel" : cz1.SourceDocKey;
+            string bucket2 = string.IsNullOrEmpty(cz2.SourceDocKey) ? "LocalModel" : cz2.SourceDocKey;
+            if (bucket1 != bucket2) return false; 
             
             // Helper: detect whether a zone has any corner geometry
             bool HasCorners(ClashZone cz)

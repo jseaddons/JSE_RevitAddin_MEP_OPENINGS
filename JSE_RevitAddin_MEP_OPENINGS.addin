@@ -8,4 +8,12 @@
 		<VendorId>JSE</VendorId>
 		<VendorDescription>JSE Revit MEP Openings Addin</VendorDescription>
 	</AddIn>
+	<AddIn Type="Application">
+		<Name>JSE_T1</Name>
+		<Assembly>JSE_T1\RevitAddIn1.dll</Assembly>
+		<AddInId>8F1F7C50-A1B2-4C3D-E4F5-123456789ABC</AddInId>
+		<FullClassName>JSE_T1.JSE_T1App</FullClassName>
+		<VendorId>JSE</VendorId>
+		<VendorDescription>JSE Engineering</VendorDescription>
+	</AddIn>
 </RevitAddIns>

@@ -187,11 +187,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 if (targetZone.Id == otherZone.Id)
                     continue;
 
-                // Skip different MEP element categories
-                if (!string.IsNullOrEmpty(targetZone.MepElementCategory) && !string.IsNullOrEmpty(otherZone.MepElementCategory))
+                // ✅ FIX: Cross-Category Clustering
+                // For cross category clustering, only skip if they don't share the same linked file.
+                // If they are in the LocalModel, they still cluster.
+                string targetBucket = string.IsNullOrEmpty(targetZone.SourceDocKey) ? "LocalModel" : targetZone.SourceDocKey;
+                string otherBucket = string.IsNullOrEmpty(otherZone.SourceDocKey) ? "LocalModel" : otherZone.SourceDocKey;
+                
+                if (targetBucket != otherBucket)
                 {
-                    if (targetZone.MepElementCategory != otherZone.MepElementCategory)
-                        continue;
+                    continue; // Skip if they belong to different linked files
                 }
 
                 // ✅ PERF: Fast center-to-center distance pre-filter (squared, no sqrt)

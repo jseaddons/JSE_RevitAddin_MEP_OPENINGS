@@ -14,7 +14,7 @@
     <!-- Default for Generic Restore (Batch Build) -->
     <TargetFrameworks Condition="'$(TargetFramework)' == ''">net48;net8.0-windows</TargetFrameworks>
 
-    <Configurations>Debug;Release;Debug R23;Debug R24;Debug R25;Debug R26;Release R23;Release R24;Release R25;Release R26</Configurations>
+    <Configurations>Debug;Debug R23;Debug R24;Debug R25;Debug R26;Release R23;Release R24;Release R25;Release R26</Configurations>
     <Platforms>x64;AnyCPU</Platforms>
     <PlatformTarget Condition="'$(Platform)' == 'x64'">x64</PlatformTarget>
     <PlatformTarget Condition="'$(Platform)' != 'x64'">AnyCPU</PlatformTarget>

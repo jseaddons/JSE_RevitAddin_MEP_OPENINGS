@@ -529,6 +529,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
             // Delete
             if (sleevesToDelete.Count > 0)
             {
+            // Delete
+            if (sleevesToDelete.Count > 0)
+            {
                 using (Transaction t = new Transaction(doc, "Cleanup Sleeves Inside Clusters"))
                 {
                     t.Start();
@@ -541,6 +544,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     t.Commit();
                 }
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DELETED {sleevesToDelete.Count} sleeves in in-memory cleanup\n");
+            }
             }
 
             return sleevesToDelete.Count;

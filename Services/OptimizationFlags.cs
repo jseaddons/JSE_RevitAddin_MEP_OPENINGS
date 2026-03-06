@@ -210,7 +210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: false (no extra logging; set true only when debugging flag reset timing)
         /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves) — not currently referenced
         /// </summary>
-        public static bool LogFlagResetDiagnostics { get; set; } = true;
+        public static bool LogFlagResetDiagnostics { get; set; } = false;
 
         public static bool EnablePlacementDebugLog { get; set; } = UseDiagnosticMode;
 
