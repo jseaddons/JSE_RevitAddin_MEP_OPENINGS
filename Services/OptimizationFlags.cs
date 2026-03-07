@@ -201,7 +201,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (useful during optimization phase; disable for production noise reduction)
         /// Location: Services/MepIntersectionService.cs (end of FindIntersectionsBatchInternal)
         /// </summary>
-        public static bool LogGeometryExtractionMetrics { get; set; } =false;
+        public static bool LogGeometryExtractionMetrics { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Enable detailed timing diagnostics for Flag Reset operation during refresh
@@ -210,7 +210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: false (no extra logging; set true only when debugging flag reset timing)
         /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves) — not currently referenced
         /// </summary>
-        public static bool LogFlagResetDiagnostics { get; set; } = false;
+        public static bool LogFlagResetDiagnostics { get; set; } = UseDiagnosticMode;
 
         public static bool EnablePlacementDebugLog { get; set; } = UseDiagnosticMode;
 
@@ -219,35 +219,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When true: Logs placement details to bulk_placement_debug.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableBulkPlacementDebugLog { get; set; } = true;
+        public static bool EnableBulkPlacementDebugLog { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Enable detailed Batch Clustering diagnostics (Step 4 & 5).
         /// When true: Logs batch placement details to batch_v2.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableBatchClusteringDebugLog { get; set; } = true;
+        public static bool EnableBatchClusteringDebugLog { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Enable detailed Cluster Sizing diagnostics (RCS dimensions, swaps).
         /// When true: Logs sizing details to cluster_debug.log and placement_sizing_debug.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableClusterSizingDebugLog { get; set; } = true;
+        public static bool EnableClusterSizingDebugLog { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Enable detailed Proximity Check diagnostics (Clustering workflow).
         /// When true: Logs proximity analysis details to flag_workflow.log.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnableProximityDebugLog { get; set; } = true;
+        public static bool EnableProximityDebugLog { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Enable detailed placement diagnostics (e.g. corner comparisons).
         /// When true: Logs calculated vs Revit-extracted corners for clusters.
         /// Default: false (skipped for performance).
         /// </summary>
-        public static bool EnablePlacementDiagnostics { get; set; } = true;
+        public static bool EnablePlacementDiagnostics { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Use streamlined clash zone creation path when intersections come from optimized MepIntersectionService
@@ -277,7 +277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Impact: Adds logging overhead but reveals where time is spent
         /// Location: Services/ClashZoneService.cs (CreateClashZone)
         /// </summary>
-        public static bool EnableDetailedClashZoneProfiler { get; set; } = false;
+        public static bool EnableDetailedClashZoneProfiler { get; set; } = UseDiagnosticMode;
 
         /// <summary>
         /// Skip XML processing during Flag Reset operation (database-only mode optimization)
@@ -364,7 +364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = false;// ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging { get; set; } = !UseDiagnosticMode;// ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -475,7 +475,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: No performance logging (deployment mode)
         /// Default: false (disabled for deployment - enable for diagnostics)
         /// </summary>
-        public static bool LogPerformanceMetrics { get; set; } = true;
+        public static bool LogPerformanceMetrics { get; set; } = UseDiagnosticMode;
         
         #endregion
         
@@ -491,7 +491,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // false = no per-zone debug logging overhead
+        public static bool UseDiagnosticMode { get; set; } = false; // false = no per-zone debug logging overhead
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)
@@ -602,7 +602,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When true: Uses SetSleeveParametersOptimized path with timing logs to param_timing.log.
         /// Default: false (safe off; turn on for diagnostics only).
         /// </summary>
-        public static bool EnableParameterTimingInstrumentation { get; set; } = false;
+        public static bool EnableParameterTimingInstrumentation { get; set; } = UseDiagnosticMode;
         
         /// <summary>
         /// Defer non-critical metadata writes during sleeve placement (Phase 2: Medium Risk).

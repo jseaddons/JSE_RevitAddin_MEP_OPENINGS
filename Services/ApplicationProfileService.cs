@@ -22,9 +22,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly StatusManager _statusManager;
         private SettingsService _settingsService;
         private UserProfile? _currentProfile;
-
+        
+        // Caching for CheckAndUpdateContext
+        private static Type? _contextType;
+        private static System.Reflection.PropertyInfo? _activeDocProp;
+        private static bool _reflectionInitialized = false;
+        private DateTime _lastContextCheck = DateTime.MinValue;
+        private int _lastDocId = -1;
+        private string? _lastDocTitle = null;
+        private const int CONTEXT_CHECK_THROTTLE_MS = 500;
+        
         public event EventHandler<ProfileChangedEventArgs>? ProfileChanged;
         public event EventHandler<StatusUpdateEventArgs>? StatusUpdated;
+
 
         private ApplicationProfileService()
         {
@@ -79,58 +89,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Checks the active document and updates the settings service path if it has changed.
         /// This ensures settings are saved in the correct project folder.
+        /// Throttled and optimized to avoid UI thread blocks.
         /// </summary>
         private void CheckAndUpdateContext()
         {
             try
             {
-                // Try to get Active Document Path via Nice3point.Revit.Toolkit.Context
-                Type? contextType = Type.GetType("Nice3point.Revit.Toolkit.Context, Nice3point.Revit.Toolkit");
+                // 1. Throttle checks to avoid overhead on every property access
+                TimeSpan elapsed = DateTime.Now - _lastContextCheck;
+                if (elapsed.TotalMilliseconds < CONTEXT_CHECK_THROTTLE_MS)
+                    return;
                 
-                if (contextType == null)
+                _lastContextCheck = DateTime.Now;
+
+                // 2. Initialize reflection once
+                if (!_reflectionInitialized)
                 {
-                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        if (asm.GetName().Name == "Nice3point.Revit.Toolkit")
-                        {
-                            contextType = asm.GetType("Nice3point.Revit.Toolkit.Context");
-                            if (contextType != null) break;
-                        }
-                    }
+                    InitializeReflection();
                 }
 
-                if (contextType != null)
+                if (_contextType != null && _activeDocProp != null)
                 {
-                    var activeDocProp = contextType.GetProperty("ActiveDocument", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                    if (activeDocProp != null)
+                    var doc = _activeDocProp.GetValue(null) as Document;
+                    if (doc != null && !doc.IsFamilyDocument)
                     {
-                        var doc = activeDocProp.GetValue(null) as Document;
-                        if (doc != null && !doc.IsFamilyDocument)
-                        {
-                             try 
-                             {
-                                 // ✅ CRITICAL FIX: Use ProjectPathService to get standardized root path
-                                 // This handles both local (ProjectDir/JSE_MEP_Profiles) and Cloud (AppData/JSE_MEP_Openings/Projects/Name)
-                                 string projectRoot = ProjectPathService.GetProjectRoot(doc);
-                                 
-                                 // 🔍 DIAGNOSTIC LOGGING
-                                 try 
-                                 {
-                                     string pathLog = SafeFileLogger.GetLogFilePath("path_resolution.log");
-                                     SafeFileLogger.SafeAppendTextAlways("path_resolution.log", $"CheckAndUpdateContext: Doc='{doc.Title}', ResolvedRoot='{projectRoot}'");
-                                 }
-                                 catch {}
+                        // 3. Only proceed if document has actually changed
+                        string currentTitle = doc.Title;
+                        int currentId = doc.GetHashCode(); // Simple ID check
 
-                                 if (!string.IsNullOrEmpty(projectRoot)) 
-                                 {
-                                     UpdateForCurrentDocument(projectRoot);
-                                 }
-                             } 
-                             catch (Exception ex2)
-                             {
-                                 System.Diagnostics.Debug.WriteLine($"Error resolving project root: {ex2.Message}");
-                             } 
-                        }
+                        if (currentId == _lastDocId && currentTitle == _lastDocTitle)
+                            return;
+
+                        _lastDocId = currentId;
+                        _lastDocTitle = currentTitle;
+
+                        try 
+                        {
+                            // ✅ CRITICAL FIX: Use ProjectPathService to get standardized root path
+                            string projectRoot = ProjectPathService.GetProjectRoot(doc);
+                            
+                            if (!string.IsNullOrEmpty(projectRoot)) 
+                            {
+                                UpdateForCurrentDocument(projectRoot);
+                            }
+                        } 
+                        catch (Exception ex2)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error resolving project root: {ex2.Message}");
+                        } 
                     }
                 }
             }
@@ -139,6 +145,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 System.Diagnostics.Debug.WriteLine($"Error in CheckAndUpdateContext: {ex.Message}");
             }
         }
+
+        private void InitializeReflection()
+        {
+            try
+            {
+                // Try direct load/type retrieval first (fastest)
+                _contextType = Type.GetType("Nice3point.Revit.Toolkit.Context, Nice3point.Revit.Toolkit");
+                
+                if (_contextType == null)
+                {
+                    // Only iterate if necessary, and use a faster check
+                    var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                    for (int i = 0; i < assemblies.Length; i++)
+                    {
+                        var asm = assemblies[i];
+                        if (asm.FullName.StartsWith("Nice3point.Revit.Toolkit", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _contextType = asm.GetType("Nice3point.Revit.Toolkit.Context");
+                            if (_contextType != null) break;
+                        }
+                    }
+                }
+
+                if (_contextType != null)
+                {
+                    _activeDocProp = _contextType.GetProperty("ActiveDocument", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                }
+                
+                _reflectionInitialized = true;
+            }
+            catch { _reflectionInitialized = true; }
+        }
+
+
 
         private string? _lastDocumentPath = null;
 

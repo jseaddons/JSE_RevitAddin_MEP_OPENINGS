@@ -57,50 +57,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 currentProjectName = "Default";
             }
             
+            _availableProfiles = new List<UserProfile>();
+            
             // Generate filename: profiles_[ProjectName].json
             _profileFilePath = Path.Combine(_profileDirectory, $"profiles_{currentProjectName}.json");
-            _availableProfiles = new List<UserProfile>();
 
-            // ✅ CRITICAL FIX: Ensure all parent directories are created step-by-step with proper error handling
-            // This fixes issues where users with 3-digit IDs (jse***) can't create the folder
-            try
-            {
-                EnsureDirectoryStructure(_profileDirectory);
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Directory verified/created: {_profileDirectory}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: ERROR creating directory {_profileDirectory}: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Stack trace: {ex.StackTrace}");
-                // Don't throw - allow the service to continue with a fallback path or empty profile list
-                // This prevents the UI from failing to appear
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Continuing with potentially invalid directory path");
-            }
-
-            LoadProfiles();
-            
-            // If no profiles were loaded (XML failed), try fallback immediately
-            if (_availableProfiles.Count == 0)
-            {
-                try
-                {
-                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: No profiles loaded, attempting fallback from config files");
-                    LoadProfilesFromConfigFiles();
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Fallback failed - {ex.Message}");
-                }
-            }
-            
-            // Debug: Log profile loading results
-            System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Profile file path: {_profileFilePath}");
-            System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Loaded {_availableProfiles.Count} profiles");
-            foreach (var profile in _availableProfiles)
-            {
-                System.Diagnostics.Debug.WriteLine($"ProfileManagementService constructor: Loaded profile: {profile.Name}");
-            }
+            // ⚠️ OPTIMIZATION: Do NOT load or ensure directories in constructor.
+            // This is called during Application startup on the main thread.
+            // Loading and directory verification should be lazy.
         }
+
 
         /// <summary>
         /// ✅ CRITICAL FIX: Ensures directory structure is created step-by-step
@@ -175,13 +141,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                // Step 4: Verify the directory exists and is writable
+                // Step 4: Verify the directory exists
                 if (!Directory.Exists(targetDirectory))
                 {
                     throw new InvalidOperationException($"Directory creation failed: {targetDirectory} does not exist after creation attempt. User: {Environment.UserName}");
                 }
 
-                // Test write access
+                // OPTIMIZATION: Only do write test the first time or if requested (skip if already verified in this session)
+#if DEBUG
+                // Test write access only in debug mode to avoid UI lag in production
                 var testFile = Path.Combine(targetDirectory, $"write_test_{Guid.NewGuid():N}.tmp");
                 try
                 {
@@ -193,6 +161,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     throw new InvalidOperationException($"Directory exists but is not writable: {targetDirectory}. User may lack write permissions. Error: {ex.Message}", ex);
                 }
+#endif
+
             }
             catch (InvalidOperationException)
             {
@@ -212,9 +182,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Gets all available profiles
         /// </summary>
-        public IReadOnlyList<UserProfile> AvailableProfiles => _availableProfiles.AsReadOnly();
+        public IReadOnlyList<UserProfile> AvailableProfiles
+        {
+            get
+            {
+                EnsureInitialized();
+                return _availableProfiles.AsReadOnly();
+            }
+        }
 
-        /// <summary>
+
+        private bool _initialized = false;
+        private void EnsureInitialized()
+        {
+            if (_initialized) return;
+            _initialized = true;
+
+            try
+            {
+                EnsureDirectoryStructure(_profileDirectory);
+                LoadProfiles();
+                
+                if (_availableProfiles.Count == 0)
+                {
+                    LoadProfilesFromConfigFiles();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ProfileManagementService: Lazy initialization error: {ex.Message}");
+            }
+        }
+  /// <summary>
         /// Gets the profile file path
         /// </summary>
         public string ProfileFilePath => _profileFilePath;
@@ -224,11 +223,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public UserProfile CreateProfile(string profileName, List<Discipline> disciplines, string language)
         {
-            System.Diagnostics.Debug.WriteLine($"CreateProfile: Creating profile '{profileName}' with {disciplines?.Count ?? 0} disciplines");
+            EnsureInitialized();
             
-            // DISABLED: Hardcoded log write - use DebugLogger instead
-            // var debugLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\profile_save_debug.log";
-            // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] CreateProfile: Creating profile '{profileName}' with {disciplines?.Count ?? 0} disciplines\n");
+            System.Diagnostics.Debug.WriteLine($"CreateProfile: Creating profile '{profileName}' with {disciplines?.Count ?? 0} disciplines");
             
             if (string.IsNullOrWhiteSpace(profileName))
                 throw new ArgumentException("Profile name cannot be empty", nameof(profileName));
@@ -259,6 +256,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             };
 
             _availableProfiles.Add(profile);
+
             System.Diagnostics.Debug.WriteLine($"CreateProfile: Added profile to collection, now have {_availableProfiles.Count} profiles");
             // DISABLED: Hardcoded log write
             // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(debugLogPath, $"[{DateTime.Now}] CreateProfile: Added profile to collection, now have {_availableProfiles.Count} profiles\n");
@@ -279,6 +277,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void SetCurrentProfile(UserProfile profile)
         {
+            EnsureInitialized();
+            
             if (profile == null)
                 throw new ArgumentNullException(nameof(profile));
 
@@ -286,6 +286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 throw new InvalidOperationException("Profile not found in available profiles");
 
             _currentProfile = profile;
+
             ProfileChanged?.Invoke(this, new ProfileChangedEventArgs(profile, "Activated"));
 
             StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(
@@ -300,8 +301,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void UpdateProfile(UserProfile profile, string newName, List<Discipline> newDisciplines, string newLanguage)
         {
+            EnsureInitialized();
+            
             if (profile == null)
                 throw new ArgumentNullException(nameof(profile));
+
 
             if (string.IsNullOrWhiteSpace(newName))
                 throw new ArgumentException("Profile name cannot be empty", nameof(newName));
@@ -339,10 +343,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void DeleteProfile(UserProfile profile)
         {
+            EnsureInitialized();
+            
             if (profile == null)
                 throw new ArgumentNullException(nameof(profile));
 
             if (_currentProfile?.Id == profile.Id)
+
             {
                 _currentProfile = null;
             }
@@ -581,12 +588,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void AddProfile(UserProfile profile)
         {
+            EnsureInitialized();
+            
             if (profile == null)
                 throw new ArgumentNullException(nameof(profile));
 
             _availableProfiles.Add(profile);
             SaveProfiles();
         }
+
 
         /// <summary>
         /// Saves profiles to file
@@ -636,14 +646,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public bool IsProfileSetupRequired()
         {
+            EnsureInitialized();
             return !_availableProfiles.Any() || _currentProfile == null;
         }
+
 
         /// <summary>
         /// Gets the default profile if available
         /// </summary>
         public UserProfile? GetDefaultProfile()
         {
+            EnsureInitialized();
+            
             // First try to get an active profile
             var activeProfile = _availableProfiles.FirstOrDefault(p => p.IsActive);
             if (activeProfile != null)
@@ -652,5 +666,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // If no active profile, return the first available profile
             return _availableProfiles.FirstOrDefault();
         }
+
     }
 }

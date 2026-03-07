@@ -230,12 +230,19 @@ public static class HostOrientationHelper
                         {
                             hostSolid = SolidUtils.CreateTransformed(hostSolid, linkTransform);
                         }
-                        var intersectedSolid = BooleanOperationsUtils.ExecuteBooleanOperation(sleeveSolid, hostSolid, BooleanOperationsType.Intersect);
-                        if (intersectedSolid != null && intersectedSolid.Volume > 1e-6)
+                        try
                         {
-                            var hostInfo = GetHostTypeAndOrientation(structuralElement);
-                            DebugLogger.Log($"GetIntersectedHostTypeAndOrientation: Sleeve {sleeve.Id}: FOUND INTERSECTION with {structuralElement.GetType().Name} ID:{structuralElement.Id} - Type:{hostInfo.hostType}, Orientation:{hostInfo.orientation}");
-                            return (structuralElement, hostInfo.hostType, hostInfo.orientation);
+                            var intersectedSolid = BooleanOperationsUtils.ExecuteBooleanOperation(sleeveSolid, hostSolid, BooleanOperationsType.Intersect);
+                            if (intersectedSolid != null && intersectedSolid.Volume > 1e-6)
+                            {
+                                var hostInfo = GetHostTypeAndOrientation(structuralElement);
+                                DebugLogger.Log($"GetIntersectedHostTypeAndOrientation: Sleeve {sleeve.Id}: FOUND INTERSECTION with {structuralElement.GetType().Name} ID:{structuralElement.Id} - Type:{hostInfo.hostType}, Orientation:{hostInfo.orientation}");
+                                return (structuralElement, hostInfo.hostType, hostInfo.orientation);
+                            }
+                        }
+                        catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                        {
+                            DebugLogger.Log($"GetIntersectedHostTypeAndOrientation: Skipping element {structuralElement.Id} - Solid is not a closed geometric volume.");
                         }
                     }
                     catch (Autodesk.Revit.Exceptions.ApplicationException ex)

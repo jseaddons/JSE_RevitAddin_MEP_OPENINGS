@@ -764,7 +764,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var transformed = new List<Solid>();
                             foreach (var s in solids)
                             {
-                                if (s != null) transformed.Add(SolidUtils.CreateTransformed(s, transform));
+                                if (s != null)
+                                {
+                                    try
+                                    {
+                                        transformed.Add(SolidUtils.CreateTransformed(s, transform));
+                                    }
+                                    catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                                    {
+                                        log?.Invoke($"[⚠️ IGNORE-INVALID-GEOM-PRE] Skipping solid for host element {element.Id}: {ex.Message}");
+                                    }
+                                }
                             }
                             solids = transformed;
                             txSw.Stop();
@@ -967,7 +977,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                              {
                                  if (s == null) continue;
                                  if (structEntry.transform != null)
-                                     checkSolids.Add(SolidUtils.CreateTransformed(s, structEntry.transform));
+                                 {
+                                     try
+                                     {
+                                         checkSolids.Add(SolidUtils.CreateTransformed(s, structEntry.transform));
+                                     }
+                                     catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                                     {
+                                         log?.Invoke($"[⚠️ IGNORE-INVALID-GEOM] Skipping solid for element {structEntry.element.Id}: {ex.Message}");
+                                     }
+                                 }
                                  else 
                                      checkSolids.Add(s);
                              }
@@ -987,30 +1006,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (mepEntry.line != null)
                         {
-                            using (var sci = solidToCheck.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions()))
+                            try
                             {
-                                if (sci.SegmentCount > 0)
+                                using (var sci = solidToCheck.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions()))
                                 {
-                                    // ✅ PARALLEL FIX: Extract actual intersection points from SCI
-                                    var sciPoints = new List<XYZ>();
-                                    for (int i = 0; i < sci.SegmentCount; i++)
+                                    if (sci.SegmentCount > 0)
                                     {
-                                        var curve = sci.GetCurveSegment(i);
-                                        sciPoints.Add(curve.GetEndPoint(0));
-                                        sciPoints.Add(curve.GetEndPoint(1));
+                                        // ✅ PARALLEL FIX: Extract actual intersection points from SCI
+                                        var sciPoints = new List<XYZ>();
+                                        for (int i = 0; i < sci.SegmentCount; i++)
+                                        {
+                                            var curve = sci.GetCurveSegment(i);
+                                            sciPoints.Add(curve.GetEndPoint(0));
+                                            sciPoints.Add(curve.GetEndPoint(1));
+                                        }
+
+                                        // Calculate proper intersection bbox and center (Using local static helper)
+                                        var intsBBox = CreateBoundingBox(sciPoints);
+                                        if (intsBBox != null)
+                                        {
+                                            var intsCenter = BoundingBoxService.GetBoundingBoxCenter(intsBBox);
+
+                                            // Validate center is not Zero and add to results
+                                            if (intsCenter != null && (Math.Abs(intsCenter.X) > 1e-9 || Math.Abs(intsCenter.Y) > 1e-9 || Math.Abs(intsCenter.Z) > 1e-9))
+                                            {
+                                                results.Add((mepEntry.mepElement, structEntry.element, intsBBox, intsCenter));
+                                            }
+                                        }
                                     }
-                                    
-                                    // Calculate proper intersection bbox and center (Using local static helper)
-                                    var intsBBox = CreateBoundingBox(sciPoints);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Fallback to more robust face-by-face intersection for non-closed solids
+                                log?.Invoke($"[Intersect-Fallback] IntersectWithCurve failed for element {structEntry.element.Id}: {ex.Message}. Falling back to robust face-intersection.");
+                                
+                                var robustPoints = GetIntersectionPoints(solidToCheck, mepEntry.line, log);
+                                if (robustPoints.Count > 0)
+                                {
+                                    var intsBBox = CreateBoundingBox(robustPoints);
                                     if (intsBBox != null)
                                     {
                                         var intsCenter = BoundingBoxService.GetBoundingBoxCenter(intsBBox);
-                                        
-                                        // Validate center is not Zero and add to results
                                         if (intsCenter != null && (Math.Abs(intsCenter.X) > 1e-9 || Math.Abs(intsCenter.Y) > 1e-9 || Math.Abs(intsCenter.Z) > 1e-9))
                                         {
                                             results.Add((mepEntry.mepElement, structEntry.element, intsBBox, intsCenter));
-                                            // log?.Invoke($"[PARALLEL-FIX] Fixed Zero-Point at Center={intsCenter}");
                                         }
                                     }
                                 }
@@ -1172,13 +1212,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 var transformStopwatch = System.Diagnostics.Stopwatch.StartNew();
                                 var transformedSolids = new List<Solid>();
-                                foreach (var s in solids)
-                                {
-                                    if (s != null)
-                                    {
-                                        transformedSolids.Add(SolidUtils.CreateTransformed(s, structTransform));
-                                    }
-                                }
+                                 foreach (var s in solids)
+                                 {
+                                     if (s != null)
+                                     {
+                                         try
+                                         {
+                                             transformedSolids.Add(SolidUtils.CreateTransformed(s, structTransform));
+                                         }
+                                         catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                                         {
+                                             log?.Invoke($"[⚠️ IGNORE-INVALID-GEOM-SEQ] Skipping solid for element {structElement.Id}: {ex.Message}");
+                                         }
+                                     }
+                                 }
                                 solids = transformedSolids;
                                 transformStopwatch.Stop();
                                 totalSolidTransformMs += transformStopwatch.ElapsedMilliseconds;
@@ -1510,7 +1557,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var transformedSolids = new List<Solid>();
                             foreach (var s in solids)
                             {
-                                if (s != null) transformedSolids.Add(SolidUtils.CreateTransformed(s, linkTransform));
+                                if (s != null)
+                                {
+                                    try
+                                    {
+                                        transformedSolids.Add(SolidUtils.CreateTransformed(s, linkTransform));
+                                    }
+                                    catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                                    {
+                                        log?.Invoke($"[⚠️ IGNORE-INVALID-GEOM-LEG1] Skipping solid for host element {structuralElement.Id}: {ex.Message}");
+                                    }
+                                }
+
                             }
                             solids = transformedSolids;
                         }
@@ -1670,7 +1728,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var transformedSolids = new List<Solid>();
                             foreach (var s in solids)
                             {
-                                if (s != null) transformedSolids.Add(SolidUtils.CreateTransformed(s, linkTransform));
+                                if (s != null)
+                                {
+                                    try
+                                    {
+                                        transformedSolids.Add(SolidUtils.CreateTransformed(s, linkTransform));
+                                    }
+                                    catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                                    {
+                                        log?.Invoke($"[⚠️ IGNORE-INVALID-GEOM-LEG2] Skipping solid for host element {structuralElement.Id}: {ex.Message}");
+                                    }
+                                }
+
                             }
                             solids = transformedSolids;
                         }

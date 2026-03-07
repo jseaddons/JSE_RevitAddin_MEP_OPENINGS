@@ -630,7 +630,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Apply transform if linked element
                     if (linkTransform != null && !linkTransform.IsIdentity)
                     {
-                        solidToCheck = SolidUtils.CreateTransformed(solidToCheck, linkTransform);
+                        try
+                        {
+                            solidToCheck = SolidUtils.CreateTransformed(solidToCheck, linkTransform);
+                        }
+                        catch (Autodesk.Revit.Exceptions.InvalidOperationException ex) when (ex.Message.Contains("closed geometric volume"))
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Log($"[EfficientIntersectionService] Skipping solid for host element {structuralElement.Id}: {ex.Message}");
+                            continue;
+                        }
                     }
     
                     // Check intersection using face.Intersect(line)

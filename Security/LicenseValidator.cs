@@ -11,16 +11,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Security
         private const string REQUIRED_DOMAIN = "jse24";
         private const string REQUIRED_DOMAIN_ALTERNATIVE = "jse";
 
-        public static bool ValidateLicense()
+        public static bool ValidateLicense(bool silent = false)
         {
             try
             {
                 // Check if we're in the required domain
                 if (!ValidateDomain())
                 {
-                    // Show error message to user
-                    TaskDialog.Show("License Error", 
-                        "Not Licensed\n\nPlease contact admin@jseeng.com");
+                    if (!silent)
+                    {
+                        // Show error message to user
+                        TaskDialog.Show("License Error", 
+                            "Not Licensed\n\nPlease contact admin@jseeng.com");
+                    }
                     return false;
                 }
 
@@ -28,12 +31,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Security
             }
             catch (Exception)
             {
-                // Show error message to user even on exception
-                TaskDialog.Show("License Error", 
-                    "Not Licensed\n\nPlease contact admin@jseeng.com");
+                if (!silent)
+                {
+                    // Show error message to user even on exception
+                    TaskDialog.Show("License Error", 
+                        "Not Licensed\n\nPlease contact admin@jseeng.com");
+                }
                 return false;
             }
         }
+
 
         private static bool ValidateDomain()
         {
