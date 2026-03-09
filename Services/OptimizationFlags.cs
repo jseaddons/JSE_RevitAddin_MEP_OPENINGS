@@ -13,6 +13,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public static class OptimizationFlags
     {
         /// <summary>
+        /// Enable diagnostic mode for performance monitoring
+        /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
+        /// </summary>
+        public static bool UseDiagnosticMode { get; set; } = true; // false = no per-zone debug logging overhead
+
+        /// <summary>
         /// Enable sequential workflow orchestration (Placement → Global Sync → Clustering).
         /// When true: Processes all filters for individual placement first, then global corner extraction, then all clustering.
         /// When false: Uses interleaved processing per filter (legacy behavior).
@@ -364,7 +370,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = !UseDiagnosticMode;// ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging 
+        { 
+            get => _disableVerboseLogging ?? !UseDiagnosticMode; 
+            set => _disableVerboseLogging = value; 
+        }
+        private static bool? _disableVerboseLogging = null;
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -487,11 +498,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseIncrementalDetection { get; set; } = false;
         
-        /// <summary>
-        /// Enable diagnostic mode for performance monitoring
-        /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
-        /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // false = no per-zone debug logging overhead
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

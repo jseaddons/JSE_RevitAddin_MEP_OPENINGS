@@ -268,11 +268,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var toInsert = zonesList.Where(z => !existingMap.ContainsKey(z.Id) && comboMap.ContainsKey(z.Id)).ToList();
             if (toInsert.Count > 0)
             {
-                // Unique constraint check... (simplified for now to keep diff clean, but ideally uses temp table)
-                // For now, reuse the existing logic in the private method but inside this transaction
                 var uniqueConstraintMap = GetUniqueConstraintMap(toInsert, comboMap, transaction);
 
                 var actuallyNew = new List<ClashZone>();
+                // ✅ FIX: Deduplicate by GUID to prevent UNIQUE constraint failures on ClashZones.ClashZoneGuid
+                // This catches cases where the same clash zone was detected twice (e.g. different host doc combos)
+                var seenGuids = new HashSet<Guid>();
+                // ✅ FIX: Also deduplicate by physical unique key (ComboId|MepId|HostId|X|Y|Z)
+                // This catches cases where same intersection was assigned a new GUID on re-detection
+                var seenUniqueKeys = new HashSet<string>();
+
                 foreach (var zone in toInsert)
                 {
                     var key = GetUniqueKey(zone, comboMap[zone.Id]);
@@ -282,7 +287,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         zone.ClashZoneId = existingId;
                         BulkUpdateClashZones(new List<ClashZone> { zone }, existingMap, comboMap, transaction);
                     }
-                    else actuallyNew.Add(zone);
+                    else if (!seenGuids.Add(zone.Id))
+                    {
+                        // Duplicate GUID in the batch — skip to prevent ClashZoneGuid UNIQUE violation
+                        _logger?.Invoke($"[ClashZoneRepository] [INSERT-DEDUP] ⚠️ Skipping duplicate GUID in batch: {zone.Id}");
+                    }
+                    else if (!seenUniqueKeys.Add(key))
+                    {
+                        // Same physical intersection, different GUID — treat as UPDATE not INSERT
+                        _logger?.Invoke($"[ClashZoneRepository] [INSERT-DEDUP] ⚠️ Skipping duplicate intersection key, zone: {zone.Id}");
+                    }
+                    else
+                    {
+                        actuallyNew.Add(zone);
+                    }
                 }
 
                 if (actuallyNew.Count > 0)

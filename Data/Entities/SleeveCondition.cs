@@ -20,6 +20,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public bool? UseNominalDiameterForPipes { get; set; }
         public double? CableTrayTop { get; set; }
         public double? CableTrayOther { get; set; }
+        public double? CircularToRectangularThresholdMm { get; set; }
+        public double? MinWallThicknessMm { get; set; }
         public string? OpeningPrefs { get; set; } // JSON blob
         public DateTime UpdatedAt { get; set; }
     }

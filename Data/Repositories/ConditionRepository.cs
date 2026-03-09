@@ -169,6 +169,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         JoinOpeningsDistanceMm,
                         IgnoreArchitecturalFloors,
                         CircularToRectangularThresholdMm,
+                        MinWallThicknessMm,
                         UpdatedAt
                     ) VALUES (
                         @FilterId,
@@ -196,6 +197,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @JoinOpeningsDistanceMm,
                         @IgnoreArchitecturalFloors,
                         @CircularToRectangularThresholdMm,
+                        @MinWallThicknessMm,
                         CURRENT_TIMESTAMP
                     )";
 
@@ -249,6 +251,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         JoinOpeningsDistanceMm = @JoinOpeningsDistanceMm,
                         IgnoreArchitecturalFloors = @IgnoreArchitecturalFloors,
                         CircularToRectangularThresholdMm = @CircularToRectangularThresholdMm,
+                        MinWallThicknessMm = @MinWallThicknessMm,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE ConditionId = @ConditionId";
 
@@ -337,6 +340,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 thresholdMm = conditions.SizingSettings.CircularToRectangularThresholdMm;
             }
             cmd.Parameters.AddWithValue("@CircularToRectangularThresholdMm", thresholdMm);
+            cmd.Parameters.AddWithValue("@MinWallThicknessMm", conditions.MinWallThicknessMm);
         }
 
         public OpeningConditions GetConditions(string combinedKey)
@@ -376,6 +380,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         c.JoinOpeningsDistanceMm,
                         c.IgnoreArchitecturalFloors,
                         c.CircularToRectangularThresholdMm,
+                        c.MinWallThicknessMm,
                         f.FilterName,
                         f.Category AS FilterCategory,
                         c.UpdatedAt
@@ -421,7 +426,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         IgnoreArchitecturalFloors = (reader["IgnoreArchitecturalFloors"] is DBNull
                             ? 0
                             : Convert.ToInt32(reader["IgnoreArchitecturalFloors"])) != 0,
-                        CircularToRectangularThresholdMm = GetDouble(reader, "CircularToRectangularThresholdMm")
+                        CircularToRectangularThresholdMm = GetDouble(reader, "CircularToRectangularThresholdMm"),
+                        MinWallThicknessMm = GetDouble(reader, "MinWallThicknessMm")
                     };
 
                     // Also hydrate SizingSettings from the stored threshold so sizing/planning

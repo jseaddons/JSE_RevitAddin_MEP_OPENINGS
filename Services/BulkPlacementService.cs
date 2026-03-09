@@ -143,7 +143,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ DIAGNOSTIC: Log what was loaded so the user can verify
                         _logger($"[CONTEXT-PLACEMENT] [CONDITIONS] Category '{category}': key='{conditionsKey}', " +
                             $"UseNominalDia={categoryConditions?.ClearanceSettings?.UseNominalDiameterForPipes}, " +
-                            $"PipesNormal={categoryConditions?.ClearanceSettings?.PipesNormal}mm");
+                            $"PipesNormal={categoryConditions?.ClearanceSettings?.PipesNormal}mm, " +
+                            $"MinWallThicknessMm={categoryConditions?.MinWallThicknessMm}mm");
                         
                         // ✅ PERF: Pass levelMap to planner
                         var planner = new ParallelSleevePlacementPlanner(categoryConditions, levelMap: levelMap);

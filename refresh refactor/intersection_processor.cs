@@ -1127,10 +1127,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             double minWallThicknessMm = settings?.MinWallThickness ?? 0;
             bool ignoreArchitecturalFloors = settings?.IgnoreArchitecturalFloors ?? false;
             
-            // ✅ DIAGNOSTIC: Log wall thickness setting to verify it's loaded correctly
-            if (!DeploymentConfiguration.DeploymentMode && minWallThicknessMm > 0)
+            // ✅ DIAGNOSTIC: Always log wall thickness setting so we can verify it's loaded from the right path
+            _logger($"[PROPERTY-FILTER] MinWallThickness={minWallThicknessMm}mm (0 = disabled; walls thinner than this will be excluded)");
+            if (minWallThicknessMm > 0)
             {
-                _logger($"[PROPERTY-FILTER] MinWallThickness setting loaded: {minWallThicknessMm}mm (will filter walls thinner than this)");
+                _logger($"[PROPERTY-FILTER] ✅ Active thickness filter: walls < {minWallThicknessMm}mm will be excluded from host collection");
+            }
+            else
+            {
+                _logger($"[PROPERTY-FILTER] ⚠️ MinWallThickness=0: no thickness filter applied. Check Settings.json path if this is unexpected.");
             }
 
             var filtered = elements.AsEnumerable();

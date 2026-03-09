@@ -355,6 +355,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (fileName != null && fileName.StartsWith("performance_", StringComparison.OrdinalIgnoreCase))
                     return false;
 
+                // ✅ REFRESH LOGS: Always allow main refresh logs (critical for troubleshooting)
+                if (fileName != null && fileName.StartsWith("Refresh_", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
                 // Allow error logs
                 if (string.Equals(fileName, "safefilelogger_errors.log", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(fileName, "safefilelogger_diagnostic.log", StringComparison.OrdinalIgnoreCase))

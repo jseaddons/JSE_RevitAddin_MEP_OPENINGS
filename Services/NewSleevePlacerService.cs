@@ -1149,8 +1149,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Place sleeve does NOT calculate — merely uses the one calculated in refresh (or IntersectionPoint fallback).
             XYZ placementPoint;
             bool hasRefreshPoint = !_isForceDetectionMode && (zone.SleevePlacementPointX != 0 || zone.SleevePlacementPointY != 0 || zone.SleevePlacementPointZ != 0);
+            bool hasWallCenterlinePoint = !_isForceDetectionMode && (zone.WallCenterlinePointX != 0 || zone.WallCenterlinePointY != 0 || zone.WallCenterlinePointZ != 0);
             if (hasRefreshPoint)
                 placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
+            else if (hasWallCenterlinePoint)
+                placementPoint = new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ);
             else
                 placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
 
@@ -1348,11 +1351,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ? SOURCE OF TRUTH: For individual sleeves, placement point is locked in refresh only.
             // Place sleeve does NOT calculate — merely uses the one calculated in refresh (or IntersectionPoint fallback).
             bool hasRefreshPoint = !_isForceDetectionMode && (zone.SleevePlacementPointX != 0 || zone.SleevePlacementPointY != 0 || zone.SleevePlacementPointZ != 0);
+            bool hasWallCenterlinePoint = !_isForceDetectionMode && (zone.WallCenterlinePointX != 0 || zone.WallCenterlinePointY != 0 || zone.WallCenterlinePointZ != 0);
             if (hasRefreshPoint)
             {
                 placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
                 SafeFileLogger.SafeAppendText("placement_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] Using placement point from refresh (locked): Zone {zone.Id}\n");
+            }
+            else if (hasWallCenterlinePoint)
+            {
+                placementPoint = new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ);
+                SafeFileLogger.SafeAppendText("placement_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] Using wall centerline point: Zone {zone.Id}\n");
             }
             else
                 placementPoint = zone.IntersectionPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);

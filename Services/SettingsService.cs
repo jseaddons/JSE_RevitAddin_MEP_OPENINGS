@@ -83,20 +83,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public SettingsModel LoadSettings()
         {
+            SettingsModel projectSettings = null;
+            bool isProjectSpecificPath = !string.Equals(_settingsPath, GetGlobalFallbackPath(), StringComparison.OrdinalIgnoreCase);
+
             try
             {
                 if (File.Exists(_settingsPath))
                 {
                     var json = File.ReadAllText(_settingsPath);
-                    var settings = Newtonsoft.Json.JsonConvert.DeserializeObject<SettingsModel>(json);
-                    
-                    if (settings != null)
+                    projectSettings = Newtonsoft.Json.JsonConvert.DeserializeObject<SettingsModel>(json);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Log($"Failed to load settings (JSON): {ex.Message}");
+            }
+
+            // ✅ SETTINGS MERGE FIX: If this is a project-specific settings file and key threshold
+            // settings are at their defaults (0), merge in values from the global fallback settings.
+            // This prevents the per-project Settings.json (auto-created with defaults) from silently
+            // overriding values the user set via the UI (which may have saved to the global path).
+            if (isProjectSpecificPath)
+            {
+                var globalPath = GetGlobalFallbackPath();
+                if (File.Exists(globalPath))
+                {
+                    try
+                    {
+                        var globalJson = File.ReadAllText(globalPath);
+                        var globalSettings = Newtonsoft.Json.JsonConvert.DeserializeObject<SettingsModel>(globalJson);
+
+                        if (globalSettings != null)
+                        {
+                            if (projectSettings == null)
+                            {
+                                // No project-specific file at all → use global directly
+                                projectSettings = globalSettings;
+                            }
+                            else
+                            {
+                                // Merge: copy global values for fields that are still at default (0) in project settings
+                                if (projectSettings.MinWallThickness <= 0 && globalSettings.MinWallThickness > 0)
+                                    projectSettings.MinWallThickness = globalSettings.MinWallThickness;
+                                if (projectSettings.IgnoreArchitecturalFloors == false && globalSettings.IgnoreArchitecturalFloors)
+                                    projectSettings.IgnoreArchitecturalFloors = globalSettings.IgnoreArchitecturalFloors;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Log($"Settings loaded from file: {_settingsPath}");
-                        return settings;
+                            DebugLogger.Log($"[SETTINGS-MERGE] Failed to load global settings for merge: {ex.Message}");
                     }
                 }
+            }
+
+            if (projectSettings != null)
+            {
+                // ✅ ALWAYS log which path was used and key threshold values for diagnosability
+                SafeFileLogger.SafeAppendText("settings_load_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] Settings loaded from: {_settingsPath} | MinWallThickness={projectSettings.MinWallThickness}mm | IgnoreArchFloors={projectSettings.IgnoreArchitecturalFloors}\n");
+                return projectSettings;
+            }
+
+            // --- legacy JSON load failed, keep original fallback flow ---
+            try
+            {
+                // (no-op — errors already handled above)
             }
             catch (Exception ex)
             {

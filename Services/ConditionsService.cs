@@ -95,6 +95,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         conditions.JoinOpeningsDistanceMm = settings.JoinOpeningsDistance;
                         conditions.IgnoreArchitecturalFloors = settings.IgnoreArchitecturalFloors;
+                        conditions.MinWallThicknessMm = settings.MinWallThickness;
 
                         // Circular-to-rectangular threshold: prefer profile value, but
                         // also mirror into SizingSettings so sizing logic can read it.

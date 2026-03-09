@@ -457,10 +457,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string mepCategoryName = GetElementCategoryName(mepElement);
                 if (structuralElement is Wall wall)
                 {
-                    // ✅ BBOX METHOD: For ducts, pipes, and cable trays, use bbox method (same as dampers)
-                    // This calculates the final placement point at wall centerline, saving directly to SleevePlacementPoint
-                    // Eliminates need for WallCenterlinePoint columns and adjustment logic during placement
-                    calculatedWallCenterline = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                    // ✅ PRECISE METHOD: For ducts, pipes, and cable trays, use LocationCurve projection.
+                    calculatedWallCenterline = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePoint(
                         wall, intersectionPoint, document);
                     
                     // ✅ DIAGNOSTIC: Log wall centerline calculation for non-damper categories
@@ -879,8 +877,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         XYZ? calculatedWallCenterlineInvalid = null;
                         if (structuralElement is Wall wallInvalid)
                         {
-                            // ✅ RAY-TRACE METHOD: For ducts, pipes, and cable trays, use ray-trace to find 2 wall faces and calculate midpoint
-                            calculatedWallCenterlineInvalid = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                            // ✅ PRECISE METHOD: For ducts, pipes, and cable trays, use LocationCurve projection.
+                            calculatedWallCenterlineInvalid = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePoint(
                                 wallInvalid, intersectionPoint, document);
                             
                             // ✅ DIAGNOSTIC: Log wall centerline calculation for invalid category path
@@ -2878,9 +2876,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (structuralElement is Wall hostWallForCenterline)
                     {
-                        // ✅ LEGACY RAY-TRACE METHOD: For ducts, pipes, and cable trays, use ray-trace to find 2 wall faces and calculate midpoint
-                        // This gives "half in and half out" positioning (legacy behavior)
-                        var wallCenterlinePoint = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                        // ✅ PRECISE CENTERLINE METHOD: Project intersection point onto wall's true LocationCurve.
+                        // This ensures we get the exact X/Y coordinate of the wall's core centerline at the penetration point,
+                        // completely fixing the 'half in and half out' issue for partial penetrations.
+                        var wallCenterlinePoint = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePoint(
                             hostWallForCenterline, 
                             intersectionPoint, 
                             document);
@@ -3063,9 +3062,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hostDirectionCache != null && hostDirectionCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out var cachedHostDir))
                 {
                     wallDirection = cachedHostDir.wallDirection;
-                    // Derive wallDirectionType from cached direction (avoids GetWallDirectionType COM call)
+                    // Derive wallDirectionType from cached direction using the centralized service
                     wallDirectionType = (wallDirection != null)
-                        ? (Math.Abs(wallDirection.X) > Math.Abs(wallDirection.Y) ? "X-WALL" : "Y-WALL")
+                        ? WallDirectionService.GetWallDirectionType(null, wallDirection)
                         : null;
                 }
                 else
@@ -3348,11 +3347,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     bool isZero = (finalPlacementPoint.X == 0.0 && finalPlacementPoint.Y == 0.0 && finalPlacementPoint.Z == 0.0);
                     string zeroWarning = isZero ? " ⚠️⚠️⚠️ ZERO VALUE!" : "";
+                    
+                    double deltaX = finalPlacementPoint.X - intersectionPoint.X;
+                    double deltaY = finalPlacementPoint.Y - intersectionPoint.Y;
+                    
+                    // Determine which delta is the "centering" one
+                    string deltaDetail = "";
+                    if (wallDirectionType == "X-WALL")
+                        deltaDetail = $" (Centering Y: Wall_Y={finalPlacementPoint.Y:F6}, Mep_Y={intersectionPoint.Y:F6}, Delta={deltaY:F6})";
+                    else if (wallDirectionType == "Y-WALL")
+                        deltaDetail = $" (Centering X: Wall_X={finalPlacementPoint.X:F6}, Mep_X={intersectionPoint.X:F6}, Delta={deltaX:F6})";
+                    else if (wallDirectionType == "ANGLED-WALL")
+                        deltaDetail = $" (Centering Angled: DX={deltaX:F6}, DY={deltaY:F6})";
+
                     SafeFileLogger.SafeAppendText("wall_centerline_set.log",
                         $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SET] Zone (MEP={mepElement?.Id}, Category={mepCategory}): " +
-                        $"Setting SleevePlacementPoint=({finalPlacementPoint.X:F6}ft, {finalPlacementPoint.Y:F6}ft, {finalPlacementPoint.Z:F6}ft), " +
-                        $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft), " +
-                        $"Source={(wallCenterlinePoint != null ? "Bbox Method" : "Fallback to Intersection")}{zeroWarning}\n");
+                        $"SleevePlacementPoint=({finalPlacementPoint.X:F6}, {finalPlacementPoint.Y:F6}, {finalPlacementPoint.Z:F6}), " +
+                        $"Intersection=({intersectionPoint.X:F6}, {intersectionPoint.Y:F6}, {intersectionPoint.Z:F6}), " +
+                        $"Source={(isFloorLoc ? "Floor Intersection" : "LocationCurve Method")}{deltaDetail}{zeroWarning}\n");
                 }
 
                 // ✅ CRITICAL DEBUG: Verify intersection point is NOT zero before creating ClashZone

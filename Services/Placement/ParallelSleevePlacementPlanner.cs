@@ -354,6 +354,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 else if (zone.IsClusterResolved && zone.ClusterSleeveInstanceId > 0) { shouldSkip = true; skipReason = "ClusterResolved"; }
                 else if (zone.HasDamperNearby) { shouldSkip = true; skipReason = "DamperSkip"; }
 
+                // ✅ WALL THICKNESS FILTER: Skip zones whose host wall is thinner than the configured threshold.
+                // WallThickness is stored in Revit internal units (feet). Convert to mm for comparison.
+                // Only applies when host is a Wall and threshold > 0.
+                if (!shouldSkip && _conditions != null && _conditions.MinWallThicknessMm > 0.0)
+                {
+                    string hostTypeLower = (zone.StructuralElementType ?? string.Empty).ToLowerInvariant();
+                    bool isWallHost = hostTypeLower.Contains("wall");
+                    if (isWallHost)
+                    {
+                        // Use WallThickness if available; fall back to StructuralElementThickness
+                        double thicknessFt = zone.WallThickness > 0.0 ? zone.WallThickness : zone.StructuralElementThickness;
+                        double thicknessMm = thicknessFt * 304.8;
+
+                        if (thicknessMm < _conditions.MinWallThicknessMm)
+                        {
+                            shouldSkip = true;
+                            skipReason = $"WallTooThin({thicknessMm:F1}mm<{_conditions.MinWallThicknessMm:F1}mm)";
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("wall_thickness_filter.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [THICKNESS-SKIP] Zone={zone.Id}, " +
+                                    $"MEP={zone.MepElementIdValue}, Host={zone.StructuralElementIdValue}, " +
+                                    $"WallThickness={thicknessMm:F1}mm, Threshold={_conditions.MinWallThicknessMm:F1}mm -- SKIPPED\n");
+                            }
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("wall_thickness_filter.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [THICKNESS-PASS] Zone={zone.Id}, " +
+                                    $"MEP={zone.MepElementIdValue}, Host={zone.StructuralElementIdValue}, " +
+                                    $"WallThickness={thicknessMm:F1}mm, Threshold={_conditions.MinWallThicknessMm:F1}mm -- OK\n");
+                            }
+                        }
+                    }
+                }
+
                 // 2. MEP Metadata & Categories
                 string mepCategory = zone.MepElementCategory ?? "Unknown";
                 string hostType = zone.StructuralElementType ?? "Wall";
@@ -503,10 +542,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     Math.Abs(zone.SleevePlacementPointY) > 1e-6 ||
                     Math.Abs(zone.SleevePlacementPointZ) > 1e-6;
 
+                bool hasWallCenterline =
+                    Math.Abs(zone.WallCenterlinePointX) > 1e-6 ||
+                    Math.Abs(zone.WallCenterlinePointY) > 1e-6 ||
+                    Math.Abs(zone.WallCenterlinePointZ) > 1e-6;
+
                 XYZ placementPoint = new XYZ(
-                    hasSavedPlacementPoint ? zone.SleevePlacementPointX : zone.IntersectionPointX,
-                    hasSavedPlacementPoint ? zone.SleevePlacementPointY : zone.IntersectionPointY,
-                    hasSavedPlacementPoint ? zone.SleevePlacementPointZ : zone.IntersectionPointZ);
+                    hasSavedPlacementPoint ? zone.SleevePlacementPointX : (hasWallCenterline ? zone.WallCenterlinePointX : zone.IntersectionPointX),
+                    hasSavedPlacementPoint ? zone.SleevePlacementPointY : (hasWallCenterline ? zone.WallCenterlinePointY : zone.IntersectionPointY),
+                    hasSavedPlacementPoint ? zone.SleevePlacementPointZ : (hasWallCenterline ? zone.WallCenterlinePointZ : zone.IntersectionPointZ));
                 
                 // ✅ CRITICAL FIX: Apply damper offset for asymmetric clearance ONLY once (on fresh points).
                 if (isDamperCategory && !hasSavedPlacementPoint)

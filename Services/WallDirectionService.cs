@@ -84,13 +84,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double absX = Math.Abs(direction.X);
                         double absY = Math.Abs(direction.Y);
                         
-                        if (absX > absY)
+                        if (absX < 0.01) // Parallel to Y axis
                         {
-                            return "X"; // Wall runs along X axis
+                            return "Y";
+                        }
+                        else if (absY < 0.01) // Parallel to X axis
+                        {
+                            return "X";
                         }
                         else
                         {
-                            return "Y"; // Wall runs along Y axis
+                            return "ANGLED";
                         }
                     }
                 }
@@ -103,13 +107,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double absX = Math.Abs(direction.X);
                         double absY = Math.Abs(direction.Y);
                         
-                        if (absX > absY)
+                        if (absX < 0.01)
+                        {
+                            return "Y";
+                        }
+                        else if (absY < 0.01)
                         {
                             return "X";
                         }
                         else
                         {
-                            return "Y";
+                            return "ANGLED";
                         }
                     }
                 }
@@ -142,13 +150,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double absX = Math.Abs(direction.X);
                         double absY = Math.Abs(direction.Y);
                         
-                        if (absX > absY)
+                        if (absX < 0.01)
+                        {
+                            return "Y-WALL";
+                        }
+                        else if (absY < 0.01)
                         {
                             return "X-WALL";
                         }
                         else
                         {
-                            return "Y-WALL";
+                            return "ANGLED-WALL";
                         }
                     }
                 }

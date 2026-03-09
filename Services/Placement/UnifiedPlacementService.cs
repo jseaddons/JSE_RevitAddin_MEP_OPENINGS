@@ -238,8 +238,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 #endif
                 }
 
-                XYZ placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ); 
+                bool hasWallCenterline = Math.Abs(zone.WallCenterlinePointX) > 1e-6 || Math.Abs(zone.WallCenterlinePointY) > 1e-6 || Math.Abs(zone.WallCenterlinePointZ) > 1e-6;
+                XYZ placementPoint = hasWallCenterline 
+                    ? new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ)
+                    : new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ); 
                 
+                // DIAGNOSTIC
+                if (!DeploymentConfiguration.DeploymentMode && hasWallCenterline)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[UnifiedPlacement] Using centerline for zone {zone.Id}: {placementPoint}\n");
+                }                
                 FamilyInstance instance = null;
                 Autodesk.Revit.DB.Structure.StructuralType st = Autodesk.Revit.DB.Structure.StructuralType.NonStructural;
                 

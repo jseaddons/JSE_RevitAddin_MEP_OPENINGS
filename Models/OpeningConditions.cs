@@ -78,6 +78,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// source of truth.
         /// </summary>
         public double CircularToRectangularThresholdMm { get; set; } = 0.0;
+
+        /// <summary>
+        /// Minimum wall thickness in millimeters for this filter/category.
+        /// Sleeves will only be placed on walls thicker than this threshold.
+        /// Defaults to 50.0mm.
+        /// </summary>
+        public double MinWallThicknessMm { get; set; } = 50.0;
     }
     
     /// <summary>

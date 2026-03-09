@@ -73,12 +73,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     wallDirection = (end - start).Normalize();
                 }
                 
+                // ✅ LINKED DOCUMENT FIX: Transform direction vector into host space
+                if (hostDocument != null && wall.Document != null && !wall.Document.Equals(hostDocument))
+                {
+                    // Reuse link instances or just re-fetch for simplicity in this method
+                    var linkInstances = new FilteredElementCollector(hostDocument)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>();
+                    
+                    foreach (var linkInstance in linkInstances)
+                    {
+                        var linkDoc = linkInstance.GetLinkDocument();
+                        if (linkDoc != null && linkDoc.Equals(wall.Document))
+                        {
+                            var transform = linkInstance.GetTotalTransform();
+                            if (transform != null && !transform.IsIdentity)
+                            {
+                                wallDirection = transform.OfVector(wallDirection).Normalize();
+                            }
+                            break;
+                        }
+                    }
+                }
+                
                 double absX = Math.Abs(wallDirection.X);
                 double absY = Math.Abs(wallDirection.Y);
                 bool isXWall = absX > absY;
                 
                 // Return coordinate: Y for X-walls (perpendicular axis), X for Y-walls
                 double centerCoord = isXWall ? wallBboxCenter.Y : wallBboxCenter.X;
+                
+                if (OptimizationFlags.UseDiagnosticMode)
+                    DebugLogger.Log($"[INVARIANT-DATA] Wall={wall.Id}, XWall={isXWall}, Center={centerCoord:F6}, Width={width:F6}");
                 
                 return (isXWall, centerCoord, width, true);
             }
@@ -256,29 +282,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     {
                         var curve = locationCurve.Curve;
                         
-                        // ✅ STEP 1: Project intersection point onto wall curve (along wall length)
-                        // This gives us a point on the wall centerline at the same position along the wall
-                        double curveParam = curve.Project(intersectionPoint).Parameter;
+                        // ✅ LINKED DOCUMENT FIX: Project point must be in the same coordinate system as the curve
+                        XYZ pointForProjection = intersectionPoint;
+                        if (linkTransform != null && !linkTransform.IsIdentity)
+                        {
+                            // Transform host intersection point into linked document space
+                            pointForProjection = linkTransform.Inverse.OfPoint(intersectionPoint);
+                            DebugLogger.Log($"[CENTERLINE-DEBUG] Transformed intersection to link space: {pointForProjection}");
+                        }
+                        
+                        // ✅ STEP 1: Project point onto wall curve (in the curve's space)
+                        double curveParam = curve.Project(pointForProjection).Parameter;
                         XYZ pointOnCurve = curve.Evaluate(curveParam, true);
                         
-                        // ✅ LINKED DOCUMENT FIX: Transform point on curve to host coordinates if needed
+                        // ✅ LINKED DOCUMENT FIX: Transform back to host coordinates
                         if (linkTransform != null && !linkTransform.IsIdentity)
                         {
                             pointOnCurve = linkTransform.OfPoint(pointOnCurve);
-                            DebugLogger.Log($"[CENTERLINE-DEBUG] Transformed point on wall curve: {pointOnCurve}");
+                            DebugLogger.Log($"[CENTERLINE-DEBUG] Transformed centered point back to host space: {pointOnCurve}");
                         }
                         
-                        // ✅ CRITICAL FIX: pointOnCurve is already on the wall centerline (LocationCurve IS the centerline)
-                        // For dampers, we need to merge coordinates: keep X/Z from intersection point, use Y from centerline (for X-walls)
-                        // or keep Y/Z from intersection point, use X from centerline (for Y-walls)
-                        // This ensures the centerline point is at the correct position along the wall length
-                        
-                        // ✅ STEP 2: Use pointOnCurve directly since it's already on the wall centerline (LocationCurve)
-                        // However, we need to preserve the intersection point's position along the wall length
-                        // The projection onto the curve gives us the correct perpendicular coordinate (Y for X-walls, X for Y-walls)
-                        // but we need to keep the intersection point's coordinate along the wall length
-                        
-                        // Get wall direction from the curve to determine orientation
+                        // Get wall direction from the curve
                         XYZ wallDirection;
                         if (curve is Line line)
                         {
@@ -286,36 +310,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                         }
                         else
                         {
-                            // For non-linear curves, use start-to-end direction
                             var start = curve.GetEndPoint(0);
                             var end = curve.GetEndPoint(1);
                             wallDirection = (end - start).Normalize();
                         }
                         
-                        // Determine if wall is X-wall or Y-wall based on curve direction
+                        // ✅ LINKED DOCUMENT FIX: Transform direction vector into host space
+                        if (linkTransform != null && !linkTransform.IsIdentity)
+                        {
+                            wallDirection = linkTransform.OfVector(wallDirection).Normalize();
+                            DebugLogger.Log($"[CENTERLINE-DEBUG] Transformed wall direction to host space: {wallDirection}");
+                        }
+                        
+                        // Determine if wall is X-wall or Y-wall based on transformed direction
                         double absX = Math.Abs(wallDirection.X);
                         double absY = Math.Abs(wallDirection.Y);
-                        bool isXWall = absX > absY; // Wall runs primarily along X-axis
-                        bool isYWall = absY > absX; // Wall runs primarily along Y-axis
+                        bool isXWall = absY < 0.01; // Parallel to X axis
+                        bool isYWall = absX < 0.01; // Parallel to Y axis
                         
                         XYZ centerlinePoint;
                         if (isXWall)
                         {
-                            // X-wall: Use centerline Y coordinate (perpendicular to wall), keep intersection point X and Z (along wall length and height)
+                            // X-wall: Use centerline Y coordinate, keep intersection point X and Z
                             centerlinePoint = new XYZ(intersectionPoint.X, pointOnCurve.Y, intersectionPoint.Z);
-                            DebugLogger.Log($"[CENTERLINE-DEBUG] X-wall detected: Using centerline Y={pointOnCurve.Y}, keeping intersection X={intersectionPoint.X}, Z={intersectionPoint.Z}");
                         }
                         else if (isYWall)
                         {
-                            // Y-wall: Use centerline X coordinate (perpendicular to wall), keep intersection point Y and Z (along wall length and height)
+                            // Y-wall: Use centerline X coordinate, keep intersection point Y and Z
                             centerlinePoint = new XYZ(pointOnCurve.X, intersectionPoint.Y, intersectionPoint.Z);
-                            DebugLogger.Log($"[CENTERLINE-DEBUG] Y-wall detected: Using centerline X={pointOnCurve.X}, keeping intersection Y={intersectionPoint.Y}, Z={intersectionPoint.Z}");
                         }
                         else
                         {
-                            // Unknown orientation or slanted wall: Use pointOnCurve directly (it's already on centerline)
-                            centerlinePoint = pointOnCurve;
-                            DebugLogger.Log($"[CENTERLINE-DEBUG] Unknown wall orientation: Using pointOnCurve directly");
+                            // ANGLED WALL: Use both X and Y from centered pointOnCurve
+                            centerlinePoint = new XYZ(pointOnCurve.X, pointOnCurve.Y, intersectionPoint.Z);
                         }
                         
                         // ✅ DIAGNOSTIC: Log the calculation

@@ -31,9 +31,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// <returns>Rotation angle in radians (0, π/2, or pre-calculated angle)</returns>
         public double DetermineRotation(ClashZone clashZone)
         {
-            // User requirement (2026‑03‑04): 
-            // "for all cats and clusters no rotation needed" – families encode orientation.
-            // So we always return 0.0 radians and let family choice control orientation.
+            // For angled walls, we must rotate the sleeve to align with the wall's spine.
+            // Standard opening families (RectangularOpeningOnWall, etc.) are designed to align with the Y-axis (0° rotation in Revit means aligned with Y).
+            if (clashZone.WallDirectionType == "ANGLED-WALL")
+            {
+                // WallDirection is the vector along the wall's length.
+                // Math.Atan2(y,x) gives the angle from the X-axis.
+                double wallAngleRad = Math.Atan2(clashZone.WallDirectionY, clashZone.WallDirectionX);
+                
+                // Since the family's default orientation (0°) is along the Y-axis (PI/2 radians),
+                // we rotate it by the difference.
+                return wallAngleRad - (Math.PI / 2.0);
+            }
+            
+            // For X-WALL and Y-WALL, the FamilyManager already selects the correct family 
+            // (_X variant for X-WALL, standard for Y-WALL), so no additional rotation is needed.
             return 0.0;
         }
         

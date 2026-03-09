@@ -533,6 +533,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             JoinOpeningsDistanceMm            REAL,
                             IgnoreArchitecturalFloors         INTEGER,
                             CircularToRectangularThresholdMm  REAL,
+                            MinWallThicknessMm                REAL DEFAULT 50.0,
                             UpdatedAt                         DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             FOREIGN KEY(FilterId) REFERENCES Filters(FilterId) ON DELETE CASCADE,
                             UNIQUE(FilterId, Category)
@@ -961,6 +962,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("Conditions", "JoinOpeningsDistanceMm", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "IgnoreArchitecturalFloors", "INTEGER", transaction);
                     AddColumnIfMissing("Conditions", "CircularToRectangularThresholdMm", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "MinWallThicknessMm", "REAL DEFAULT 50.0", transaction);
 
                     AddColumnIfMissing("SleeveSnapshots", "SourceType", "TEXT NOT NULL DEFAULT 'Individual'", transaction);
                     AddColumnIfMissing("SleeveSnapshots", "FilterId", "INTEGER", transaction);

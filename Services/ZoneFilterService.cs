@@ -38,7 +38,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 minThicknessInternal = UnitUtils.ConvertToInternalUnits(minWallThickness, UnitTypeId.Millimeters);
             }
 
-            // ✅ PERFORMANCE: Pre-filter and validate clash zones (reserved for future optimization)
+            // ✅ ALWAYS log the loaded setting value so it appears in logs even when 0 (diagnosability)
+            SafeFileLogger.SafeAppendText("placement_performance.log",
+                $"[{DateTime.Now:HH:mm:ss}] [ZONE-FILTER] MinWallThickness={minWallThickness}mm (internal={minThicknessInternal:F4}ft) — checking {allClashZones.Count} zones\n");
+
             var sw = System.Diagnostics.Stopwatch.StartNew();
             
             var validZones = new List<ClashZone>();
@@ -58,7 +61,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (thickness > 0 && thickness < minThicknessInternal)
                     {
                         excludedCount++;
-                        continue; // Skip this zone
+                        SafeFileLogger.SafeAppendText("placement_performance.log",
+                            $"[{DateTime.Now:HH:mm:ss}] [ZONE-FILTER] EXCLUDED zone {z.Id}: thickness={thickness * 304.8:F1}mm < {minWallThickness}mm threshold\n");
+                        continue; // Skip this zone — wall too thin
                     }
                 }
 
@@ -66,14 +71,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             sw.Stop();
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                if (sw.ElapsedMilliseconds > 5 || excludedCount > 0)
-                {
-                    SafeFileLogger.SafeAppendText("placement_performance.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ⚡ Pre-colored {allClashZones.Count} clash zones → {validZones.Count} valid ({excludedCount} filtered by thickness < {minWallThickness}mm) in {sw.ElapsedMilliseconds}ms\n");
-                }
-            }
+            // ✅ Always log the summary so we can confirm the filter ran and with what result
+            SafeFileLogger.SafeAppendText("placement_performance.log",
+                $"[{DateTime.Now:HH:mm:ss}] [ZONE-FILTER] Result: {allClashZones.Count} zones → {validZones.Count} valid, {excludedCount} excluded (thickness < {minWallThickness}mm), elapsed={sw.ElapsedMilliseconds}ms\n");
             
             return validZones;
         }

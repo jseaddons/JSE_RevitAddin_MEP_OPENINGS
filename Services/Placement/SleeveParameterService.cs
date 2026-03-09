@@ -1119,8 +1119,128 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             // Cluster/combined override: use calculated depth when already set
             if (zone.CalculatedSleeveDepth > 0.001)
                 return zone.CalculatedSleeveDepth;
-            // Individual/cluster/combined: depth = structural thickness (Floor, Wall, Framing)
-            return zone.StructuralElementThickness;
+
+            double fullThickness = zone.StructuralElementThickness;
+
+            // ✅ PARTIAL PENETRATION FIX: For wall hosts, check if the MEP element actually
+            // spans the full wall thickness. If not (partial penetration — pipe enters one face
+            // but does not exit the other), cap Depth to the actual penetration depth.
+            // This prevents sleeves being placed half-in / half-out of a wall.
+            if (isWallHost && fullThickness > 0.001)
+            {
+                double actualDepth = ComputeActualPenetrationDepth(zone, fullThickness);
+                if (actualDepth > 0.001 && actualDepth < fullThickness - 0.001)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PARTIAL-PENETRATION] Zone={zone.Id}: " +
+                            $"FullWall={fullThickness * 304.8:F1}mm, ActualDepth={actualDepth * 304.8:F1}mm — clamping Depth to actual penetration\n");
+                    }
+                    return actualDepth;
+                }
+            }
+
+            return fullThickness;
+        }
+
+        /// <summary>
+        /// Computes the actual depth a MEP element penetrates through a wall host.
+        /// Uses the WallCenterlinePoint and IntersectionPoint (entry face) to determine
+        /// how far along the wall-normal direction the MEP element reaches.
+        /// 
+        /// For a FULL penetration:  returns ≈ fullWallThickness (no change)
+        /// For a PARTIAL penetration: returns the actual MEP-to-far-face distance 
+        ///   so the sleeve Depth is clamped and the sleeve stays inside the wall.
+        /// </summary>
+        private double ComputeActualPenetrationDepth(ClashZone zone, double fullWallThickness)
+        {
+            try
+            {
+                // The IntersectionPoint is the wall entry face point.
+                // The WallCenterlinePoint is the wall centreline.
+                // We know half-thickness = fullWallThickness / 2.
+                //
+                // Strategy: use the MEP bounding box (BoundingBoxMin/Max stored in zone)
+                // projected onto the wall normal direction to get the actual span in that axis.
+                // If the zone has no bounding box data, fall back to full thickness.
+
+                bool hasBBox = (zone.BoundingBoxMaxX != 0 || zone.BoundingBoxMaxY != 0 || zone.BoundingBoxMaxZ != 0) &&
+                               (zone.BoundingBoxMaxX != zone.BoundingBoxMinX ||
+                                zone.BoundingBoxMaxY != zone.BoundingBoxMinY ||
+                                zone.BoundingBoxMaxZ != zone.BoundingBoxMinZ);
+
+                if (!hasBBox) return fullWallThickness; // No bbox data — assume full penetration
+
+                // Wall normal direction: derived from the wall centerline vs entry face vector.
+                // IntersectionPoint = entry face; WallCenterlinePoint = wall centre.
+                double entryX = zone.IntersectionPointX;
+                double entryY = zone.IntersectionPointY;
+                double entryZ = zone.IntersectionPointZ;
+                double ctrX = zone.WallCenterlinePointX;
+                double ctrY = zone.WallCenterlinePointY;
+                double ctrZ = zone.WallCenterlinePointZ;
+
+                // Vector from entry face to wall centreline
+                double dX = ctrX - entryX;
+                double dY = ctrY - entryY;
+                double dZ = ctrZ - entryZ;
+                double distToCentre = Math.Sqrt(dX * dX + dY * dY + dZ * dZ);
+
+                if (distToCentre < 0.001) return fullWallThickness; // Entry point IS the centreline — can't determine normal
+
+                // Unit wall normal (pointing from entry face inward to centreline)
+                double nX = dX / distToCentre;
+                double nY = dY / distToCentre;
+                double nZ = dZ / distToCentre;
+
+                // Project bounding box corners onto wall normal to find MEP extent through the wall
+                // We only need min/max projections of the 8 AABB corners
+                double[] xs = { zone.BoundingBoxMinX, zone.BoundingBoxMaxX };
+                double[] ys = { zone.BoundingBoxMinY, zone.BoundingBoxMaxY };
+                double[] zs = { zone.BoundingBoxMinZ, zone.BoundingBoxMaxZ };
+
+                double minProj = double.MaxValue;
+                double maxProj = double.MinValue;
+                foreach (var x in xs) foreach (var y in ys) foreach (var z in zs)
+                {
+                    double proj = x * nX + y * nY + z * nZ;
+                    if (proj < minProj) minProj = proj;
+                    if (proj > maxProj) maxProj = proj;
+                }
+
+                // The MEP bounding box span along the wall normal
+                double mepSpanAlongNormal = maxProj - minProj;
+
+                // The wall spans fullWallThickness along the normal.
+                // The actual penetration depth is the overlap of the MEP span with the wall span.
+                // Since IntersectionPoint is the entry face, the wall occupies [0, fullThickness] from entry.
+                // We project the entry face: entryProj = entryX*nX + entryY*nY + entryZ*nZ
+                double entryProj = entryX * nX + entryY * nY + entryZ * nZ;
+                double wallMinProj = entryProj;                    // entry face
+                double wallMaxProj = entryProj + fullWallThickness; // far face (inward direction is +)
+
+                // Clamp MEP extent to wall extent
+                double overlapMin = Math.Max(minProj, wallMinProj);
+                double overlapMax = Math.Min(maxProj, wallMaxProj);
+
+                double actualPenetration = Math.Max(0, overlapMax - overlapMin);
+
+                // Sanity: if >= 95% of wall thickness, treat as full penetration to avoid rounding artifacts
+                if (actualPenetration >= fullWallThickness * 0.95)
+                    return fullWallThickness;
+
+                return actualPenetration > 0.001 ? actualPenetration : fullWallThickness;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PARTIAL-PENETRATION] Zone={zone.Id}: Error computing penetration depth: {ex.Message}\n");
+                }
+                return fullWallThickness; // Safe fallback 
+            }
         }
 
         // âœ… REMOVED: Probing linked files during placement is deprecated (user requirement)

@@ -3607,6 +3607,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             
                             // ✅ Also directly set the checkbox value
                             SetPipePanelNominalDiameterCheckbox(clearance.UseNominalDiameterForPipes);
+
+                            // ✅ NEW: Restore pipe opening type (Circular / Rectangular) from persisted preferences
+                            if (conditions.OpeningTypePreferences != null)
+                            {
+                                SetPipeOpeningTypeUI(conditions.OpeningTypePreferences.Pipes);
+                            }
                         }
                         else if (category.Equals("Cable Trays", StringComparison.OrdinalIgnoreCase))
                         {
@@ -3628,6 +3634,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             categoryValues["round_duct_normal_clearance"] = clearance.RoundNormal.ToString("F0");
                             categoryValues["round_duct_insulated_clearance"] = clearance.RoundInsulated.ToString("F0");
                             DebugLogger.Info($"[LoadClearanceValuesFromDatabase] Loaded Ducts: Rect Normal={clearance.RectangularNormal}mm, Rect Ins={clearance.RectangularInsulated}mm, Round Normal={clearance.RoundNormal}mm, Round Ins={clearance.RoundInsulated}mm");
+
+                            // ✅ NEW: Restore duct opening type (Circular / Rectangular) for round ducts
+                            if (conditions.OpeningTypePreferences != null)
+                            {
+                                SetDuctOpeningTypeUI(conditions.OpeningTypePreferences.RoundDucts);
+                            }
                         }
                         
                         DebugLogger.Info($"[LoadClearanceValuesFromDatabase] ✅ Loaded clearance values from database for category '{category}' (combinedKey='{combinedKey}')");
@@ -3653,21 +3665,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 foreach (var control in _pipePanel.Controls)
                 {
-                    if (control is WinForms.RadioButton radioButton)
+                    if (control is WinForms.RadioButton radioButton && radioButton.Checked)
                     {
-                        if (radioButton.Checked)
-                        {
-                            if (radioButton.Tag?.ToString() == "pipe_opening_circular")
-                                return "Circular";
-                            else if (radioButton.Tag?.ToString() == "pipe_opening_rectangular")
-                                return "Rectangular";
-                        }
+                        if (radioButton.Tag?.ToString() == "pipe_opening_circular")
+                            return "Circular";
+                        if (radioButton.Tag?.ToString() == "pipe_opening_rectangular")
+                            return "Rectangular";
                     }
                 }
             }
             return "Circular"; // Default to circular
         }
-
+        
+        /// <summary>
+        /// Set the pipe opening type radio button selection from a persisted value.
+        /// </summary>
+        private void SetPipeOpeningTypeUI(string type)
+        {
+            if (_pipePanel?.Controls.Count > 0)
+            {
+                string normalized = (type ?? "Circular").Trim();
+                foreach (var control in _pipePanel.Controls)
+                {
+                    if (control is WinForms.RadioButton radioButton)
+                    {
+                        var tag = radioButton.Tag?.ToString();
+                        if (normalized.Equals("Circular", StringComparison.OrdinalIgnoreCase) && tag == "pipe_opening_circular")
+                        {
+                            radioButton.Checked = true;
+                        }
+                        else if (normalized.Equals("Rectangular", StringComparison.OrdinalIgnoreCase) && tag == "pipe_opening_rectangular")
+                        {
+                            radioButton.Checked = true;
+                        }
+                    }
+                }
+            }
+        }
+        
         /// <summary>
         /// Get the selected opening type for ducts (Circular or Rectangular)
         /// </summary>
@@ -3677,19 +3712,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 foreach (var control in _clearancePanel.Controls)
                 {
-                    if (control is WinForms.RadioButton radioButton)
+                    if (control is WinForms.RadioButton radioButton && radioButton.Checked)
                     {
-                        if (radioButton.Checked)
-                        {
-                            if (radioButton.Tag?.ToString() == "duct_opening_circular")
-                                return "Circular";
-                            else if (radioButton.Tag?.ToString() == "duct_opening_rectangular")
-                                return "Rectangular";
-                        }
+                        if (radioButton.Tag?.ToString() == "duct_opening_circular")
+                            return "Circular";
+                        if (radioButton.Tag?.ToString() == "duct_opening_rectangular")
+                            return "Rectangular";
                     }
                 }
             }
             return "Circular"; // Default to circular
+        }
+        
+        /// <summary>
+        /// Set the duct opening type radio button selection from a persisted value.
+        /// </summary>
+        private void SetDuctOpeningTypeUI(string type)
+        {
+            if (_clearancePanel?.Controls.Count > 0)
+            {
+                string normalized = (type ?? "Circular").Trim();
+                foreach (var control in _clearancePanel.Controls)
+                {
+                    if (control is WinForms.RadioButton radioButton)
+                    {
+                        var tag = radioButton.Tag?.ToString();
+                        if (normalized.Equals("Circular", StringComparison.OrdinalIgnoreCase) && tag == "duct_opening_circular")
+                        {
+                            radioButton.Checked = true;
+                        }
+                        else if (normalized.Equals("Rectangular", StringComparison.OrdinalIgnoreCase) && tag == "duct_opening_rectangular")
+                        {
+                            radioButton.Checked = true;
+                        }
+                    }
+                }
+            }
         }
 
         // Parameter service methods removed - now available as separate dialog
