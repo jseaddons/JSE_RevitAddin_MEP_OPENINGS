@@ -347,10 +347,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                         // Filter to only elements that still exist
                         var revitIds = elementIdsToDelete
                             .Where(id => id > 0)
-#if REVIT2023
-                            .Select(id => new ElementId((int)id))
-#else
+#if REVIT2024_OR_GREATER
                             .Select(id => new ElementId(id))
+#else
+                            .Select(id => new ElementId((int)id))
 #endif
 
                             .Where(id => _document.GetElement(id) != null)

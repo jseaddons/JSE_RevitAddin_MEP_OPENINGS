@@ -164,7 +164,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             {
                 button5.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
                 button5.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-                button5.ToolTip = "JSE MEP Openings - Version 3.0";
+                button5.ToolTip = "JSE MEP Openings - Version 4.1\nMEP opening for builder works enhanced to carry out multi-storey operation in a single pass.";
             }
 
             // 2. Combined Sleeve Manager
@@ -272,6 +272,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 var btn4 = pulldown.AddPushButton(btn4Data);
                 btn4.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
                 btn4.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+                // 5.5 Convert Generic Model Voids to Cuttable Openings
+                var btn5Data = new PushButtonData("cmdConvertVoids", "Convert Voids\nto Cut Openings", assemblyPath, "JSE_RevitAddin_MEP_OPENINGS.Commands.ConvertGenericModelVoidsCommand");
+                var btn5 = pulldown.AddPushButton(btn5Data);
+                btn5.Image = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+                btn5.LargeImage = GetImageSource("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+                btn5.ToolTip = "Convert existing Generic Model openings into cuttable openings in linked Architecture and Structure files.";
             }
 
 

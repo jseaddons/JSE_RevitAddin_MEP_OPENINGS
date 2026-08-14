@@ -105,10 +105,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var instancesForBbox = new List<FamilyInstance>();
                             foreach (int id in clusterInstanceIds)
                             {
-#if REVIT2023
-                                var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId(id)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                                 var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId((long)id)) as FamilyInstance;
+#else
+                                var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId(id)) as FamilyInstance;
 #endif
                                 if (elem != null && elem.IsValidObject) instancesForBbox.Add(elem);
                             }
@@ -1778,10 +1778,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // doc.Regenerate();
                     
                     // ✅ CRITICAL FIX: Refresh instance reference after regeneration
-#if REVIT2023
-                    instance = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                     instance = doc.GetElement(new ElementId((long)clusterInstanceId)) as FamilyInstance;
+#else
+                    instance = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
 #endif
                     
                     // ✅ BATCH LOGGING: Only log every 20th cluster

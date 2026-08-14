@@ -1462,9 +1462,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var logger = new Action<string>(msg => 
                 {
-                    if (!context.IsDeploymentMode)
-                        DebugLogger.Info(msg);
-                    SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] {msg}\n");
+                    SafeFileLogger.SafeAppendTextAlways(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] {msg}\n");
                 });
                 
                 Action<string, int> progressCallback = null;
@@ -1648,19 +1646,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                // Add damper zones to NewClashZones if they're new
+                // ✅ CRITICAL FIX: Add ALL new zones (intersections + dampers) to NewClashZones
+                if (context.NewClashZones == null)
+                {
+                    context.NewClashZones = new List<ClashZone>();
+                }
+                
+                var existingNewIds = new HashSet<Guid>(context.NewClashZones.Select(z => z.Id));
+                
+                if (intersectionClashZones != null)
+                {
+                    foreach (var zone in intersectionClashZones)
+                    {
+                        if (!existingNewIds.Contains(zone.Id))
+                        {
+                            context.NewClashZones.Add(zone);
+                            existingNewIds.Add(zone.Id);
+                        }
+                    }
+                }
+                
                 if (damperClashZones.Count > 0)
                 {
-                    if (context.NewClashZones == null)
-                    {
-                        context.NewClashZones = new List<ClashZone>();
-                    }
-                    var newDamperIds = new HashSet<Guid>(context.NewClashZones.Select(z => z.Id));
                     foreach (var damperZone in damperClashZones)
                     {
-                        if (!newDamperIds.Contains(damperZone.Id))
+                        if (!existingNewIds.Contains(damperZone.Id))
                         {
                             context.NewClashZones.Add(damperZone);
+                            existingNewIds.Add(damperZone.Id);
                         }
                     }
                 }

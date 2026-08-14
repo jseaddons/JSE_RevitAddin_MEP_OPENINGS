@@ -1851,10 +1851,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             snapshot.MepParameters.TryGetValue("MEP_ElementId", out var snapshotMepIdStr) &&
                                             int.TryParse(snapshotMepIdStr, out int snapshotMepIdInt))
                                         {
-#if REVIT2023
-                                            mepElementId = new ElementId(snapshotMepIdInt);
-#else
+#if REVIT2024_OR_GREATER
                                             mepElementId = new ElementId((long)snapshotMepIdInt);
+#else
+                                            mepElementId = new ElementId(snapshotMepIdInt);
 #endif
                                             if (!DeploymentConfiguration.DeploymentMode)
                                             {

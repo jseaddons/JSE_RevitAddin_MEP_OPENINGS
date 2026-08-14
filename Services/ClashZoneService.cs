@@ -5841,10 +5841,13 @@ private double GetMepElementOffset(Element mepElement, System.Collections.Generi
             {
                 if (mepElement is Pipe)
                 {
-                    // TODO: Get from UI settings or element properties
-                    // For now, default to Circular
-                    return "Circular";
+                    // Read from current project settings so refresh uses the same
+                    // opening type preference (Rectangular / Circular) as the UI.
+                    var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                    bool rectangular = settings?.PipeOpeningTypeRectangular ?? false;
+                    return rectangular ? "Rectangular" : "Circular";
                 }
+
                 return string.Empty; // Not a pipe
             }
             catch

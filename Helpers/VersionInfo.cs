@@ -34,6 +34,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         public const bool Is2024Plus = false;
         public const bool Is2025Plus = false;
         public const bool Is2026Plus = false;
+#elif REVIT2022
+        public const int CurrentMajor = 2022;
+        public const bool Is2024Plus = false;
+        public const bool Is2025Plus = false;
+        public const bool Is2026Plus = false;
+#elif REVIT2021
+        public const int CurrentMajor = 2021;
+        public const bool Is2024Plus = false;
+        public const bool Is2025Plus = false;
+        public const bool Is2026Plus = false;
 #else
         // Fallback for design-time or generic builds
         public const int CurrentMajor = 2025;
