@@ -43,6 +43,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 // 2. Logging - Basic setup
                 CreateLogger();
 
+                // Diagnostic mode ON immediately so Refresh_*.log is written even if the
+                // background init has not finished yet (LoadFromConfiguration would otherwise
+                // turn it off until the later MasterSwitch.DiagnosticLogging = true).
+                MasterSwitch.DiagnosticLogging = true;
+                DebugLogger.IsEnabled = true;
+                LoggingConfiguration.EnableRefreshButton = true;
+
                 // 3. Background - All heavy I/O, SQLite, License, etc.
                 System.Threading.Tasks.Task.Run(() => {
                     try {
@@ -83,8 +90,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                     
                     string startupLogPath = Path.Combine(logDir, "addin_startup.log");
                     File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Starting background initialization...\n");
-                    
-                    MasterSwitch.DiagnosticLogging = false; // Ensure deployment mode
                 } catch { }
 
                 // 3. SQLite Support
@@ -95,6 +100,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 
                 // 4. Flags and Phase 1 optimizations
                 InitializeOptimizationServices();
+
+                // Diagnostic mode ON after config load so LoadFromConfiguration cannot turn it back off.
+                // This is what actually creates Refresh_*.log (deployment mode skips those writes).
+                MasterSwitch.DiagnosticLogging = true;
+                DebugLogger.IsEnabled = true;
+                LoggingConfiguration.EnableRefreshButton = true;
+                try
+                {
+                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
+                    Directory.CreateDirectory(logDir);
+                    string startupLogPath = Path.Combine(logDir, "addin_startup.log");
+                    File.AppendAllText(startupLogPath,
+                        $"[{DateTime.Now}] DiagnosticLogging=ON, UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}, " +
+                        $"DeploymentMode={DeploymentConfiguration.DeploymentMode}, DebugLogger.IsEnabled={DebugLogger.IsEnabled}\n" +
+                        $"[{DateTime.Now}] Refresh logs: {SafeFileLogger.GetLogDirectory()}\n");
+                }
+                catch { }
             }
             catch { }
         }

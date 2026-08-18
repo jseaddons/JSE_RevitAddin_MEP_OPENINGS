@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -39,6 +39,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Public property to expose the database path for services that need direct database access
         /// </summary>
         public string DatabasePath => _context.DatabasePath;
+
+        /// <summary>
+        /// Host-document FamilyInstance ids that still exist. Set by SaveClashZones.
+        /// When null or empty, sleeve/cluster ids are never preserved.
+        /// </summary>
+        public ISet<long>? LiveElementIds { get; set; }
 
         public ClashZoneRepository(SleeveDbContext context, Action<string> logger = null, PerformanceMonitor performanceMonitor = null)
         {
@@ -976,13 +982,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.CommandText = "DELETE FROM BulkUpdateZones";
                     cmd.ExecuteNonQuery();
 
-                    // 2. Fetch current flags to preserve IsCombinedResolved=1
+                    // 2. Existing ids/flags from DB. Only sleeve/cluster instance ids may be preserved
+                    //    when the element is still in the host document. FlagManager owns the flags.
                     var idList = string.Join(",", validZones.Select(z => existingMap[z.Id]));
-                    var flagPreserveMap = new Dictionary<int, bool>();
-                    cmd.CommandText = $"SELECT ClashZoneId, IsCombinedResolved FROM ClashZones WHERE ClashZoneId IN ({idList})";
+                    var existingState = new Dictionary<int, (long SleeveId, long ClusterId, bool Combined)>();
+                    cmd.CommandText = $@"
+                        SELECT ClashZoneId,
+                               COALESCE(SleeveInstanceId, -1),
+                               COALESCE(ClusterInstanceId, -1),
+                               COALESCE(IsCombinedResolved, 0)
+                        FROM ClashZones
+                        WHERE ClashZoneId IN ({idList})";
                     using (var reader = cmd.ExecuteReader())
                     {
-                        while (reader.Read()) flagPreserveMap[reader.GetInt32(0)] = reader.GetInt32(1) == 1;
+                        while (reader.Read())
+                        {
+                            existingState[reader.GetInt32(0)] = (
+                                Convert.ToInt64(reader.GetValue(1)),
+                                Convert.ToInt64(reader.GetValue(2)),
+                                Convert.ToInt32(reader.GetValue(3)) == 1);
+                        }
                     }
 
                     // 3. Insert update data into Temp Table
@@ -1018,14 +1037,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     foreach (var zone in validZones)
                     {
                         int czId = existingMap[zone.Id];
-                        bool preserveCombo = flagPreserveMap.TryGetValue(czId, out var pc) && pc;
+                        existingState.TryGetValue(czId, out var existing);
+                        bool preserveCombo = existing.Combined;
+
+                        long sleeveId = zone.SleeveInstanceId;
+                        long clusterId = zone.ClusterSleeveInstanceId;
+                        if (ShouldPreserveInstanceId(existing.SleeveId, sleeveId))
+                        {
+                            sleeveId = existing.SleeveId;
+                            LogPreserve($"[PRESERVE-SLEEVE] ClashZoneId={czId}, GUID={zone.Id}, kept SleeveInstanceId={existing.SleeveId} (incoming={zone.SleeveInstanceId})");
+                        }
+                        if (ShouldPreserveInstanceId(existing.ClusterId, clusterId))
+                        {
+                            clusterId = existing.ClusterId;
+                            LogPreserve($"[PRESERVE-CLUSTER] ClashZoneId={czId}, GUID={zone.Id}, kept ClusterInstanceId={existing.ClusterId} (incoming={zone.ClusterSleeveInstanceId})");
+                        }
 
                         pId.Value = czId;
                         pRes.Value = zone.IsResolved ? 1 : 0;
                         pClust.Value = zone.IsClusterResolved ? 1 : 0;
                         pCombo.Value = (zone.IsCombinedResolved || preserveCombo) ? 1 : 0;
-                        pSleeve.Value = zone.SleeveInstanceId;
-                        pClustSleeve.Value = zone.ClusterSleeveInstanceId;
+                        pSleeve.Value = sleeveId;
+                        pClustSleeve.Value = clusterId;
                         pMepP.Value = JsonSerializer.Serialize(zone.MepParameterValues?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, string>());
                         pHostP.Value = JsonSerializer.Serialize(zone.HostParameterValues?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, string>());
                         pCX.Value = zone.WallCenterlinePointX;
@@ -1051,8 +1084,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.CommandText = @"
                         UPDATE ClashZones 
                         SET 
-                            IsResolvedFlag = (SELECT IsResolvedFlag FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
-                            IsClusterResolvedFlag = (SELECT IsClusterResolvedFlag FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             IsCombinedResolved = (SELECT IsCombinedResolved FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             SleeveInstanceId = (SELECT SleeveInstanceId FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             ClusterInstanceId = (SELECT ClusterInstanceId FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
@@ -1298,6 +1329,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
+        /// <summary>
+        /// Writes preserve decisions straight to placement_debug.log. That file is written
+        /// with File.AppendAllText so these lines survive with verbose logging disabled.
+        /// </summary>
+        private void LogPreserve(string message)
+        {
+            try
+            {
+                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                System.IO.File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] {message}" + Environment.NewLine);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Keep a stored sleeve/cluster id only when the incoming save has a blank id
+        /// and the element is still in the host document. Flags are never inferred from this.
+        /// </summary>
+        private bool ShouldPreserveInstanceId(long dbId, long incomingId)
+        {
+            return dbId > 0
+                && incomingId <= 0
+                && LiveElementIds != null
+                && LiveElementIds.Contains(dbId);
+        }
+
         private void BulkUpdateClashZonesLegacy(List<ClashZone> zones, Dictionary<Guid, int> existingMap, Dictionary<Guid, int> comboMap, SQLiteTransaction transaction)
         {
             if (zones.Count == 0) return;
@@ -1390,6 +1447,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 _logger($"[SQLite][BULK] ✅ PRESERVING reset flags for ClashZoneId={clashZoneId}, GUID={zone.Id}: IsResolved=false, IsClusterResolved=false, IsCombinedResolved=false");
                             }
+                        }
+
+                        // ✅ PLACEMENT-LOSS FIX: a refresh rebuilds ClashZone objects with SleeveInstanceId = -1.
+                        // Writing that over a live sleeve id makes the zone look unplaced next run, so a SECOND
+                        // sleeve gets placed for the same clash. Only preserve when the caller can confirm the
+                        // element still exists - a genuinely deleted sleeve must still clear.
+                        // Flags are NOT touched here: they belong to FlagManager / VerifyExistingSleevesAndResetFlags.
+                        if (dbFlags.SleeveId > 0 && finalSleeveId <= 0 && ShouldPreserveInstanceId(dbFlags.SleeveId, finalSleeveId))
+                        {
+                            finalSleeveId = dbFlags.SleeveId;
+                            LogPreserve($"[PRESERVE-SLEEVE] ClashZoneId={clashZoneId}, GUID={zone.Id}, kept SleeveInstanceId={dbFlags.SleeveId} (incoming={zone.SleeveInstanceId})");
+                        }
+
+                        if (dbFlags.ClusterId > 0 && finalClusterId <= 0 && ShouldPreserveInstanceId(dbFlags.ClusterId, finalClusterId))
+                        {
+                            finalClusterId = dbFlags.ClusterId;
+                            LogPreserve($"[PRESERVE-CLUSTER] ClashZoneId={clashZoneId}, GUID={zone.Id}, kept ClusterInstanceId={dbFlags.ClusterId} (incoming={zone.ClusterSleeveInstanceId})");
                         }
                     }
 
@@ -2070,7 +2144,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                         cmd.Parameters.AddWithValue($"@MSA{j}", zone.MepElementSystemAbbreviation ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@MFS{j}", zone.MepElementFormattedSize ?? string.Empty);
-                        cmd.Parameters.AddWithValue($"@ISD{j}", zone.IsStandardDamper ? 1 : 0);
                         cmd.Parameters.AddWithValue($"@ISD{j}", zone.IsStandardDamper ? 1 : 0);
                         cmd.Parameters.AddWithValue($"@MST{j}", zone.MepSystemType ?? string.Empty);
                         // ✅ CRITICAL FIX: Add "MSN" (MepSystemName) parameter
@@ -5667,7 +5740,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
                         INNER JOIN Filters f ON fc.FilterId = f.FilterId
                         WHERE f.Category = @category
-                          AND (cz.IsResolved = 1 OR cz.IsClusterResolved = 1)
+                          AND (cz.IsResolvedFlag = 1 OR cz.IsClusterResolvedFlag = 1)
                           AND rtree.minX <= @maxX AND rtree.maxX >= @minX
                           AND rtree.minY <= @maxY AND rtree.maxY >= @minY
                           AND rtree.minZ <= @maxZ AND rtree.maxZ >= @minZ";
@@ -5742,7 +5815,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         INNER JOIN Filters f ON fc.FilterId = f.FilterId
                         WHERE f.FilterName = @filterName
                           AND f.Category = @category
-                          AND (cz.IsResolved = 1 OR cz.IsClusterResolved = 1)
+                          AND (cz.IsResolvedFlag = 1 OR cz.IsClusterResolvedFlag = 1)
                           AND rtree.minX <= @maxX AND rtree.maxX >= @minX
                           AND rtree.minY <= @maxY AND rtree.maxY >= @minY
                           AND rtree.minZ <= @maxZ AND rtree.maxZ >= @minZ";
@@ -7780,7 +7853,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 BoundingBoxMaxZ = @BoundingBoxMaxZ,
                                 SleeveFamilyName = @SleeveFamilyName,
                                 IsClustered = 1,
-                                IsClusterResolved = 1,
+                                IsClusterResolvedFlag = 1,
                                 MarkedForClusterProcess = 1,
                                 UpdatedAt = CURRENT_TIMESTAMP
                             WHERE REPLACE(REPLACE(UPPER(ClashZoneGuid), '{{', ''), '}}', '') = UPPER(@ClashZoneGuid)
@@ -9698,7 +9771,7 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                             COUNT(*) as Total,
                             SUM(CASE WHEN IsCurrentClashFlag = 1 THEN 1 ELSE 0 END) as IsCurrentClashSet,
                             SUM(CASE WHEN ReadyForPlacementFlag = 1 THEN 1 ELSE 0 END) as ReadyForPlacementSet,
-                            SUM(CASE WHEN IsResolved = 1 THEN 1 ELSE 0 END) as IsResolvedSet
+                            SUM(CASE WHEN IsResolvedFlag = 1 THEN 1 ELSE 0 END) as IsResolvedSet
                         FROM ClashZones";
 
                     using (var reader = cmd.ExecuteReader())

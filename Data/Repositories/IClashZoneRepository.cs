@@ -26,6 +26,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         void InsertOrUpdateClashZonesBulk(IEnumerable<ClashZone> clashZones, string filterName);
 
         /// <summary>
+        /// Host-document FamilyInstance ids that still exist. Set by SaveClashZones
+        /// before a bulk save. Used only to keep SleeveInstanceId / ClusterInstanceId
+        /// when the incoming clash zone has a blank id but the sleeve is still in the model.
+        /// Never used to write IsResolvedFlag or IsClusterResolvedFlag.
+        /// </summary>
+        System.Collections.Generic.ISet<long>? LiveElementIds { get; set; }
+
+        /// <summary>
         /// Get clash zones by filter and category
         /// </summary>
         List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false, bool readyForPlacementOnly = false);

@@ -1210,8 +1210,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ✅ CRITICAL: Show error dialog to user
+            string logDir = SafeFileLogger.GetLogDirectory();
             System.Windows.Forms.MessageBox.Show(
-                $"{message}\n\nCheck logs for full details:\n{context.RefreshLogName}",
+                $"{message}\n\nCheck logs for full details:\n{Path.Combine(logDir, context.RefreshLogName)}",
                 "Refresh Error",
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Error);

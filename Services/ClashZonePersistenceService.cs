@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
@@ -62,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[SQLite] {msg}");
                     SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
                 }, _performanceMonitor);
-                
+
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled");
                 
@@ -278,6 +278,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones (Targeted Grouping applied)\n");
                         }
                         
+                        // Live sleeve/cluster ids come from the host document once per save.
+                        // The repository keeps DB instance ids only when the element is still here.
+                        var liveIds = CollectLiveSleeveElementIds();
+                        _sqliteRepository.LiveElementIds = liveIds;
+                        LogPlacement($"[PRESERVE-IDS] Live FamilyInstance ids in host: {liveIds.Count}");
+
                         _sqliteRepository.InsertOrUpdateClashZonesBulk(validZones, baseFilterName);
                         if (bulkOp is PerformanceMonitor.OperationTracker tracker) tracker.SetItemCount(validZones.Count);
                     }
@@ -473,6 +479,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ Successfully saved clash zones for '{baseFilterName}' → {summary}");
+        }
+
+        private HashSet<long> CollectLiveSleeveElementIds()
+        {
+            var live = new HashSet<long>();
+            if (_document == null)
+                return live;
+
+            try
+            {
+                var collector = new FilteredElementCollector(_document)
+                    .OfClass(typeof(FamilyInstance))
+                    .OfCategory(BuiltInCategory.OST_GenericModel)
+                    .WhereElementIsNotElementType();
+
+                foreach (FamilyInstance fi in collector)
+                {
+                    if (fi?.Id == null)
+                        continue;
+                    live.Add(fi.Id.GetIdValue());
+                }
+            }
+            catch (Exception ex)
+            {
+                LogPlacement($"[PRESERVE-IDS] Failed to collect live sleeve ids: {ex.Message}");
+            }
+
+            return live;
         }
 
         private void LogPlacement(string message)
