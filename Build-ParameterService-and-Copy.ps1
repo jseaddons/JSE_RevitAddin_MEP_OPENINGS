@@ -33,6 +33,7 @@ if ($Clean) {
 }
 
 $Configs = @(
+    @{ Name = "Debug R22"; Framework = "net48"; OutputFolder = "net48" },
     @{ Name = "Debug R23"; Framework = "net48"; OutputFolder = "net48" },
     @{ Name = "Debug R24"; Framework = "net48"; OutputFolder = "net48" },
     @{ Name = "Debug R25"; Framework = "net8.0-windows"; OutputFolder = "net8.0-windows" },

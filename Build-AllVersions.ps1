@@ -1,7 +1,7 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    Builds JSE MEP Openings for all Revit versions (2023-2026)
+    Builds JSE MEP Openings for all Revit versions (2022-2026)
 .DESCRIPTION
     Handles the multi-targeting build process correctly by:
     1. Using isolated obj folders per configuration (via Directory.Build.props)
@@ -20,6 +20,7 @@ $ErrorActionPreference = "Stop"
 
 # Configuration definitions
 $Configurations = @(
+    @{ Name = "Debug R22"; Framework = "net48"; RevitVersion = "2022" },
     @{ Name = "Debug R23"; Framework = "net48"; RevitVersion = "2023" },
     @{ Name = "Debug R24"; Framework = "net48"; RevitVersion = "2024" },
     @{ Name = "Debug R25"; Framework = "net8.0-windows"; RevitVersion = "2025" },

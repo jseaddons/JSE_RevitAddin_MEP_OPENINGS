@@ -708,9 +708,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         var normalizedLinkTitle = linkTitle?.Trim() ?? "";
                         var normalizedPathName = linkPathName?.Trim() ?? "";
                         
-                        return string.Equals(normalizedRf, normalizedLinkName, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(normalizedRf, normalizedLinkTitle, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(normalizedRf, normalizedPathName, StringComparison.OrdinalIgnoreCase);
+                        bool match = normalizedLinkName.IndexOf(normalizedRf, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                     normalizedLinkTitle.IndexOf(normalizedRf, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                     normalizedPathName.IndexOf(normalizedRf, StringComparison.OrdinalIgnoreCase) >= 0;
+                               
+                        _logger($"[LINK-MATCH-MEP] Comparing '{normalizedRf}' vs Name='{normalizedLinkName}', Title='{normalizedLinkTitle}', Path='{normalizedPathName}' -> Match: {match}");
+                        return match;
                     });
                     
                     if (isMatch)
@@ -913,9 +916,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         var normalizedLinkTitle = linkTitle?.Trim() ?? "";
                         var normalizedPathName = linkPathName?.Trim() ?? "";
                         
-                        return string.Equals(normalizedHf, normalizedLinkName, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(normalizedHf, normalizedLinkTitle, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(normalizedHf, normalizedPathName, StringComparison.OrdinalIgnoreCase);
+                        bool match = normalizedLinkName.IndexOf(normalizedHf, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                     normalizedLinkTitle.IndexOf(normalizedHf, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                     normalizedPathName.IndexOf(normalizedHf, StringComparison.OrdinalIgnoreCase) >= 0;
+                               
+                        _logger($"[LINK-MATCH-HOST] Comparing '{normalizedHf}' vs Name='{normalizedLinkName}', Title='{normalizedLinkTitle}', Path='{normalizedPathName}' -> Match: {match}");
+                        return match;
                     });
                     
                     if (isMatch)

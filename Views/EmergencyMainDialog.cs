@@ -2891,12 +2891,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             ductCircularRadio.CheckedChanged += (s, e) =>
             {
                 if (ductCircularRadio.Checked)
+                {
                     ductRectangularRadio.Checked = false;
+                    PersistOpeningTypeToConditions();
+                }
             };
             ductRectangularRadio.CheckedChanged += (s, e) =>
             {
                 if (ductRectangularRadio.Checked)
+                {
                     ductCircularRadio.Checked = false;
+                    PersistOpeningTypeToConditions();
+                }
             };
 
             // Round Duct Clearance Section - Row 3 (IDENTICAL to Row 1 - same X positions)
@@ -3254,12 +3260,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             pipeCircularRadio.CheckedChanged += (s, e) =>
             {
                 if (pipeCircularRadio.Checked)
+                {
                     pipeRectangularRadio.Checked = false;
+                    PersistOpeningTypeToConditions();
+                }
             };
             pipeRectangularRadio.CheckedChanged += (s, e) =>
             {
                 if (pipeRectangularRadio.Checked)
+                {
                     pipeCircularRadio.Checked = false;
+                    PersistOpeningTypeToConditions();
+                }
             };
 
             // ✅ PIPE NOMINAL DIAMETER OPTION: Checkbox to use nominal diameter instead of outside diameter
@@ -3489,18 +3501,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
         /// <summary>
-        /// Restore clearance values for a category from storage, or set defaults if not saved
-        /// ✅ FIX: Also tries to load from database if in-memory values are not available
+        /// Restore clearance values for a category from storage, or set defaults if not saved.
+        /// ✅ FIX: Always refresh from database so OpeningTypePreferences (circular/rectangular) stay in sync.
         /// </summary>
         private void RestoreClearanceValues(string category)
         {
             try
             {
-                // First, try to load from database if not already in memory
-                if (!_categoryClearanceValues.ContainsKey(category) || _categoryClearanceValues[category].Count == 0)
-                {
-                    LoadClearanceValuesFromDatabase(category);
-                }
+                // Always load from database so both clearance values and OpeningTypePreferences
+                // (pipe/duct opening type) are restored from the latest saved Conditions row.
+                LoadClearanceValuesFromDatabase(category);
                 
                 // Check if we have saved values for this category
                 if (_categoryClearanceValues.ContainsKey(category) && _categoryClearanceValues[category].Count > 0)
@@ -4878,6 +4888,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             
             return preferences;
+        }
+        
+        /// <summary>
+        /// Persist current duct/pipe opening type to Conditions table immediately (so we don't rely only on Save Filter).
+        /// </summary>
+        private void PersistOpeningTypeToConditions()
+        {
+            try
+            {
+                if (_document == null) return;
+                var categories = GetSelectedMepCategories();
+                if (categories == null || categories.Count == 0) return;
+                SaveConditionsToXml(categories);
+            }
+            catch { /* no UI popup */ }
         }
 
         // ✅ REMOVED: NormalizeCategoryName - Now using MepCategoryConstants.GetXmlSuffix() for consistency
@@ -6281,12 +6306,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             {
                                 var clashZone = new ClashZone
                                 {
-#if REVIT2023
-                                    MepElementId = new Autodesk.Revit.DB.ElementId(mepId),
-                                    StructuralElementId = new Autodesk.Revit.DB.ElementId(structuralId),
-#else
+#if REVIT2024_OR_GREATER
                                     MepElementId = new Autodesk.Revit.DB.ElementId((long)mepId),
                                     StructuralElementId = new Autodesk.Revit.DB.ElementId((long)structuralId),
+#else
+                                    MepElementId = new Autodesk.Revit.DB.ElementId(mepId),
+                                    StructuralElementId = new Autodesk.Revit.DB.ElementId(structuralId),
 #endif
                                     IsResolved = isResolved,
                                     DetectedAt = clashZoneStorage.LastUpdated
@@ -7457,6 +7482,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         _okButton.Enabled = unresolvedCount > 0;
                         DebugLogger.Info($"[OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML fallback")})");
                         JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML")})\n");
+                        
+                        // NEW REQUIREMENT: If no unresolved zones found, prompt user and close dialog
+                        if (unresolvedCount == 0)
+                        {
+                            System.Windows.Forms.MessageBox.Show(
+                                "No unresolved clashes found for the selected filters. Please verify your selections.",
+                                "No Clashes Found",
+                                System.Windows.Forms.MessageBoxButtons.OK,
+                                System.Windows.Forms.MessageBoxIcon.Information);
+                            
+                            this.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+                            this.Close();
+                            return;
+                        }
                     }
                     catch (Exception ex) // Surfacing error for diagnostics
                     {
@@ -8704,6 +8743,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ UpdateFilterInMemory completed");
                     DebugLogger.Info($"Updated in-memory filter object for '{selectedFilterName}' with saved UI state");
                     logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== END STEP 3: IN-MEMORY UPDATE ==========");
+
+                    // ✅ CRITICAL: Persist Clearance Conditions (including Duct + Pipe opening type) to Conditions table
+                    // Otherwise only OK/Place triggers SaveConditionsToXml and Ducts opening type never gets saved when user only clicks Save Filter.
+                    var categoriesForConditions = currentFilter.SelectedMepCategoryNames ?? GetSelectedMepCategories();
+                    if (categoriesForConditions != null && categoriesForConditions.Count > 0)
+                    {
+                        try
+                        {
+                            SaveConditionsToXml(categoriesForConditions);
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ SaveConditionsToXml called for categories: [{string.Join(", ", categoriesForConditions)}] (Duct + Pipe opening type persisted)");
+                            DebugLogger.Info($"[FILTER-SAVE] SaveConditionsToXml called for [{string.Join(", ", categoriesForConditions)}]");
+                        }
+                        catch (Exception condEx)
+                        {
+                            logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ SaveConditionsToXml failed: {condEx.Message}");
+                            DebugLogger.Warning($"[FILTER-SAVE] SaveConditionsToXml failed: {condEx.Message}");
+                        }
+                    }
                 }
                 else
                 {
@@ -9081,6 +9138,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         RestoreClearanceSettings(filter.OpeningSettings.ClearanceSettings);
                         DebugLogger.Info("Restored clearance settings");
+                    }
+                    
+                    // ✅ Restore opening type (Circular/Rectangular) from Conditions table for BOTH Ducts and Pipes
+                    if (filter.SelectedMepCategoryNames != null)
+                    {
+                        foreach (var cat in filter.SelectedMepCategoryNames)
+                        {
+                            string categoryForRestore = cat;
+                            if (string.Equals(cat, "Pipe", StringComparison.OrdinalIgnoreCase))
+                                categoryForRestore = "Pipes";
+                            else if (string.Equals(cat, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                                categoryForRestore = "Duct Accessories";
+                            else if (string.Equals(cat, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+                                categoryForRestore = "Cable Trays";
+                            RestoreClearanceValues(categoryForRestore);
+                        }
                     }
                     
                     // ✅ RESTORE: "Adopt to modified document" checkbox value from OpeningSettings

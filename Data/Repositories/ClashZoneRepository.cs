@@ -2005,7 +2005,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             if (zones == null || zones.Count == 0) return;
 
-            const int batchSize = 100; // SQLite limit around 500 parameters per query
+            const int batchSize = 15; // SQLite limit is 999 parameters. 55 params * 15 = 825 parameters per query.
             for (int i = 0; i < zones.Count; i += batchSize)
             {
                 var currentBatch = zones.Skip(i).Take(batchSize).ToList();

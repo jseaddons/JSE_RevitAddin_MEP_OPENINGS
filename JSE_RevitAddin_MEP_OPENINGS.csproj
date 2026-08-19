@@ -6,6 +6,8 @@
       ✅ MULTI-VERSION BUILD SYSTEM
       Defines the TargetFramework based on the selected configuration.
     -->
+    <TargetFramework Condition="$(Configuration.Contains('R21'))">net48</TargetFramework>
+    <TargetFramework Condition="$(Configuration.Contains('R22'))">net48</TargetFramework>
     <TargetFramework Condition="$(Configuration.Contains('R23'))">net48</TargetFramework>
     <TargetFramework Condition="$(Configuration.Contains('R24'))">net48</TargetFramework>
     <TargetFramework Condition="$(Configuration.Contains('R25'))">net8.0-windows</TargetFramework>
@@ -14,7 +16,7 @@
     <!-- Default for Generic Restore (Batch Build) -->
     <TargetFrameworks Condition="'$(TargetFramework)' == ''">net48;net8.0-windows</TargetFrameworks>
 
-    <Configurations>Debug;Debug R23;Debug R24;Debug R25;Debug R26;Release R23;Release R24;Release R25;Release R26</Configurations>
+    <Configurations>Debug;Debug R21;Debug R22;Debug R23;Debug R24;Debug R25;Debug R26;Release R21;Release R22;Release R23;Release R24;Release R25;Release R26</Configurations>
     <Platforms>x64;AnyCPU</Platforms>
     <PlatformTarget Condition="'$(Platform)' == 'x64'">x64</PlatformTarget>
     <PlatformTarget Condition="'$(Platform)' != 'x64'">AnyCPU</PlatformTarget>
@@ -30,6 +32,8 @@
 
   <!-- Revit Version Property Mapping -->
   <PropertyGroup>
+    <RevitVersion Condition="$(Configuration.Contains('R21'))">2021</RevitVersion>
+    <RevitVersion Condition="$(Configuration.Contains('R22'))">2022</RevitVersion>
     <RevitVersion Condition="$(Configuration.Contains('R23'))">2023</RevitVersion>
     <RevitVersion Condition="$(Configuration.Contains('R24'))">2024</RevitVersion>
     <RevitVersion Condition="$(Configuration.Contains('R25'))">2025</RevitVersion>
@@ -38,7 +42,9 @@
     <RevitVersion Condition="'$(RevitVersion)' == '' AND '$(TargetFramework)' == 'net48'">2024</RevitVersion>
     <RevitVersion Condition="'$(RevitVersion)' == '' AND '$(TargetFramework)' == 'net8.0-windows'">2025</RevitVersion>
     <RevitVersion Condition="'$(RevitVersion)' == ''">2025</RevitVersion>
-    
+
+    <DefineConstants Condition="'$(RevitVersion)' == '2021'">$(DefineConstants);REVIT2021</DefineConstants>
+    <DefineConstants Condition="'$(RevitVersion)' == '2022'">$(DefineConstants);REVIT2022</DefineConstants>
     <DefineConstants Condition="'$(RevitVersion)' == '2023'">$(DefineConstants);REVIT2023</DefineConstants>
     <DefineConstants Condition="'$(RevitVersion)' == '2024'">$(DefineConstants);REVIT2024;REVIT2024_OR_GREATER</DefineConstants>
     <DefineConstants Condition="'$(RevitVersion)' == '2025'">$(DefineConstants);REVIT2025;REVIT2024_OR_GREATER;REVIT2025_OR_GREATER</DefineConstants>
@@ -58,7 +64,7 @@
     <BaseOutputPath>bin\</BaseOutputPath>
     <Company>JSE</Company>
     <Description>OPENING PLACEMENT</Description>
-    <RepackBinariesExcludes>System.Data.SQLite.dll;SQLite.Interop.dll;e_sqlite3.dll;Microsoft.Data.Sqlite.dll;SQLitePCLRaw.batteries_v2.dll;SQLitePCLRaw.core.dll;SQLitePCLRaw.provider.e_sqlite3.dll;SQLitePCLRaw.bundle_e_sqlite3.dll;Serilog.dll;Serilog.Sinks.Debug.dll;CommunityToolkit.Mvvm.dll;Nice3point.Revit.Toolkit.dll;Nice3point.Revit.Extensions.dll;Newtonsoft.Json.dll;System.Text.Json.dll;System.Text.Encodings.Web.dll</RepackBinariesExcludes>
+    <RepackBinariesExcludes>System.Data.SQLite.dll;SQLite.Interop.dll;e_sqlite3.dll;Microsoft.Data.Sqlite.dll;SQLitePCLRaw.batteries_v2.dll;SQLitePCLRaw.core.dll;SQLitePCLRaw.provider.e_sqlite3.dll;SQLitePCLRaw.bundle_e_sqlite3.dll;Serilog.dll;Serilog.Sinks.Debug.dll;CommunityToolkit.Mvvm.dll;Nice3point.Revit.Toolkit.dll;Nice3point.Revit.Extensions.dll;Newtonsoft.Json.dll;System.Text.Json.dll;System.Text.Encodings.Web.dll;System.Diagnostics.DiagnosticSource.dll;Microsoft.Bcl.AsyncInterfaces.dll;System.Buffers.dll;System.Memory.dll;System.Numerics.Vectors.dll;System.Runtime.CompilerServices.Unsafe.dll;System.Threading.Tasks.Extensions.dll;System.ValueTuple.dll;System.Threading.Channels.dll;System.ComponentModel.Annotations.dll</RepackBinariesExcludes>
   </PropertyGroup>
 
   <!-- Global NuGet packages -->
@@ -82,6 +88,16 @@
   </ItemGroup>
 
   <!-- Revit API Packages per version -->
+  <ItemGroup Condition="'$(RevitVersion)' == '2021'">
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2021.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2021.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2021.*" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RevitVersion)' == '2022'">
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2022.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2022.*" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2022.*" />
+  </ItemGroup>
   <ItemGroup Condition="'$(RevitVersion)' == '2023'">
     <PackageReference Include="Nice3point.Revit.Toolkit" Version="2023.*" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2023.*" />

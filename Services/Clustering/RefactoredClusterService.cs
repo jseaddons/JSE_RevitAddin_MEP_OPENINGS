@@ -1532,10 +1532,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             foreach (var kvp in _clusterToClashZoneIds)
                             {
                                 int clusterId = kvp.Key;
-#if REVIT2023
-                                var clusterSleeve = doc.GetElement(new ElementId(clusterId)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                                 var clusterSleeve = doc.GetElement(new ElementId((long)clusterId)) as FamilyInstance;
+#else
+                                var clusterSleeve = doc.GetElement(new ElementId(clusterId)) as FamilyInstance;
 #endif
                                 if (clusterSleeve == null || !clusterSleeve.IsValidObject)
                                 {
@@ -2327,10 +2327,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 
                 // ✅ DOUBLE-CHECK: Verify cluster sleeve exists in document BEFORE deleting individual sleeves
-#if REVIT2023
-                var verifyBeforeDelete = doc.GetElement(new ElementId(capturedClusterSleeveId.Value)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                 var verifyBeforeDelete = doc.GetElement(new ElementId((long)capturedClusterSleeveId.Value)) as FamilyInstance;
+#else
+                var verifyBeforeDelete = doc.GetElement(new ElementId(capturedClusterSleeveId.Value)) as FamilyInstance;
 #endif
                 if (verifyBeforeDelete == null || !verifyBeforeDelete.IsValidObject)
                 {
@@ -2373,10 +2373,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             continue;
                         }
                         
-#if REVIT2023
-                        var sleeveElementId = new ElementId(sleeveInstanceId);
-#else
+#if REVIT2024_OR_GREATER
                         var sleeveElementId = new ElementId((long)sleeveInstanceId);
+#else
+                        var sleeveElementId = new ElementId(sleeveInstanceId);
 #endif
                         var sleeveElement = doc.GetElement(sleeveElementId);
                         
@@ -2450,10 +2450,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         // ✅ CRITICAL: Verify cluster sleeve still exists AFTER deleting individual sleeves
                         if (capturedClusterSleeveId.HasValue)
                         {
-#if REVIT2023
-                            var verifyAfterDelete = doc.GetElement(new ElementId(capturedClusterSleeveId.Value)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                             var verifyAfterDelete = doc.GetElement(new ElementId((long)capturedClusterSleeveId.Value)) as FamilyInstance;
+#else
+                            var verifyAfterDelete = doc.GetElement(new ElementId(capturedClusterSleeveId.Value)) as FamilyInstance;
 #endif
                             if (verifyAfterDelete == null || !verifyAfterDelete.IsValidObject)
                             {
@@ -2598,10 +2598,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         if (!familySymbol.IsActive) familySymbol.Activate();
 
                         // Get reference level (fallback to first level - could be improved by storing level in ClusterSleeves table)
-#if REVIT2023
-                        Level? refLevel = doc.GetElement(new ElementId(1)) as Level;
-#else
+#if REVIT2024_OR_GREATER
                         Level? refLevel = doc.GetElement(new ElementId(1L)) as Level;
+#else
+                        Level? refLevel = doc.GetElement(new ElementId(1)) as Level;
 #endif
                         if (refLevel == null)
                         {
@@ -3039,10 +3039,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var rotationData = _rotationService.GetRotationData(clusterInstanceId);
                             
                             // Get cluster sleeve element
-#if REVIT2023
-                            var clusterSleeve = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                             var clusterSleeve = doc.GetElement(new ElementId((long)clusterInstanceId)) as FamilyInstance;
+#else
+                            var clusterSleeve = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
 #endif
                             if (clusterSleeve == null)
                             {
@@ -3427,10 +3427,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var rotationData = _rotationService.GetRotationData(clusterInstanceId);
                             
                             // Get cluster sleeve element
-#if REVIT2023
-                            var clusterSleeve = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
-#else
+#if REVIT2024_OR_GREATER
                             var clusterSleeve = doc.GetElement(new ElementId((long)clusterInstanceId)) as FamilyInstance;
+#else
+                            var clusterSleeve = doc.GetElement(new ElementId(clusterInstanceId)) as FamilyInstance;
 #endif
                             if (clusterSleeve == null)
                             {

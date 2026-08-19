@@ -747,14 +747,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.MultiFloor
                 
                 try
                 {
-#if REVIT2023
+#if REVIT2024_OR_GREATER
                     var elementIds = _sleevesToDelete
-                        .Select(id => new ElementId(id))
+                        .Select(id => new ElementId((long)id))
                         .Where(id => _doc.GetElement(id) != null)
                         .ToList();
 #else
                     var elementIds = _sleevesToDelete
-                        .Select(id => new ElementId((long)id))
+                        .Select(id => new ElementId(id))
                         .Where(id => _doc.GetElement(id) != null)
                         .ToList();
 #endif

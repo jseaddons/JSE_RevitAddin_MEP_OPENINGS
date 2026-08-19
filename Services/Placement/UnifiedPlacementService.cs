@@ -231,10 +231,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 Element host = null;
                 if (zone.StructuralElementIdValue > 0)
                 {
-#if REVIT2023
-                    try { host = doc.GetElement(new ElementId((int)zone.StructuralElementIdValue)); } catch {}
-#else
+#if REVIT2024_OR_GREATER
                     try { host = doc.GetElement(new ElementId(zone.StructuralElementIdValue)); } catch {}
+#else
+                    try { host = doc.GetElement(new ElementId((int)zone.StructuralElementIdValue)); } catch {}
 #endif
                 }
 

@@ -4,7 +4,7 @@
 
 [Setup]
 AppName=JSE_MEP_OPENINGS_23
-AppVersion=1.0
+AppVersion=1.1
 DefaultDirName={userappdata}\Autodesk\Revit\Addins\2023
 DisableDirPage=yes
 DisableProgramGroupPage=yes
