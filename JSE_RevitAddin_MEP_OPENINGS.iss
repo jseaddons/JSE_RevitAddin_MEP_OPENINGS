@@ -1,4 +1,4 @@
-; JSE Revit MEP Openings Add-in Installer Script for Inno Setup
+﻿; JSE Revit MEP Openings Add-in Installer Script for Inno Setup
 ; Multi-version installer with automatic Revit version detection
 ; Uses subfolder structure to avoid cluttering the Addins folder
 ; Supports: Revit 2022, 2023, 2024, 2025, 2026
@@ -12,7 +12,7 @@
 #define PsDeploy "..\JSE_Parameter_Service\deploy"
 
 #define MyAppName "JSE MEP OPENING"
-#define MyAppVersion "2.0"
+#define MyAppVersion "2.1"
 #define MyAppPublisher "JSE"
 #define MyAppURL "https://www.jseaddons.com"
 
@@ -47,6 +47,16 @@ Name: "r23"; Description: "Revit 2023 Support"; Types: full custom
 Name: "r24"; Description: "Revit 2024 Support"; Types: full custom
 Name: "r25"; Description: "Revit 2025 Support"; Types: full custom
 Name: "r26"; Description: "Revit 2026 Support"; Types: full custom
+
+; Wipe each version folder before installing so stale dependencies cannot survive.
+; This is what prevents an old Nice3point.Revit.Toolkit.dll being left behind.
+; Safe: logs and the project database live in %APPDATA%\JSE_MEP_Openings, not here.
+[InstallDelete]
+Type: filesandordirs; Name: "{userappdata}\Autodesk\Revit\Addins\2022\JSE_MEP_OPENINGS"; Components: r22
+Type: filesandordirs; Name: "{userappdata}\Autodesk\Revit\Addins\2023\JSE_MEP_OPENINGS"; Components: r23
+Type: filesandordirs; Name: "{userappdata}\Autodesk\Revit\Addins\2024\JSE_MEP_OPENINGS"; Components: r24
+Type: filesandordirs; Name: "{userappdata}\Autodesk\Revit\Addins\2025\JSE_MEP_OPENINGS"; Components: r25
+Type: filesandordirs; Name: "{userappdata}\Autodesk\Revit\Addins\2026\JSE_MEP_OPENINGS"; Components: r26
 
 [Files]
 ; === REVIT 2022 - MEP Openings (deploy\) ===
@@ -102,6 +112,14 @@ Source: "{#MepDeploy}\2023\JSE_MEP_OPENINGS\*.config"; DestDir: "{userappdata}\A
 Source: "{#MepDeploy}\2024\JSE_MEP_OPENINGS\*.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024\JSE_MEP_OPENINGS"; Components: r24; Flags: skipifsourcedoesntexist
 Source: "{#MepDeploy}\2025\JSE_MEP_OPENINGS\*.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2025\JSE_MEP_OPENINGS"; Components: r25; Flags: skipifsourcedoesntexist
 Source: "{#MepDeploy}\2026\JSE_MEP_OPENINGS\*.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2026\JSE_MEP_OPENINGS"; Components: r26; Flags: skipifsourcedoesntexist
+
+; App config shipped from the repo root - it is not produced into deploy\.
+; loadFromRemoteSources only affects .NET Framework (2022-2024); inert but harmless on 2025/2026.
+Source: "JSE_RevitAddin_MEP_OPENINGS.dll.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2022\JSE_MEP_OPENINGS"; Components: r22; Flags: ignoreversion
+Source: "JSE_RevitAddin_MEP_OPENINGS.dll.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023\JSE_MEP_OPENINGS"; Components: r23; Flags: ignoreversion
+Source: "JSE_RevitAddin_MEP_OPENINGS.dll.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024\JSE_MEP_OPENINGS"; Components: r24; Flags: ignoreversion
+Source: "JSE_RevitAddin_MEP_OPENINGS.dll.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2025\JSE_MEP_OPENINGS"; Components: r25; Flags: ignoreversion
+Source: "JSE_RevitAddin_MEP_OPENINGS.dll.config"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2026\JSE_MEP_OPENINGS"; Components: r26; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\MEP OPENING Uninstall"; Filename: "{uninstallexe}"
